@@ -220,6 +220,17 @@ def test_obter_dividendos_levanta_ticker_invalido_na_falha_observada_do_yfinance
         precos.obter_dividendos("TICKERINVALIDO", diretorio_cache=tmp_path)
 
 
+def test_obter_dividendos_levanta_ticker_invalido_quando_dividends_e_none(tmp_path, monkeypatch):
+    # Terceira variação do mesmo comportamento não documentado: às vezes
+    # `.dividends` não levanta nada e só devolve None — pego rodando o
+    # app manualmente contra um ticker inválido (não coberto até então).
+    ticker_falso = _TickerFalso(dividendos_resultado=None)
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    with pytest.raises(precos.TickerInvalido):
+        precos.obter_dividendos("TICKERINVALIDO", diretorio_cache=tmp_path)
+
+
 def test_obter_dividendos_sobrevive_a_offsets_mistos_de_horario_de_verao(tmp_path, monkeypatch):
     # Histórico real (PETR4) vai até 2005 e atravessa mudanças de horário
     # de verão no Brasil — a mesma coluna acaba com offsets -03:00 e -02:00

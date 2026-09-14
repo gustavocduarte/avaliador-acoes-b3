@@ -166,6 +166,17 @@ def obter_dividendos(
             "API não-oficial do Yahoo. Tente de novo mais tarde."
         ) from erro
 
+    if serie is None:
+        # Outra variação do mesmo comportamento não documentado: em vez de
+        # levantar AttributeError (tratado acima), às vezes `.dividends`
+        # simplesmente devolve None pra ticker inexistente, sem exceção
+        # nenhuma. Observado rodando o app manualmente contra um ticker
+        # inválido, não coberto pelos testes originais.
+        raise TickerInvalido(
+            f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance "
+            "(dividends veio None, sem levantar exceção)."
+        )
+
     dividendos = serie.rename_axis("data").reset_index(name="dividendo")
     if not dividendos.empty:
         # O histórico vai até 2005 e atravessa mudanças de horário de verão
