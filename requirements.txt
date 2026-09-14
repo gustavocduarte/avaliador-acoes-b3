@@ -1,0 +1,13 @@
+# Requer Python 3.12+ (necessário para compatibilidade com numpy recente,
+# caso o projeto seja publicado no Streamlit Community Cloud — ver docs/especificacao.md).
+
+pandas
+numpy
+requests
+yfinance
+beautifulsoup4
+lxml
+streamlit
+plotly
+pytest
+ruff

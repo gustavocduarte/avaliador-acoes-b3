@@ -1,0 +1,26 @@
+# Dados baixados/cache — reconstruíveis a partir dos adapters em src/, não versionar.
+# As subpastas de data/raw/ são criadas pelos próprios adapters (os.makedirs), por
+# isso não precisam de .gitkeep aqui.
+data/raw/
+data/processed/*
+!data/processed/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Segredos / config local
+.env
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Editor / SO
+.vscode/
+.idea/
+Thumbs.db
