@@ -18,3 +18,12 @@ SERIES_BCB_SGS = {
     "cambio_usd_venda": 1,  # Câmbio livre - dólar americano (venda), diário - PTAX
     "m2_saldo": 27810,  # Meios de pagamento amplos - M2 (saldo em final de período)
 }
+
+# Arquivos do índice GPR (Geopolitical Risk Index, Caldara & Iacoviello).
+# Confirmados em 2026-09-14 em https://www.matteoiacoviello.com/gpr.htm —
+# links reais extraídos do HTML da página, resposta HTTP 200 com
+# Content-Type: application/vnd.ms-excel para ambos.
+URLS_GPR = {
+    "mensal": "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls",
+    "diaria": "https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls",
+}

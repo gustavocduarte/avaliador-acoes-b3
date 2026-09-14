@@ -7,6 +7,8 @@ requests
 yfinance
 beautifulsoup4
 lxml
+xlrd
+openpyxl
 streamlit
 plotly
 pytest
