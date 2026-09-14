@@ -137,6 +137,10 @@ CAMPOS_FUNDAMENTUS = {
     "Liquidez Corr": "liquidez_corrente",
     "Dív Líq / Patrim": "divida_liquida_sobre_patrimonio",
     "Cres. Rec (5a)": "crescimento_receita_5a_percentual",
+    # Adicionado para o FCD: converte valor total (firma/patrimônio) em
+    # valor justo por ação. Confirmado presente na página de PETR4/VALE3/
+    # ITUB4 em 2026-09-14.
+    "Nro. Ações": "numero_acoes",
 }
 
 # CVM (Comissão de Valores Mobiliários), Dados Abertos — Demonstrações
@@ -208,3 +212,152 @@ FATOR_GRAHAM = 22.5
 # civis, sem lacuna.
 YIELD_MINIMO_BAZIN = 0.06
 ANOS_HISTORICO_MINIMO_BAZIN = 5
+
+# --- Fluxo de Caixa Descontado (FCD) ---
+#
+# Base do fluxo de caixa livre: FCF = Caixa Líquido Atividades Operacionais
+# (conta 6.01 da DFC) + Caixa Líquido Atividades de Investimento (6.02).
+# Investigado em 2026-09-14: esses dois códigos de nível 2 são estáveis
+# entre empresas de perfis bem diferentes — Petrobras (método indireto,
+# não-financeira), Itaú Unibanco (método indireto, banco) e uma empresa
+# que usa método direto — ao contrário da conta de Lucro Líquido da DRE
+# (ver `CONTA_LUCRO_POR_ACAO_CVM` e o comentário do crosswalk/cvm.py), que
+# varia por tipo de empresa. Como 6.02 normalmente vem negativo, somar os
+# dois já desconta capex e outros investimentos do caixa operacional.
+# Simplificação assumida (não é FCFF nem FCFE no sentido estritamente
+# acadêmico, que exigiria reconstruir EBIT-CapEx-ΔWC ou separar juros de
+# financiamento item a item — dado que a CVM não padroniza essa quebra de
+# forma uniforme entre empresas): tratamos o valor presente desses fluxos
+# como aproximação direta do valor do patrimônio líquido (equity), sem
+# abater dívida líquida absoluta separadamente — outra simplificação, já
+# que ainda não extraímos dívida líquida em valor absoluto do balanço
+# patrimonial da CVM (BPP). Dividido pelo número de ações (Fundamentus,
+# campo "Nro. Ações") pra chegar num valor justo por ação comparável a
+# Graham/Bazin.
+HORIZONTE_PROJECAO_FCD_ANOS = 5
+ANOS_HISTORICO_CRESCIMENTO_FCD = 5
+
+# Taxa de crescimento explícita: CAGR do FCF entre o ano de referência e
+# `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes (dois pontos, não a série
+# inteira — CAGR só precisa dos extremos). Só é calculável se os dois
+# valores forem positivos (raiz de negativo não existe); do contrário, cai
+# no valor de IPCA (ver abaixo) como taxa neutra. Mesmo quando calculável,
+# a CAGR de só 2 pontos pode ser um outlier (ex: ano-base com resultado
+# atípico) — por isso é limitada a essa faixa antes de entrar na projeção,
+# uma trava de bom senso, não um número pesquisado numa fonte externa.
+TAXA_CRESCIMENTO_FCD_MINIMA = -0.20
+TAXA_CRESCIMENTO_FCD_MAXIMA = 0.30
+
+# WACC via CAPM simplificado: WACC = We×Ke + Wd×Kd×(1-alíquota).
+#
+# Ke (custo de capital próprio) = Selic (meta, via BCB) + Beta × prêmio de
+# risco de mercado. Beta ainda não temos calculado (isso é o bloco de
+# comportamento da ação, futuro) — usa BETA_PADRAO=1,0 (risco médio de
+# mercado) como placeholder documentado até lá.
+BETA_PADRAO = 1.0
+
+# Prêmio de risco de mercado do Brasil: confirmado em 2026-09-14 direto na
+# fonte (Damodaran, atualizada mensalmente) —
+# https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/ctryprem.html
+# — Equity Risk Premium total do Brasil = 7,47% (spread de default
+# ajustado 2,13% + country risk premium 3,24% sobre o prêmio "mercado
+# maduro" ~4,23%, de países com rating AAA).
+PREMIO_RISCO_MERCADO_BRASIL = 0.0747
+
+# Kd (custo de capital de terceiros, pré-imposto) = Selic + spread de
+# crédito. Pesquisa em 2026-09-14 achou o prêmio pago por empresas com
+# melhor perfil de crédito na casa de "CDI + 1%" (ex:
+# investnews.com.br/economia/corte-menor-da-selic-teria-custo-bilionario-
+# para-as-empresas/); usamos 2 p.p. como margem um pouco mais conservadora
+# pra cobrir o universo mais amplo do Ibovespa, não só as poucas empresas
+# com o melhor rating de crédito.
+SPREAD_CREDITO_PADRAO = 0.02
+
+# Alíquota combinada padrão de IRPJ+CSLL no regime de lucro real (25%
+# IRPJ + 10% adicional + 9% CSLL = 34%) — taxa estatutária padrão usada
+# pra levar o custo de dívida a valor pós-imposto.
+ALIQUOTA_IR_CSLL_PADRAO = 0.34
+
+# Estrutura de capital (pesos We/Wd): derivada de
+# `divida_liquida_sobre_patrimonio` (Fundamentus) por empresa, em vez de
+# um peso fixo genérico igual pra todas as 76 ações do Ibovespa. Quando
+# esse dado está ausente (ex: bancos — Fundamentus não reporta Dív
+# Líq/Patrim pra instituição financeira, ver CAMPOS_FUNDAMENTUS/
+# fundamentus.py) ou não-positivo (empresa em posição de caixa líquido,
+# mais caixa que dívida), a empresa é tratada como não alavancada pro
+# WACC (peso de dívida = 0, WACC = Ke) — simplificação conservadora e
+# explícita, não uma estimativa real de estrutura de capital; refinar
+# quando houver extração de dívida absoluta do balanço patrimonial (BPP)
+# da CVM.
+
+# Taxa de crescimento na perpetuidade: usa o IPCA acumulado em 12 meses
+# (via BCB) como proxy de crescimento nominal de longo prazo da economia.
+# Regra clássica de FCD (Gordon Growth): g nunca pode se aproximar/
+# ultrapassar a taxa de desconto, senão o valor presente da perpetuidade
+# diverge (denominador WACC-g tende a zero ou fica negativo). Em condições
+# normais IPCA < Selic < WACC (Selic = IPCA + juro real; WACC ainda soma
+# prêmio de risco sobre a Selic), então essa escolha já devria satisfazer
+# a regra na prática — mas o cálculo trava explicitamente por segurança
+# (ver `MARGEM_SEGURANCA_PERPETUIDADE_FCD`), nunca confia só na teoria.
+MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
+
+# --- Nota de validação do FCD (2026-09-14) ---
+#
+# Comparei o valor justo calculado com o preço de mercado real (via
+# ingest.precos) pra duas empresas reais, com Selic/IPCA reais da mesma
+# data:
+#   PETR4: valor justo R$ 91,49 vs. preço R$ 49,00 (+87%)
+#   VALE3: valor justo R$ 25,61 vs. preço R$ 78,20 (-67%)
+#
+# Refiz o cálculo por fora do módulo, passo a passo (FCF do ano-base, FCF
+# projetado e valor presente de cada um dos 5 anos, valor terminal, valor
+# presente do terminal, soma final ÷ número de ações) e reproduzi os dois
+# valores exatamente — não achei inversão de escala (milhares/milhões:
+# ESCALA_MOEDA="MIL" da CVM está sendo aplicada uma vez só, no adapter,
+# nunca de novo no modelo) nem confusão entre valor de firma e valor de
+# patrimônio na divisão final.
+#
+# As diferenças grandes têm explicação nas premissas assumidas, não em
+# erro de conta:
+#
+# 1. WACC atual (17,2% pra PETR4, 18,6% pra VALE3) reflete a Selic em 14%
+#    (patamar alto no momento da checagem) somada ao prêmio de risco de
+#    mercado do Brasil — desconta bastante o fluxo futuro dos dois papéis
+#    igualmente, então sozinho não explica a diferença de sinal entre os
+#    dois resultados.
+#
+# 2. A CAGR de 5 anos (2 pontos só — ver ANOS_HISTORICO_CRESCIMENTO_FCD) é
+#    sensível ao par de anos escolhido. Pra PETR4, CFO+CFI cresceu 7,0%
+#    a.a. de 2019 pra 2024 mesmo com o lucro contábil (DRE) caindo bastante
+#    no mesmo período (~R$125bi pra ~R$37bi, ver histórico validado em
+#    ingest/cvm.py) — CFO+CFI diverge de lucro líquido por itens não-caixa
+#    (variação cambial, impairment, imposto diferido), então esse
+#    descolamento entre "lucro caindo" e "FCF subindo" é esperado dado a
+#    base escolhida (CFO+CFI, não lucro líquido), não um bug de extração.
+#    Pra VALE3 a CAGR deu levemente negativa (-1,3% a.a.), mais alinhada
+#    com a leitura de que o papel estaria "caro" no modelo.
+#
+# 3. A simplificação já documentada acima (não abater dívida líquida
+#    absoluta do valor calculado, por falta de extração do balanço
+#    patrimonial da CVM) infla mais o valor calculado pra empresas mais
+#    alavancadas. PETR4 (Dív Líq/Patrim=0,65) é bem mais alavancada que
+#    VALE3 (0,35) — então essa simplificação pesa mais pra PETR4,
+#    empurrando o valor calculado pra cima do que uma conta que abatesse a
+#    dívida de verdade chegaria. É um viés conhecido na direção certa pra
+#    explicar parte do porquê PETR4 destoa mais.
+#
+# 4. Somar a Selic (taxa nominal local) ao "Total Equity Risk Premium" do
+#    Damodaran (que já embute risco-país) é uma convenção híbrida comum
+#    entre analistas no Brasil, mas não é a aplicação mais "pura" de CAPM
+#    (que usaria taxa livre de risco em dólar antes de converter pra
+#    reais) — mantém o WACC estruturalmente mais alto do que uma
+#    abordagem alternativa chegaria, achatando o valor presente de fluxos
+#    distantes com mais força.
+#
+# Conclusão: nenhum erro de escala encontrado; a diferença é o resultado
+# esperado de premissas conservadoras/simplificadas empilhadas (WACC alto,
+# CAGR de 2 pontos, sem abater dívida absoluta) — não um motivo pra
+# desconfiar da implementação, mas um lembrete de que o número do FCD
+# sozinho não deve ser lido como "preço-alvo", e sim como um dos três
+# métodos a serem combinados (ver o combinador de valor justo, ainda a
+# implementar).

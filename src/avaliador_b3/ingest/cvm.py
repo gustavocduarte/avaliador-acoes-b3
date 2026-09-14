@@ -64,6 +64,12 @@ class ContaLucroNaoEncontrada(ErroCVM):
     o layout do zip da CVM mudou. Não tenta adivinhar um valor."""
 
 
+class ContaFluxoCaixaNaoEncontrada(ErroCVM):
+    """A empresa foi encontrada na DFC, mas as contas 6.01/6.02 (Caixa
+    Líquido Atividades Operacionais/Investimento) não estão lá — sinal de
+    que o layout do zip da CVM mudou. Não tenta adivinhar um valor."""
+
+
 def _normalizar_cnpj(cnpj: str) -> str:
     return "".join(c for c in cnpj if c.isdigit())
 
@@ -194,6 +200,123 @@ def _montar_resultado(ano: int, tipo: str, linhas: list[dict]) -> dict:
         "lucro_liquido_anterior": lucro_anterior,
         "crescimento_lucro_percentual": crescimento_percentual,
     }
+
+
+CODIGO_CFO_CVM = "6.01"  # Caixa Líquido Atividades Operacionais
+CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
+
+
+def _linhas_da_empresa_dfc(
+    caminho_zip: Path, ano: int, metodo: str, tipo: str, cnpj_normalizado: str
+) -> list[dict]:
+    """Igual a `_linhas_da_empresa`, mas pro par de arquivos da DFC
+    (Demonstração de Fluxo de Caixa). `metodo` é "MI" (indireto, a grande
+    maioria das empresas) ou "MD" (direto, minoria)."""
+    nome_membro = f"dfp_cia_aberta_DFC_{metodo}_{tipo}_{ano}.csv"
+    with zipfile.ZipFile(caminho_zip) as arquivo_zip:
+        if nome_membro not in arquivo_zip.namelist():
+            raise ContaFluxoCaixaNaoEncontrada(
+                f"Membro {nome_membro!r} não existe no zip da CVM para {ano} — "
+                "o layout do pacote de dados pode ter mudado."
+            )
+        with arquivo_zip.open(nome_membro) as bruto:
+            texto = io.TextIOWrapper(bruto, encoding=CODIFICACAO_CVM, newline="")
+            leitor = csv.DictReader(texto, delimiter=";")
+            return [
+                linha
+                for linha in leitor
+                if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
+            ]
+
+
+def _linha_por_codigo(linhas_periodo: list[dict], codigo: str) -> dict:
+    candidatas = [linha for linha in linhas_periodo if linha["CD_CONTA"] == codigo]
+    if not candidatas:
+        raise ContaFluxoCaixaNaoEncontrada(
+            f"Conta {codigo!r} não encontrada na DFC — layout pode ter mudado."
+        )
+    return candidatas[0]
+
+
+def _fcf_do_periodo(linhas_periodo: list[dict]) -> float:
+    """FCF = Caixa Líquido Atividades Operacionais + Caixa Líquido
+    Atividades de Investimento (ver justificativa em config.py). Como o
+    de Investimento normalmente vem negativo, somar os dois já desconta
+    capex e outros investimentos do caixa operacional."""
+    cfo = _valor_conta(_linha_por_codigo(linhas_periodo, CODIGO_CFO_CVM))
+    cfi = _valor_conta(_linha_por_codigo(linhas_periodo, CODIGO_CFI_CVM))
+    return cfo + cfi
+
+
+def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
+    linhas_atual = [linha for linha in linhas if linha["ORDEM_EXERC"] == "ÚLTIMO"]
+    linhas_anterior = [linha for linha in linhas if linha["ORDEM_EXERC"] == "PENÚLTIMO"]
+
+    if not linhas_atual:
+        raise ContaFluxoCaixaNaoEncontrada(
+            f"Nenhuma linha com ORDEM_EXERC='ÚLTIMO' para o ano {ano} — "
+            "formato do arquivo pode ter mudado."
+        )
+
+    fcf_atual = _fcf_do_periodo(linhas_atual)
+    fcf_anterior = _fcf_do_periodo(linhas_anterior) if linhas_anterior else None
+
+    primeira_linha = linhas[0]
+    return {
+        "cnpj": primeira_linha["CNPJ_CIA"],
+        "cd_cvm": primeira_linha["CD_CVM"],
+        "denominacao": primeira_linha["DENOM_CIA"],
+        "tipo_demonstracao": "consolidado" if tipo == "con" else "individual",
+        "metodo_dfc": metodo,
+        "ano_referencia": ano,
+        "fcf_atual": fcf_atual,
+        "fcf_anterior": fcf_anterior,
+    }
+
+
+def obter_fluxo_caixa_livre(
+    cnpj: str,
+    ano: int,
+    usar_cache: bool = True,
+    forcar_atualizacao: bool = False,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> dict:
+    """Busca o fluxo de caixa livre (FCF, aproximado por CFO+CFI — ver
+    config.py) de uma empresa para `ano`, mais o valor do ano anterior.
+
+    Tenta a DFC pelo método indireto (a maioria das empresas) antes do
+    direto, e a demonstração consolidada antes da individual. Levanta
+    `CnpjNaoEncontrado` se o CNPJ não aparecer em nenhuma combinação, ou
+    `ContaFluxoCaixaNaoEncontrada` se as contas 6.01/6.02 não puderem ser
+    localizadas (formato mudou).
+    """
+    cnpj_normalizado = _normalizar_cnpj(cnpj)
+    caminho_resultado = diretorio_cache / "cvm" / f"fcf_{cnpj_normalizado}_{ano}.json"
+
+    if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
+        return json.loads(caminho_resultado.read_text(encoding="utf-8"))
+
+    caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
+
+    resultado = None
+    for metodo in ("MI", "MD"):
+        for tipo in ("con", "ind"):
+            linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
+            if not linhas:
+                continue
+            resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
+            break
+        if resultado is not None:
+            break
+
+    if resultado is None:
+        raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado na DFC da CVM para {ano}.")
+
+    if usar_cache:
+        caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
+        caminho_resultado.write_text(json.dumps(resultado, ensure_ascii=False), encoding="utf-8")
+
+    return resultado
 
 
 def obter_lucro_liquido(

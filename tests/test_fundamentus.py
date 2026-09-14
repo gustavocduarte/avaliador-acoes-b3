@@ -63,6 +63,7 @@ def test_extrair_rotulos_valores_contra_pagina_real_petr4():
     assert rotulos_valores["Liquidez Corr"] == "0,85"
     assert rotulos_valores["Dív Líq / Patrim"] == "0,65"
     assert rotulos_valores["Cres. Rec (5a)"] == "-2,3%"
+    assert rotulos_valores["Nro. Ações"] == "12.888.700.000"
 
 
 def test_extrair_rotulos_valores_pagina_de_ticker_invalido_fica_vazia():
@@ -79,6 +80,7 @@ def test_montar_indicadores_caminho_feliz():
         "Liquidez Corr": "0,85",
         "Dív Líq / Patrim": "0,65",
         "Cres. Rec (5a)": "-2,3%",
+        "Nro. Ações": "12.888.700.000",
     }
     indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
 
@@ -91,6 +93,7 @@ def test_montar_indicadores_caminho_feliz():
         "liquidez_corrente": 0.85,
         "divida_liquida_sobre_patrimonio": 0.65,
         "crescimento_receita_5a_percentual": -2.3,
+        "numero_acoes": 12888700000.0,
     }
 
 

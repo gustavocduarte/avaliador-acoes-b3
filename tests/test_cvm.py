@@ -11,6 +11,8 @@ ZIP_AMOSTRA = DIRETORIO_FIXTURES / "cvm_dfp_2024_amostra.zip"
 CNPJ_PETROBRAS = "33.000.167/0001-01"
 CNPJ_ITAU = "60.872.504/0001-23"
 CNPJ_SINTETICO_SO_INDIVIDUAL = "00.000.000/0001-00"
+CNPJ_SINTETICO_DFC_MI_IND = "00.000.000/0002-00"
+CNPJ_SINTETICO_DFC_MD_CON = "00.000.000/0003-00"
 
 
 class _RespostaStreamFalsa:
@@ -233,3 +235,117 @@ def test_baixar_zip_ano_propaga_erro_quando_fora_do_ar(tmp_path, monkeypatch):
 
     with pytest.raises(requests.HTTPError):
         cvm._baixar_zip_ano(2024, tmp_path, forcar_atualizacao=False)
+
+
+def test_linha_por_codigo_caminho_feliz():
+    linhas = [
+        {"CD_CONTA": "6.01", "VL_CONTA": "100", "ESCALA_MOEDA": "MIL"},
+        {"CD_CONTA": "6.02", "VL_CONTA": "-20", "ESCALA_MOEDA": "MIL"},
+    ]
+    linha = cvm._linha_por_codigo(linhas, "6.02")
+    assert linha["VL_CONTA"] == "-20"
+
+
+def test_linha_por_codigo_levanta_erro_quando_nao_encontrada():
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="6.01"):
+        cvm._linha_por_codigo([], "6.01")
+
+
+def test_fcf_do_periodo_soma_cfo_e_cfi():
+    linhas = [
+        {"CD_CONTA": "6.01", "VL_CONTA": "204037000.0000000000", "ESCALA_MOEDA": "MIL"},
+        {"CD_CONTA": "6.02", "VL_CONTA": "-72363000.0000000000", "ESCALA_MOEDA": "MIL"},
+    ]
+    assert cvm._fcf_do_periodo(linhas) == pytest.approx(131674000000.0)
+
+
+def test_linhas_da_empresa_dfc_contra_fixture_real_mi_con():
+    cnpj_petrobras = cvm._normalizar_cnpj(CNPJ_PETROBRAS)
+    linhas = cvm._linhas_da_empresa_dfc(ZIP_AMOSTRA, 2024, "MI", "con", cnpj_petrobras)
+    assert len(linhas) > 0
+    assert all(linha["CNPJ_CIA"] == CNPJ_PETROBRAS for linha in linhas)
+
+
+def test_linhas_da_empresa_dfc_membro_inexistente_levanta_erro_claro():
+    cnpj_petrobras = cvm._normalizar_cnpj(CNPJ_PETROBRAS)
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="não existe no zip"):
+        cvm._linhas_da_empresa_dfc(ZIP_AMOSTRA, 1999, "MI", "con", cnpj_petrobras)
+
+
+def test_montar_resultado_fcf_contra_fixture_real_petrobras():
+    cnpj_petrobras = cvm._normalizar_cnpj(CNPJ_PETROBRAS)
+    linhas = cvm._linhas_da_empresa_dfc(ZIP_AMOSTRA, 2024, "MI", "con", cnpj_petrobras)
+    resultado = cvm._montar_resultado_fcf(2024, "con", "MI", linhas)
+
+    assert resultado["cnpj"] == CNPJ_PETROBRAS
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["metodo_dfc"] == "MI"
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+    assert resultado["fcf_anterior"] == pytest.approx(176201000000.0)
+
+
+def test_obter_fluxo_caixa_livre_prefere_mi_consolidado(tmp_path, monkeypatch):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["metodo_dfc"] == "MI"
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+
+
+def test_obter_fluxo_caixa_livre_itau_via_mi_consolidado(tmp_path, monkeypatch):
+    # Confere que o mesmo par de contas (6.01/6.02) funciona pra um banco.
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_ITAU, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["fcf_atual"] == pytest.approx(14037000000.0)
+    assert resultado["fcf_anterior"] == pytest.approx(46263000000.0)
+
+
+def test_obter_fluxo_caixa_livre_cai_para_mi_individual(tmp_path, monkeypatch):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(
+        CNPJ_SINTETICO_DFC_MI_IND, 2024, diretorio_cache=tmp_path
+    )
+
+    assert resultado["metodo_dfc"] == "MI"
+    assert resultado["tipo_demonstracao"] == "individual"
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)  # 600 + (-150), em MIL
+
+
+def test_obter_fluxo_caixa_livre_cai_para_md_quando_nao_esta_em_mi(tmp_path, monkeypatch):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(
+        CNPJ_SINTETICO_DFC_MD_CON, 2024, diretorio_cache=tmp_path
+    )
+
+    assert resultado["metodo_dfc"] == "MD"
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_levanta_cnpj_nao_encontrado(tmp_path, monkeypatch):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    with pytest.raises(cvm.CnpjNaoEncontrado):
+        cvm.obter_fluxo_caixa_livre("11.111.111/1111-11", 2024, diretorio_cache=tmp_path)
+
+
+def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_path, monkeypatch):
+    chamadas = {"contador": 0}
+
+    def baixar_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return ZIP_AMOSTRA
+
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", baixar_falso)
+
+    cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+    cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+    assert (tmp_path / "cvm" / "fcf_33000167000101_2024.json").exists()
