@@ -66,3 +66,11 @@ CATEGORIAS_CONFLITO_CAMEO = {
     "18": "ASSAULT",
     "19": "FIGHT",
 }
+
+# Preço de ação via yfinance (ticker B3 + sufixo ".SA", ex: PETR4.SA).
+# Confirmado em 2026-09-14 com yfinance 1.7.0 contra PETR4.SA/VALE3.SA reais.
+# Diferente dos outros adapters, o cache de preço usa TTL curto: o dado já
+# vem com delay de ~15 min do próprio Yahoo, então cachear por muito tempo
+# só atrasaria mais o preço exibido sem necessidade.
+SUFIXO_TICKER_B3 = ".SA"
+TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
