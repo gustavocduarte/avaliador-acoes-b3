@@ -15,8 +15,11 @@ ou um WACC calculado que não é positivo (cenário macro fora do esperado
 pro modelo).
 
 Premissas de WACC/crescimento documentadas e justificadas em config.py:
-- Custo de capital próprio via CAPM (Selic + Beta × prêmio de risco Brasil,
-  Beta=1,0 como placeholder até o bloco de comportamento da ação existir).
+- Custo de capital próprio via CAPM (Selic + Beta × prêmio de risco Brasil).
+  Beta vem de `empresa.comportamento.calcular_beta` (janela de 1 ano) quando
+  disponível; cai pra `BETA_PADRAO`=1,0 quando não é calculável (histórico
+  curto demais, ou sem overlap suficiente com o Ibovespa) — não deixa o FCD
+  inteiro ficar inaplicável só por falta de Beta real.
 - Custo de capital de terceiros = Selic + spread de crédito, pós-imposto.
 - Estrutura de capital derivada de Dívida Líquida/Patrimônio (Fundamentus);
   quando ausente ou não-positiva (ex: bancos), trata a empresa como não
@@ -69,11 +72,16 @@ def _pesos_estrutura_capital(divida_liquida_sobre_patrimonio: float | None) -> t
 def calcular_wacc(
     selic_meta: float,
     divida_liquida_sobre_patrimonio: float | None,
-    beta: float = BETA_PADRAO,
+    beta: float | None = None,
 ) -> float:
-    """WACC = peso_capital_próprio × Ke + peso_dívida × Kd_pós_imposto."""
+    """WACC = peso_capital_próprio × Ke + peso_dívida × Kd_pós_imposto.
+
+    `beta` é o Beta real da ação (ver `empresa.comportamento.calcular_beta`)
+    quando disponível. Se vier None — não calculável, ver docstring do
+    módulo — cai pra `BETA_PADRAO` (risco médio de mercado)."""
+    beta_efetivo = beta if beta is not None else BETA_PADRAO
     peso_capital_proprio, peso_divida = _pesos_estrutura_capital(divida_liquida_sobre_patrimonio)
-    ke = _custo_capital_proprio(selic_meta, beta)
+    ke = _custo_capital_proprio(selic_meta, beta_efetivo)
     kd_pos_imposto = _custo_capital_terceiros_pos_imposto(selic_meta)
     return peso_capital_proprio * ke + peso_divida * kd_pos_imposto
 
@@ -103,7 +111,7 @@ def calcular_valor_justo_fcd(
     ipca_12m: float,
     fcf_ha_n_anos: float | None = None,
     divida_liquida_sobre_patrimonio: float | None = None,
-    beta: float = BETA_PADRAO,
+    beta: float | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -111,11 +119,13 @@ def calcular_valor_justo_fcd(
     `ingest.cvm.obter_fluxo_caixa_livre` (ano de referência e
     `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes); `numero_acoes` e
     `divida_liquida_sobre_patrimonio` de `ingest.fundamentus.
-    obter_indicadores`; `selic_meta`/`ipca_12m` de `ingest.bcb_sgs`.
+    obter_indicadores`; `selic_meta`/`ipca_12m` de `ingest.bcb_sgs`; `beta`
+    de `empresa.comportamento.calcular_beta` (pode vir None — cai pra
+    `BETA_PADRAO` dentro de `calcular_wacc`, não impede o FCD de rodar).
 
     Devolve um dict com `aplicavel` (bool), `valor_justo` (float ou None),
     `motivo_nao_aplicavel` (str ou None) e, quando aplicável, as premissas
-    usadas (`wacc`, `taxa_crescimento_explicita`,
+    usadas (`wacc`, `beta_utilizado`, `taxa_crescimento_explicita`,
     `taxa_crescimento_perpetuidade`) para transparência do cálculo.
     """
     if fcf_atual is None:
@@ -135,6 +145,7 @@ def calcular_valor_justo_fcd(
             ),
         }
 
+    beta_utilizado = beta if beta is not None else BETA_PADRAO
     wacc = calcular_wacc(selic_meta, divida_liquida_sobre_patrimonio, beta)
     if wacc <= 0:
         return {
@@ -170,6 +181,7 @@ def calcular_valor_justo_fcd(
         "valor_justo": valor_total / numero_acoes,
         "motivo_nao_aplicavel": None,
         "wacc": wacc,
+        "beta_utilizado": beta_utilizado,
         "taxa_crescimento_explicita": taxa_crescimento,
         "taxa_crescimento_perpetuidade": taxa_perpetuidade,
     }

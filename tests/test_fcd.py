@@ -52,6 +52,25 @@ def test_calcular_wacc_pondera_capital_proprio_e_terceiros():
     assert wacc == pytest.approx(0.5 * ke + 0.5 * kd)
 
 
+def test_calcular_wacc_beta_none_cai_para_beta_padrao():
+    wacc_sem_beta = fcd.calcular_wacc(selic_meta=0.10, divida_liquida_sobre_patrimonio=None)
+    wacc_com_beta_padrao = fcd.calcular_wacc(
+        selic_meta=0.10, divida_liquida_sobre_patrimonio=None, beta=fcd.BETA_PADRAO
+    )
+    assert wacc_sem_beta == pytest.approx(wacc_com_beta_padrao)
+
+
+def test_calcular_wacc_usa_beta_real_quando_fornecido():
+    wacc_beta_baixo = fcd.calcular_wacc(
+        selic_meta=0.10, divida_liquida_sobre_patrimonio=None, beta=0.5
+    )
+    wacc_beta_alto = fcd.calcular_wacc(
+        selic_meta=0.10, divida_liquida_sobre_patrimonio=None, beta=1.5
+    )
+    # Beta maior -> Ke maior (CAPM) -> WACC maior, com tudo mais igual.
+    assert wacc_beta_baixo < wacc_beta_alto
+
+
 def test_taxa_crescimento_explicita_calcula_cagr():
     taxa = fcd._taxa_crescimento_explicita(1000.0, 800.0)
     esperado = (1000.0 / 800.0) ** (1 / fcd.ANOS_HISTORICO_CRESCIMENTO_FCD) - 1
@@ -200,3 +219,44 @@ def test_calcular_valor_justo_fcd_usa_estrutura_de_capital_quando_disponivel():
         divida_liquida_sobre_patrimonio=None,
     )
     assert resultado_alavancado["wacc"] != resultado_nao_alavancado["wacc"]
+
+
+def test_calcular_valor_justo_fcd_expoe_beta_utilizado_real_e_padrao():
+    resultado_sem_beta = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+    )
+    assert resultado_sem_beta["beta_utilizado"] == pytest.approx(fcd.BETA_PADRAO)
+
+    resultado_com_beta = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        beta=0.7,
+    )
+    assert resultado_com_beta["beta_utilizado"] == pytest.approx(0.7)
+
+
+def test_calcular_valor_justo_fcd_beta_real_muda_o_valor_justo():
+    parametros_comuns = {
+        "fcf_atual": 1000.0,
+        "numero_acoes": 100.0,
+        "selic_meta": 0.10,
+        "ipca_12m": 0.04,
+        "fcf_ha_n_anos": 900.0,
+        "divida_liquida_sobre_patrimonio": None,
+    }
+    resultado_beta_baixo = fcd.calcular_valor_justo_fcd(**parametros_comuns, beta=0.5)
+    resultado_beta_padrao = fcd.calcular_valor_justo_fcd(**parametros_comuns)
+    resultado_beta_alto = fcd.calcular_valor_justo_fcd(**parametros_comuns, beta=1.5)
+
+    # Beta menor -> WACC menor -> desconta menos -> valor justo maior, e
+    # vice-versa — o valor justo não pode ser igual pra todo mundo mais,
+    # já que cada ação tem seu próprio risco em vez de Beta=1,0 fixo.
+    assert resultado_beta_baixo["valor_justo"] > resultado_beta_padrao["valor_justo"]
+    assert resultado_beta_padrao["valor_justo"] > resultado_beta_alto["valor_justo"]

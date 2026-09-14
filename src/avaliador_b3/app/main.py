@@ -222,6 +222,14 @@ if buscar and ticker:
         indicadores["divida_liquida_sobre_patrimonio"] if indicadores else None
     )
 
+    # Beta real (janela de 1 ano, calculada uma vez e reaproveitada no WACC
+    # do FCD e no card de "Comportamento da ação" abaixo). None quando não
+    # calculável — calcular_wacc cai pro BETA_PADRAO sozinho nesse caso,
+    # não é tratado aqui.
+    beta = None
+    if not erro_historico_beta and not erro_historico_ibovespa_beta:
+        beta = calcular_beta(historico_beta, historico_ibovespa_beta)
+
     resultado_graham = calcular_valor_justo_graham(lpa, vpa)
     resultado_bazin = (
         calcular_preco_teto_bazin(dividendos)
@@ -240,6 +248,7 @@ if buscar and ticker:
             ipca_12m=ipca_12m,
             fcf_ha_n_anos=fcf_ha_n_anos,
             divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
+            beta=beta,
         )
     else:
         resultado_fcd = {
@@ -256,6 +265,9 @@ if buscar and ticker:
         _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto")
     with coluna_fcd:
         _cartao_metodo("FCD", resultado_fcd, "valor_justo")
+        if resultado_fcd["aplicavel"]:
+            origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
+            st.caption(f"Beta no WACC: {resultado_fcd['beta_utilizado']:.2f} ({origem_beta})")
 
     st.divider()
     resultado_combinado = calcular_valor_combinado(resultado_graham, resultado_bazin, resultado_fcd)
@@ -330,6 +342,8 @@ if buscar and ticker:
     with col_beta:
         # Beta usa uma janela própria mais longa (PERIODO_BETA) que
         # volume/volatilidade, de propósito — ver comentário em config.py.
+        # Reaproveita o `beta` já calculado acima (mesmo valor usado no
+        # WACC do FCD), não recalcula.
         if erro_historico_beta:
             st.metric("Beta (vs. Ibovespa, 1a)", "—")
             st.caption(f"Preço indisponível: {erro_historico_beta}")
@@ -337,7 +351,6 @@ if buscar and ticker:
             st.metric("Beta (vs. Ibovespa, 1a)", "—")
             st.caption(f"Ibovespa indisponível: {erro_historico_ibovespa_beta}")
         else:
-            beta = calcular_beta(historico_beta, historico_ibovespa_beta)
             st.metric("Beta (vs. Ibovespa, 1a)", _fmt(beta))
             if beta is None:
                 st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
