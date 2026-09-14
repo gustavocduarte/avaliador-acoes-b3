@@ -75,6 +75,12 @@ CATEGORIAS_CONFLITO_CAMEO = {
 SUFIXO_TICKER_B3 = ".SA"
 TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
 
+# Dividendos via yfinance (`Ticker.dividends`) — mesma fonte de preço,
+# confirmado em 2026-09-14 que já traz o histórico completo (ex: PETR4 tem
+# registros desde 2005). Diferente do preço, dividendo é declarado poucas
+# vezes por ano, então o cache pode ter TTL bem mais longo.
+TTL_CACHE_DIVIDENDOS_SEGUNDOS = 24 * 60 * 60
+
 # Universo de "ações principais" (carteira teórica do Ibovespa) e segmento
 # de listagem. Confirmado em 2026-09-14 chamando diretamente:
 #   GET https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{params_base64}
@@ -186,3 +192,19 @@ URL_B3_CATALOGO_EMISSORES = (
     "https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/"
     "CompanyCall/GetInitialCompanies/{parametros_base64}"
 )
+
+# Fórmula de Benjamin Graham ("Graham Number"): VI = sqrt(22,5 × LPA × VPA).
+# 22,5 = 15 (P/L máximo considerado razoável por Graham) × 1,5 (P/VP máximo
+# razoável). Fonte: The Intelligent Investor (Graham). Só aplicável com
+# LPA > 0 e VPA > 0 — raiz de produto negativo não existe no domínio real.
+FATOR_GRAHAM = 22.5
+
+# Método Bazin (Preço Teto): preço_teto = dividendos dos últimos 12 meses /
+# yield mínimo desejado. 6% a.a. é o valor clássico usado por Décio Bazin.
+# Critério de "histórico de dividendo relevante" confirmado em 2026-09-14
+# em https://investilize.com.br/blog/metodo-bazin-preco-teto/: "a empresa
+# deve ter distribuído lucros ininterruptamente nos últimos 5 anos" —
+# usado aqui como pelo menos um pagamento em cada um dos últimos 5 anos
+# civis, sem lacuna.
+YIELD_MINIMO_BAZIN = 0.06
+ANOS_HISTORICO_MINIMO_BAZIN = 5

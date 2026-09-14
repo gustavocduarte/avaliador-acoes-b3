@@ -22,7 +22,12 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-from avaliador_b3.config import DATA_RAW_DIR, SUFIXO_TICKER_B3, TTL_CACHE_PRECOS_SEGUNDOS
+from avaliador_b3.config import (
+    DATA_RAW_DIR,
+    SUFIXO_TICKER_B3,
+    TTL_CACHE_DIVIDENDOS_SEGUNDOS,
+    TTL_CACHE_PRECOS_SEGUNDOS,
+)
 
 
 class ErroPrecos(Exception):
@@ -106,3 +111,70 @@ def obter_historico(
         historico.to_csv(caminho, index=False)
 
     return historico
+
+
+def _caminho_cache_dividendos(ticker_yahoo: str, diretorio_cache: Path) -> Path:
+    return diretorio_cache / "precos" / f"{ticker_yahoo}_dividendos.csv"
+
+
+def obter_dividendos(
+    ticker: str,
+    usar_cache: bool = True,
+    forcar_atualizacao: bool = False,
+    ttl_segundos: int = TTL_CACHE_DIVIDENDOS_SEGUNDOS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> pd.DataFrame:
+    """Busca o histórico completo de dividendos pagos por uma ação da B3
+    (todas as datas disponíveis no Yahoo Finance — ex: PETR4 tem registros
+    desde 2005), devolvendo um DataFrame com colunas `data` e `dividendo`.
+
+    Uma ação que nunca pagou dividendo devolve um DataFrame vazio — isso
+    **não** é erro, é um resultado válido (comum em empresas de
+    crescimento) usado por métodos como o de Bazin para concluir que o
+    método não é aplicável àquela ação.
+
+    Levanta `TickerInvalido` se o ticker não existir, ou `FalhaFontePreco`
+    se a busca falhar por outro motivo. Diferente de `obter_historico`, um
+    ticker inválido aqui faz o yfinance levantar `AttributeError` (em vez
+    de devolver um resultado vazio) — comportamento observado e tratado
+    explicitamente, não documentado pela biblioteca.
+    """
+    ticker_yahoo = _ticker_yahoo(ticker)
+    caminho = _caminho_cache_dividendos(ticker_yahoo, diretorio_cache)
+
+    if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
+        df_cache = pd.read_csv(caminho)
+        df_cache["data"] = pd.to_datetime(df_cache["data"], utc=True)
+        return df_cache
+
+    try:
+        serie = yf.Ticker(ticker_yahoo).dividends
+    except yf.exceptions.YFTickerMissingError as erro:
+        raise TickerInvalido(
+            f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance."
+        ) from erro
+    except AttributeError as erro:
+        raise TickerInvalido(
+            f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance "
+            "(yfinance falhou internamente ao buscar dividendos de um "
+            "ticker inexistente)."
+        ) from erro
+    except Exception as erro:
+        raise FalhaFontePreco(
+            f"Falha ao buscar dividendos de {ticker_yahoo!r} via yfinance — "
+            "pode ser rate limit, erro de rede, ou mudança na resposta da "
+            "API não-oficial do Yahoo. Tente de novo mais tarde."
+        ) from erro
+
+    dividendos = serie.rename_axis("data").reset_index(name="dividendo")
+    if not dividendos.empty:
+        # O histórico vai até 2005 e atravessa mudanças de horário de verão
+        # no Brasil (offsets -03:00/-02:00 misturados na mesma coluna) —
+        # normalizar pra UTC evita ambiguidade ao reler o cache depois.
+        dividendos["data"] = dividendos["data"].dt.tz_convert("UTC")
+
+    if usar_cache:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        dividendos.to_csv(caminho, index=False)
+
+    return dividendos
