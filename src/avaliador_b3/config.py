@@ -157,3 +157,32 @@ CAMPOS_FUNDAMENTUS = {
 URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{ano}.zip"
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
+
+# Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
+# ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).
+# Confirmado em 2026-09-14 chamando diretamente:
+#   GET https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/CompanyCall/GetInitialCompanies/{parametros_base64}
+# API não-documentada da B3 (mesma família da usada em b3_universo.py, mas
+# endpoint diferente: "listedCompaniesProxy", não "indexProxy"). pageSize
+# acima de 100 quebra a resposta (a API devolve totalRecords/totalPages
+# nulos) — usar 100 (36 páginas para os ~3523 registros atuais).
+#
+# O campo "cnpj" da resposta vem sem pontuação (ex: "33000167000101") e
+# bate, conferido manualmente, com o CNPJ_CIA usado nos arquivos da CVM
+# (com pontuação: "33.000.167/0001-01" para a Petrobras) e com o CD_CVM do
+# cadastro de companhias abertas da CVM
+# (dados.cvm.gov.br/dados/CIA_ABERTA/CAD/DADOS/cad_cia_aberta.csv) —
+# conferido para Petrobras (codeCVM 9512), Vale (4170) e Itaú Unibanco
+# Holding (19348; o cadastro da CVM também lista um CD_CVM antigo, 1279,
+# com SIT=CANCELADA para o mesmo CNPJ — reforça CNPJ como a chave estável
+# entre as fontes, não CD_CVM, que pode ser reemitido ao longo do tempo).
+#
+# O código do emissor (campo "issuingCompany", único em todo o catálogo —
+# conferido) é o prefixo do ticker sem o dígito de classe final (ex:
+# ticker "PETR4" -> emissor "PETR"; "B3SA3" -> "B3SA", só o último dígito
+# sai). Validado contra os 76 tickers reais do Ibovespa: 100% resolvidos
+# por esse prefixo, sem precisar de casamento de nome como fallback.
+URL_B3_CATALOGO_EMISSORES = (
+    "https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/"
+    "CompanyCall/GetInitialCompanies/{parametros_base64}"
+)

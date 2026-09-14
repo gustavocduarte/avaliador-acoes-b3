@@ -1,0 +1,243 @@
+import pandas as pd
+import pytest
+import requests
+
+from avaliador_b3.ingest import crosswalk_cnpj
+
+
+class _RespostaFalsa:
+    def __init__(self, dados: dict | None = None, status_ok: bool = True, json_invalido=False):
+        self._dados = dados
+        self._status_ok = status_ok
+        self._json_invalido = json_invalido
+
+    def raise_for_status(self):
+        if not self._status_ok:
+            raise requests.HTTPError("404 Client Error")
+
+    def json(self):
+        if self._json_invalido:
+            raise requests.exceptions.JSONDecodeError("msg", "doc", 0)
+        return self._dados
+
+
+def _linha_catalogo(emissor="PETR", codigo_cvm="9512", cnpj="33000167000101", nome="PETROBRAS"):
+    return {
+        "codigo_emissor": emissor,
+        "codigo_cvm": codigo_cvm,
+        "cnpj": cnpj,
+        "nome_empresa": nome,
+    }
+
+
+def _catalogo_petr_vale() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            _linha_catalogo(),
+            _linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A."),
+        ]
+    )
+
+
+def _catalogo_so_petr() -> pd.DataFrame:
+    return pd.DataFrame([_linha_catalogo()])
+
+
+def _registro(issuing="PETR", code_cvm="9512", cnpj="33000167000101", nome="PETROBRAS"):
+    return {
+        "codeCVM": code_cvm,
+        "issuingCompany": issuing,
+        "companyName": nome,
+        "tradingName": nome[:12],
+        "cnpj": cnpj,
+        "marketIndicator": "17",
+        "typeBDR": "",
+        "dateListing": "27/08/1968",
+        "status": "A",
+        "segment": "Exploração",
+        "segmentEng": "Exploration",
+        "type": "1",
+        "market": "N2",
+    }
+
+
+@pytest.mark.parametrize(
+    ("ticker", "esperado"),
+    [
+        ("PETR4", "PETR"),
+        ("VALE3", "VALE"),
+        ("TAEE11", "TAEE"),
+        ("BPAC11", "BPAC"),
+        ("B3SA3", "B3SA"),
+    ],
+)
+def test_codigo_emissor(ticker, esperado):
+    assert crosswalk_cnpj._codigo_emissor(ticker) == esperado
+
+
+def test_registro_para_linha_caminho_feliz():
+    linha = crosswalk_cnpj._registro_para_linha(_registro())
+    assert linha == {
+        "codigo_emissor": "PETR",
+        "codigo_cvm": "9512",
+        "cnpj": "33000167000101",
+        "nome_empresa": "PETROBRAS",
+    }
+
+
+def test_registro_para_linha_levanta_erro_quando_campo_falta():
+    with pytest.raises(ValueError, match="Formato do catálogo"):
+        crosswalk_cnpj._registro_para_linha({"issuingCompany": "PETR"})
+
+
+def test_obter_catalogo_emissores_uma_pagina(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 100, "totalRecords": 2, "totalPages": 1},
+        "results": [
+            _registro(issuing="VALE", code_cvm="4170", cnpj="33592510000154", nome="VALE S.A."),
+            _registro(),
+        ],
+    }
+    monkeypatch.setattr(crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
+
+    df = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+    assert list(df["codigo_emissor"]) == ["PETR", "VALE"]  # ordenado por emissor
+    assert (tmp_path / "b3" / "catalogo_emissores.csv").exists()
+
+
+def test_obter_catalogo_emissores_pagina_quando_ha_mais_de_uma_pagina(tmp_path, monkeypatch):
+    pagina1 = {
+        "page": {"pageNumber": 1, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro(issuing="VALE", code_cvm="4170", cnpj="33592510000154")],
+    }
+    pagina2 = {
+        "page": {"pageNumber": 2, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(pagina1 if chamadas["contador"] == 1 else pagina2)
+
+    monkeypatch.setattr(crosswalk_cnpj.requests, "get", get_falso)
+
+    df = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path, tamanho_pagina=1)
+
+    assert chamadas["contador"] == 2
+    assert sorted(df["codigo_emissor"]) == ["PETR", "VALE"]
+
+
+def test_obter_catalogo_emissores_levanta_erro_quando_json_invalido(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(json_invalido=True)
+    )
+    with pytest.raises(ValueError, match="não é JSON válido"):
+        crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+
+def test_obter_catalogo_emissores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 100, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(dados)
+
+    monkeypatch.setattr(crosswalk_cnpj.requests, "get", get_falso)
+
+    crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+    crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_catalogo_emissores_propaga_erro_http(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
+    )
+    with pytest.raises(requests.HTTPError):
+        crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+
+def test_resolver_cnpj_caminho_feliz():
+    catalogo = _catalogo_petr_vale()
+    resolvido = crosswalk_cnpj.resolver_cnpj("PETR4", catalogo)
+    assert resolvido == {
+        "ticker": "PETR4",
+        "codigo_emissor": "PETR",
+        "cnpj": "33000167000101",
+        "codigo_cvm": "9512",
+        "nome_empresa": "PETROBRAS",
+    }
+
+
+def test_resolver_cnpj_levanta_erro_quando_emissor_nao_existe():
+    catalogo = pd.DataFrame(
+        [_linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A.")]
+    )
+    with pytest.raises(crosswalk_cnpj.EmissorNaoEncontrado, match="PETR4"):
+        crosswalk_cnpj.resolver_cnpj("PETR4", catalogo)
+
+
+def test_obter_crosswalk_ibovespa_caminho_feliz(tmp_path, monkeypatch):
+    universo = pd.DataFrame({"ticker": ["PETR4", "VALE3"]})
+    catalogo = _catalogo_petr_vale()
+    monkeypatch.setattr(crosswalk_cnpj, "obter_universo_ibovespa", lambda **kw: universo)
+    monkeypatch.setattr(crosswalk_cnpj, "obter_catalogo_emissores", lambda **kw: catalogo)
+
+    df = crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path)
+
+    assert list(df["ticker"]) == ["PETR4", "VALE3"]
+    assert list(df["cnpj"]) == ["33000167000101", "33592510000154"]
+    assert (tmp_path / "b3" / "crosswalk_ibovespa.csv").exists()
+
+
+def test_obter_crosswalk_ibovespa_propaga_erro_quando_ticker_nao_resolve(tmp_path, monkeypatch):
+    universo = pd.DataFrame({"ticker": ["PETR4", "TICKERFANTASMA99"]})
+    catalogo = _catalogo_so_petr()
+    monkeypatch.setattr(crosswalk_cnpj, "obter_universo_ibovespa", lambda **kw: universo)
+    monkeypatch.setattr(crosswalk_cnpj, "obter_catalogo_emissores", lambda **kw: catalogo)
+
+    with pytest.raises(crosswalk_cnpj.EmissorNaoEncontrado):
+        crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path)
+
+
+def test_obter_crosswalk_ibovespa_usa_cache_e_nao_chama_fontes_de_novo(tmp_path, monkeypatch):
+    universo = pd.DataFrame({"ticker": ["PETR4"]})
+    catalogo = _catalogo_so_petr()
+    chamadas = {"contador": 0}
+
+    def universo_falso(**kw):
+        chamadas["contador"] += 1
+        return universo
+
+    monkeypatch.setattr(crosswalk_cnpj, "obter_universo_ibovespa", universo_falso)
+    monkeypatch.setattr(crosswalk_cnpj, "obter_catalogo_emissores", lambda **kw: catalogo)
+
+    crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path)
+    crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_crosswalk_ibovespa_forcar_atualizacao_ignora_cache(tmp_path, monkeypatch):
+    universo = pd.DataFrame({"ticker": ["PETR4"]})
+    catalogo = _catalogo_so_petr()
+    chamadas = {"contador": 0}
+
+    def universo_falso(**kw):
+        chamadas["contador"] += 1
+        return universo
+
+    monkeypatch.setattr(crosswalk_cnpj, "obter_universo_ibovespa", universo_falso)
+    monkeypatch.setattr(crosswalk_cnpj, "obter_catalogo_emissores", lambda **kw: catalogo)
+
+    crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path)
+    crosswalk_cnpj.obter_crosswalk_ibovespa(diretorio_cache=tmp_path, forcar_atualizacao=True)
+
+    assert chamadas["contador"] == 2
