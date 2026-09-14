@@ -75,6 +75,34 @@ CATEGORIAS_CONFLITO_CAMEO = {
 SUFIXO_TICKER_B3 = ".SA"
 TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
 
+# Índice Ibovespa via yfinance — confirmado em 2026-09-14 que "^BVSP" (sem
+# sufixo ".SA", diferente de uma ação B3) devolve histórico real com
+# Close/Volume. Usado pro cálculo de Beta (bloco de comportamento da ação)
+# e, futuramente, pra sobreposição no gráfico de preço.
+TICKER_IBOVESPA = "^BVSP"
+
+# Janelas de histórico pro bloco de "comportamento da ação" — duas
+# janelas diferentes de propósito, não uma reaproveitada pra tudo:
+#
+# - Volume médio e volatilidade são métricas de curto prazo — 3 meses é
+#   suficiente e mantém a busca rápida.
+# - Beta tradicionalmente usa uma janela bem mais longa (6 meses a alguns
+#   anos de retorno diário/semanal) — 3 meses de retorno diário (~60
+#   observações) é amostra pequena demais pra uma estimativa de
+#   covariância estável, fica ruidosa. Usamos 1 ano (~252 observações)
+#   como meio-termo pragmático — não é uma convenção de mercado pesquisada
+#   numa fonte externa (ao contrário do prêmio de risco do WACC), é só uma
+#   escolha razoável de engenharia.
+#
+#   IMPORTANTE: esse mesmo Beta (empresa.comportamento.calcular_beta) é
+#   candidato natural a substituir BETA_PADRAO=1,0 no FCD (modelos/fcd.py)
+#   no futuro. Quando isso acontecer, reconsiderar se PERIODO_BETA
+#   continua adequado pra esse uso — FCD é uma projeção de longo prazo,
+#   pode ser que valha uma janela ainda mais longa que a usada aqui pro
+#   dashboard.
+PERIODO_HISTORICO_COMPORTAMENTO = "3mo"
+PERIODO_BETA = "1y"
+
 # Dividendos via yfinance (`Ticker.dividends`) — mesma fonte de preço,
 # confirmado em 2026-09-14 que já traz o histórico completo (ex: PETR4 tem
 # registros desde 2005). Diferente do preço, dividendo é declarado poucas

@@ -25,6 +25,7 @@ import yfinance as yf
 from avaliador_b3.config import (
     DATA_RAW_DIR,
     SUFIXO_TICKER_B3,
+    TICKER_IBOVESPA,
     TTL_CACHE_DIVIDENDOS_SEGUNDOS,
     TTL_CACHE_PRECOS_SEGUNDOS,
 )
@@ -45,15 +46,21 @@ class FalhaFontePreco(ErroPrecos):
 
 def _ticker_yahoo(ticker: str) -> str:
     """Normaliza um código B3 (ex: "petr4") para o ticker do Yahoo Finance
-    (ex: "PETR4.SA"). Não duplica o sufixo se ele já vier incluso."""
+    (ex: "PETR4.SA"). Não duplica o sufixo se ele já vier incluso. Tickers
+    de índice (prefixo "^", ex: "^BVSP" pro Ibovespa) não são ação B3 —
+    passam direto, sem sufixo, no formato que o Yahoo já usa pra eles."""
     ticker = ticker.strip().upper()
-    if ticker.endswith(SUFIXO_TICKER_B3):
+    if ticker.startswith("^") or ticker.endswith(SUFIXO_TICKER_B3):
         return ticker
     return ticker + SUFIXO_TICKER_B3
 
 
-def _caminho_cache(ticker_yahoo: str, diretorio_cache: Path) -> Path:
-    return diretorio_cache / "precos" / f"{ticker_yahoo}.csv"
+def _caminho_cache(ticker_yahoo: str, periodo: str, diretorio_cache: Path) -> Path:
+    # O período precisa fazer parte da chave de cache — sem isso, pedir o
+    # mesmo ticker com períodos diferentes (ex: "3mo" pra volume/
+    # volatilidade e "1y" pra Beta) faz uma busca sobrescrever o cache da
+    # outra, e uma delas passa a ler dado do período errado silenciosamente.
+    return diretorio_cache / "precos" / f"{ticker_yahoo}_{periodo}.csv"
 
 
 def _cache_valido(caminho: Path, ttl_segundos: int) -> bool:
@@ -80,7 +87,7 @@ def obter_historico(
     se a busca falhar por outro motivo (rate limit, erro de rede, etc.).
     """
     ticker_yahoo = _ticker_yahoo(ticker)
-    caminho = _caminho_cache(ticker_yahoo, diretorio_cache)
+    caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
         return pd.read_csv(caminho, parse_dates=["data"])
@@ -111,6 +118,27 @@ def obter_historico(
         historico.to_csv(caminho, index=False)
 
     return historico
+
+
+def obter_historico_ibovespa(
+    periodo: str = "3mo",
+    usar_cache: bool = True,
+    forcar_atualizacao: bool = False,
+    ttl_segundos: int = TTL_CACHE_PRECOS_SEGUNDOS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> pd.DataFrame:
+    """Histórico do índice Ibovespa (mesmo formato de `obter_historico`,
+    reaproveitando cache/tratamento de erro) — usado pro cálculo de Beta
+    (`empresa.comportamento`) e, futuramente, pra sobreposição no gráfico
+    de preço da ação."""
+    return obter_historico(
+        TICKER_IBOVESPA,
+        periodo=periodo,
+        usar_cache=usar_cache,
+        forcar_atualizacao=forcar_atualizacao,
+        ttl_segundos=ttl_segundos,
+        diretorio_cache=diretorio_cache,
+    )
 
 
 def _caminho_cache_dividendos(ticker_yahoo: str, diretorio_cache: Path) -> Path:

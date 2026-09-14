@@ -65,6 +65,8 @@ def _dividendos_falsos() -> pd.Series:
         ("PETR4", "PETR4.SA"),
         ("PETR4.SA", "PETR4.SA"),
         (" vale3 ", "VALE3.SA"),
+        ("^bvsp", "^BVSP"),
+        ("^BVSP", "^BVSP"),
     ],
 )
 def test_ticker_yahoo_normaliza(entrada, esperado):
@@ -79,7 +81,7 @@ def test_obter_historico_caminho_feliz_grava_cache(tmp_path, monkeypatch):
 
     assert list(df.columns[:1]) == ["data"]
     assert len(df) == 2
-    assert (tmp_path / "precos" / "PETR4.SA.csv").exists()
+    assert (tmp_path / "precos" / "PETR4.SA_3mo.csv").exists()
 
 
 def test_obter_historico_usa_cache_dentro_do_ttl(tmp_path, monkeypatch):
@@ -98,13 +100,39 @@ def test_obter_historico_refaz_busca_quando_cache_expira(tmp_path, monkeypatch):
 
     precos.obter_historico("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
 
-    caminho = tmp_path / "precos" / "PETR4.SA.csv"
+    caminho = tmp_path / "precos" / "PETR4.SA_3mo.csv"
     dez_minutos_atras = time.time() - 600
     os.utime(caminho, (dez_minutos_atras, dez_minutos_atras))
 
     precos.obter_historico("PETR4", diretorio_cache=tmp_path, ttl_segundos=300)
 
     assert ticker_falso.chamadas == 2
+
+
+def test_obter_historico_cache_nao_mistura_periodos_diferentes(tmp_path, monkeypatch):
+    # Regressão: pedir o mesmo ticker com períodos diferentes (ex: "3mo"
+    # pra volume/volatilidade e "1y" pra Beta) não pode fazer uma busca
+    # sobrescrever o cache da outra nem ler o período errado de volta.
+    historico_3mo = _historico_falso()
+    historico_1y = _historico_falso()
+    chamadas_por_periodo = {"3mo": 0, "1y": 0}
+
+    class _TickerFalsoPorPeriodo:
+        def history(self, period):
+            chamadas_por_periodo[period] += 1
+            return historico_3mo if period == "3mo" else historico_1y
+
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: _TickerFalsoPorPeriodo())
+
+    precos.obter_historico("PETR4", periodo="3mo", diretorio_cache=tmp_path)
+    precos.obter_historico("PETR4", periodo="1y", diretorio_cache=tmp_path)
+    # Refazer a busca de "3mo" precisa vir do cache do "3mo", não do "1y"
+    # que foi buscado depois.
+    precos.obter_historico("PETR4", periodo="3mo", diretorio_cache=tmp_path)
+
+    assert chamadas_por_periodo == {"3mo": 1, "1y": 1}
+    assert (tmp_path / "precos" / "PETR4.SA_3mo.csv").exists()
+    assert (tmp_path / "precos" / "PETR4.SA_1y.csv").exists()
 
 
 def test_obter_historico_forcar_atualizacao_ignora_cache_valido(tmp_path, monkeypatch):
@@ -153,6 +181,23 @@ def test_obter_historico_levanta_falha_fonte_preco_em_erro_generico(tmp_path, mo
 
     with pytest.raises(precos.FalhaFontePreco):
         precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+
+def test_obter_historico_ibovespa_usa_ticker_caret_bvsp_sem_sufixo(tmp_path, monkeypatch):
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    tickers_pedidos = []
+
+    def construtor_falso(ticker_pedido):
+        tickers_pedidos.append(ticker_pedido)
+        return ticker_falso
+
+    monkeypatch.setattr(precos.yf, "Ticker", construtor_falso)
+
+    df = precos.obter_historico_ibovespa(diretorio_cache=tmp_path)
+
+    assert tickers_pedidos == ["^BVSP"]
+    assert len(df) == 2
+    assert (tmp_path / "precos" / "^BVSP_3mo.csv").exists()
 
 
 def test_obter_dividendos_caminho_feliz_grava_cache(tmp_path, monkeypatch):

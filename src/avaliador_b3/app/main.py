@@ -14,9 +14,21 @@ from pathlib import Path
 # sozinho como o pytest faz via pythonpath, então isso resolve na mão.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import pandas as pd
 import streamlit as st
 
-from avaliador_b3.config import ANOS_HISTORICO_CRESCIMENTO_FCD, SERIES_BCB_SGS
+from avaliador_b3.config import (
+    ANOS_HISTORICO_CRESCIMENTO_FCD,
+    PERIODO_BETA,
+    PERIODO_HISTORICO_COMPORTAMENTO,
+    SERIES_BCB_SGS,
+)
+from avaliador_b3.empresa.comportamento import (
+    calcular_beta,
+    calcular_volatilidade_anualizada,
+    calcular_volume_medio,
+)
+from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.bcb_sgs import obter_serie
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
@@ -38,6 +50,7 @@ from avaliador_b3.ingest.precos import (
     TickerInvalido,
     obter_dividendos,
     obter_historico,
+    obter_historico_ibovespa,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_valor_combinado
@@ -52,12 +65,34 @@ from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 ANO_REFERENCIA_FCD = 2024
 
 
-def _buscar_preco_atual(ticker: str) -> tuple[float | None, str | None]:
+def _buscar_historico(ticker: str, periodo: str) -> tuple[pd.DataFrame | None, str | None]:
+    """Histórico de preço da ação. `periodo` varia por uso: a mesma janela
+    curta (`PERIODO_HISTORICO_COMPORTAMENTO`) serve pro preço atual (último
+    fechamento) e pra volume/volatilidade; Beta usa uma janela própria mais
+    longa (`PERIODO_BETA`) — ver o comentário em config.py."""
     try:
-        historico = obter_historico(ticker, periodo="5d")
-        return float(historico["Close"].iloc[-1]), None
+        return obter_historico(ticker, periodo=periodo), None
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
+
+
+def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str | None]:
+    try:
+        return obter_historico_ibovespa(periodo=periodo), None
+    except (TickerInvalido, FalhaFontePreco) as erro:
+        return None, str(erro)
+
+
+@st.cache_data(ttl=3600)
+def _buscar_universo_ibovespa() -> tuple[pd.DataFrame | None, str | None]:
+    """Universo do Ibovespa (ticker/nome/segmento de listagem/peso) —
+    cacheado na sessão do Streamlit, não depende do ticker buscado. Um
+    ticker fora do Ibovespa simplesmente não aparece nesse universo — não
+    é um erro de busca."""
+    try:
+        return obter_universo_ibovespa(), None
+    except Exception as erro:
+        return None, f"Falha ao buscar universo do Ibovespa: {erro}"
 
 
 def _buscar_indicadores_fundamentus(ticker: str) -> tuple[dict | None, str | None]:
@@ -123,6 +158,13 @@ def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str):
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
 
 
+def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
+    """Formata um número, ou "N/D" se ausente — indicador individual
+    faltando (ex: banco sem Dív Líq/Patrim no Fundamentus) não deve
+    quebrar a tela nem virar um "None" cru na tela."""
+    return template.format(valor) if valor is not None else "N/D"
+
+
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈")
 st.title("Avaliador de Ações da B3")
 st.caption(
@@ -138,7 +180,12 @@ if buscar and not ticker:
 
 if buscar and ticker:
     with st.spinner(f"Buscando dados de {ticker}..."):
-        preco_atual, erro_preco = _buscar_preco_atual(ticker)
+        historico, erro_historico = _buscar_historico(ticker, PERIODO_HISTORICO_COMPORTAMENTO)
+        historico_beta, erro_historico_beta = _buscar_historico(ticker, PERIODO_BETA)
+        historico_ibovespa_beta, erro_historico_ibovespa_beta = _buscar_historico_ibovespa(
+            PERIODO_BETA
+        )
+        universo_ibovespa, erro_universo = _buscar_universo_ibovespa()
         indicadores, erro_indicadores = _buscar_indicadores_fundamentus(ticker)
         dividendos, erro_dividendos = _buscar_dividendos(ticker)
         cnpj, erro_cnpj = _buscar_cnpj(ticker)
@@ -154,10 +201,10 @@ if buscar and ticker:
 
     st.subheader(ticker)
 
-    if erro_preco:
-        st.error(f"Preço: {erro_preco}")
+    if erro_historico:
+        st.error(f"Preço: {erro_historico}")
     else:
-        st.metric("Preço atual", f"R$ {preco_atual:.2f}")
+        st.metric("Preço atual", f"R$ {historico['Close'].iloc[-1]:.2f}")
 
     if erro_indicadores:
         st.warning(f"Fundamentus: {erro_indicadores}")
@@ -217,3 +264,80 @@ if buscar and ticker:
         st.caption("Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"]))
     else:
         st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
+
+    st.divider()
+    st.subheader("Saúde financeira")
+    if indicadores is None:
+        st.info("Indisponível — ver aviso do Fundamentus acima.")
+    else:
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.metric("ROE", _fmt(indicadores["roe_percentual"], "{:.1f}%"))
+        col_b.metric("Margem líquida", _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%"))
+        col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
+        col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
+        col_e, col_f, col_g, _col_h = st.columns(4)
+        col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
+        col_f.metric("Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"]))
+        col_g.metric(
+            "Cresc. receita (5a)",
+            _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
+        )
+        st.caption(
+            "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
+            "Fundamentus não reporta alguns desses índices no mesmo formato."
+        )
+
+    st.divider()
+    st.subheader("Governança")
+    linha_universo = (
+        universo_ibovespa[universo_ibovespa["ticker"] == ticker]
+        if universo_ibovespa is not None
+        else None
+    )
+    col_segmento, col_free_float = st.columns(2)
+    with col_segmento:
+        if erro_universo:
+            st.warning(f"Segmento de listagem: {erro_universo}")
+        elif linha_universo is not None and not linha_universo.empty:
+            st.metric("Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"])
+        else:
+            st.metric("Segmento de listagem", "—")
+            st.caption(
+                f"{ticker!r} não está na carteira teórica atual do Ibovespa — essa é a "
+                "única fonte de segmento de listagem que já temos."
+            )
+    with col_free_float:
+        st.metric("Free float", "Pendente")
+        st.caption(
+            "Nenhum adapter atual extrai free float — nem o universo do Ibovespa "
+            "(b3_universo.py) nem o catálogo de emissores (crosswalk_cnpj.py) trazem "
+            "esse campo. Fica como pendência explícita, não um valor inventado."
+        )
+
+    st.divider()
+    st.subheader("Comportamento da ação")
+    if erro_historico:
+        st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
+
+    col_volume, col_volatilidade, col_beta = st.columns(3)
+
+    if not erro_historico:
+        volume_medio = calcular_volume_medio(historico)
+        volatilidade = calcular_volatilidade_anualizada(historico)
+        col_volume.metric("Volume médio (3m)", f"{volume_medio:,.0f}".replace(",", "."))
+        col_volatilidade.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
+
+    with col_beta:
+        # Beta usa uma janela própria mais longa (PERIODO_BETA) que
+        # volume/volatilidade, de propósito — ver comentário em config.py.
+        if erro_historico_beta:
+            st.metric("Beta (vs. Ibovespa, 1a)", "—")
+            st.caption(f"Preço indisponível: {erro_historico_beta}")
+        elif erro_historico_ibovespa_beta:
+            st.metric("Beta (vs. Ibovespa, 1a)", "—")
+            st.caption(f"Ibovespa indisponível: {erro_historico_ibovespa_beta}")
+        else:
+            beta = calcular_beta(historico_beta, historico_ibovespa_beta)
+            st.metric("Beta (vs. Ibovespa, 1a)", _fmt(beta))
+            if beta is None:
+                st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
