@@ -96,3 +96,39 @@ SEGMENTOS_LISTAGEM_B3 = {
     "N1": "Nível 1",
 }
 SEGMENTO_LISTAGEM_PADRAO = "Tradicional"
+
+# Fundamentus (fundamentus.com.br) — sem API oficial, via scraping.
+# Confirmado em 2026-09-14:
+#   - o site bloqueia requisições sem User-Agent de navegador (HTTP 403 sem
+#     User-Agent, 200 com um realista);
+#   - a página é servida em ISO-8859-1, não UTF-8 (Content-Type: text/html;
+#     charset=iso-8859-1) — decodificar como UTF-8 corrompe os acentos
+#     silenciosamente, sem erro;
+#   - cada indicador é um par <td class="label"><span class="txt">Rótulo
+#     </span></td> seguido do <td> irmão com o valor.
+#
+# A página NÃO tem "Dívida Líquida/EBITDA" nem crescimento de lucro. Só tem
+# "Dív Líq / Patrim" (dívida líquida/patrimônio líquido — índice de
+# alavancagem diferente) e "Cres. Rec (5a)" (crescimento de receita em 5
+# anos, sem equivalente de lucro). Decisão alinhada com o usuário: usar
+# Dív Líq/Patrim como está, sem fingir que é a mesma coisa que Dív
+# Líq/EBITDA, e deixar crescimento de lucro pendente para outra fonte
+# (ex: CVM) no futuro.
+URL_FUNDAMENTUS_DETALHES = "https://www.fundamentus.com.br/detalhes.php"
+CABECALHOS_FUNDAMENTUS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    )
+}
+DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
+
+CAMPOS_FUNDAMENTUS = {
+    "ROE": "roe_percentual",
+    "Marg. Líquida": "margem_liquida_percentual",
+    "LPA": "lpa",
+    "VPA": "vpa",
+    "Liquidez Corr": "liquidez_corrente",
+    "Dív Líq / Patrim": "divida_liquida_sobre_patrimonio",
+    "Cres. Rec (5a)": "crescimento_receita_5a_percentual",
+}
