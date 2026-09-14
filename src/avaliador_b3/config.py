@@ -74,3 +74,25 @@ CATEGORIAS_CONFLITO_CAMEO = {
 # só atrasaria mais o preço exibido sem necessidade.
 SUFIXO_TICKER_B3 = ".SA"
 TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
+
+# Universo de "ações principais" (carteira teórica do Ibovespa) e segmento
+# de listagem. Confirmado em 2026-09-14 chamando diretamente:
+#   GET https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{params_base64}
+# com params_base64 = base64(json.dumps({"language":"pt-br","pageNumber":N,
+# "pageSize":P,"index":"IBOV","segment":"1"})). API não-documentada da B3,
+# usada por vários projetos open-source da comunidade — pode mudar sem
+# aviso. Retornou os 76 ativos do Ibovespa numa única página (pageSize=120).
+#
+# O campo "type" de cada resultado (ex: "ON      NM", "PN  EJ  N1", "UNT")
+# traz o segmento de listagem como último token — checado contra as 13
+# combinações reais observadas nos 76 ativos do índice nessa data.
+URL_B3_PORTFOLIO_DIA = (
+    "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{parametros_base64}"
+)
+
+SEGMENTOS_LISTAGEM_B3 = {
+    "NM": "Novo Mercado",
+    "N2": "Nível 2",
+    "N1": "Nível 1",
+}
+SEGMENTO_LISTAGEM_PADRAO = "Tradicional"
