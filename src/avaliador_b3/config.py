@@ -132,3 +132,28 @@ CAMPOS_FUNDAMENTUS = {
     "Dív Líq / Patrim": "divida_liquida_sobre_patrimonio",
     "Cres. Rec (5a)": "crescimento_receita_5a_percentual",
 }
+
+# CVM (Comissão de Valores Mobiliários), Dados Abertos — Demonstrações
+# Financeiras Padronizadas (DFP), anuais. Confirmado em 2026-09-14:
+#   GET https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{ano}.zip
+# Cada zip anual traz vários CSVs (";" separado, ISO-8859-1), um por tipo de
+# demonstração — usamos só a DRE (Demonstração do Resultado), em duas
+# versões: "_con" (consolidado, grupo econômico) e "_ind" (individual, só
+# a controladora). Cada arquivo já traz DOIS períodos por conta (coluna
+# ORDEM_EXERC = "ÚLTIMO"/"PENÚLTIMO"), então um único ano baixado já permite
+# calcular crescimento ano a ano, sem precisar de dois downloads.
+#
+# O plano de contas NÃO é fixo entre empresas: conferido contra dados reais
+# de 2024, a Petrobras (não-financeira) tem "Lucro/Prejuízo do Período" na
+# conta 3.11, enquanto o Itaú Unibanco (banco) tem "Lucro/Prejuízo
+# Consolidado do Período" na conta 3.09 — bancos têm estrutura de DRE
+# diferente (não têm "Custo dos Bens e/ou Serviços Vendidos", por exemplo).
+# A regra usada aqui — pegar a última conta de nível 2 ("3.XX") antes de
+# "3.99" (sempre reservada para Lucro por Ação em ambos os casos reais
+# testados) — funcionou para os dois. Tem uma checagem de sanidade extra no
+# adapter (a descrição da conta precisa conter "lucro"/"prejuízo") para não
+# aceitar silenciosamente uma conta errada se essa regra falhar para algum
+# outro tipo de empresa (seguradora, etc.) ainda não testado.
+URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{ano}.zip"
+FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
+CONTA_LUCRO_POR_ACAO_CVM = "3.99"
