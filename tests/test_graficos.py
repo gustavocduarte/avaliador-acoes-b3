@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from avaliador_b3 import graficos
+from avaliador_b3.config import PONTOS_ESTRATEGICOS_MAPA_CONFLITOS
 
 # --- normalizar_base_100 -----------------------------------------------------
 
@@ -114,3 +115,103 @@ def test_agregar_dividendos_por_ano_com_fuso_horario():
 
     assert list(agregado["ano"]) == [2024]
     assert agregado["total"].iloc[0] == pytest.approx(0.7)
+
+
+# --- montar_mapa_conflitos ---------------------------------------------------
+
+
+def _eventos_mapa(linhas: list[dict]) -> pd.DataFrame:
+    base = {
+        "GLOBALEVENTID": 1,
+        "data": pd.Timestamp("2026-09-16 08:00:00"),
+        "categoria_cameo": "FIGHT",
+        "GoldsteinScale": -5.0,
+        "ActionGeo_FullName": "Local de teste",
+        "ActionGeo_CountryCode": "RS",
+        "ActionGeo_Lat": 55.75,
+        "ActionGeo_Long": 37.62,
+        "SOURCEURL": "https://example.com",
+    }
+    return pd.DataFrame([{**base, **linha} for linha in linhas])
+
+
+def _trace_por_nome(fig, nome: str):
+    correspondentes = [trace for trace in fig.data if trace.name == nome]
+    assert len(correspondentes) == 1, f"esperava 1 trace chamado {nome!r}, achei {correspondentes}"
+    return correspondentes[0]
+
+
+def test_mapa_com_eventos_tem_duas_camadas():
+    eventos = _eventos_mapa(
+        [
+            {
+                "ActionGeo_FullName": "Moscow, Russia",
+                "ActionGeo_Lat": 55.75,
+                "ActionGeo_Long": 37.62,
+            },
+            {
+                "ActionGeo_FullName": "Tehran, Iran",
+                "ActionGeo_Lat": 35.69,
+                "ActionGeo_Long": 51.39,
+            },
+        ]
+    )
+
+    fig = graficos.montar_mapa_conflitos(eventos)
+
+    assert len(fig.data) == 2
+    trace_eventos = _trace_por_nome(fig, graficos.NOME_TRACE_EVENTOS)
+    trace_estrategicos = _trace_por_nome(fig, graficos.NOME_TRACE_PONTOS_ESTRATEGICOS)
+    assert trace_eventos.type == "scattergeo"
+    assert trace_estrategicos.type == "scattergeo"
+    assert list(trace_eventos.lat) == [55.75, 35.69]
+    assert list(trace_eventos.lon) == [37.62, 51.39]
+
+
+def test_mapa_usa_projecao_ortografica():
+    fig = graficos.montar_mapa_conflitos(_eventos_mapa([{}]))
+    assert fig.layout.geo.projection.type == "orthographic"
+
+
+def test_mapa_camada_estrategica_tem_os_pontos_de_config():
+    fig = graficos.montar_mapa_conflitos(_eventos_mapa([{}]))
+
+    trace_estrategicos = _trace_por_nome(fig, graficos.NOME_TRACE_PONTOS_ESTRATEGICOS)
+
+    assert len(trace_estrategicos.lat) == len(PONTOS_ESTRATEGICOS_MAPA_CONFLITOS)
+    assert list(trace_estrategicos.lat) == [p["lat"] for p in PONTOS_ESTRATEGICOS_MAPA_CONFLITOS]
+    assert list(trace_estrategicos.lon) == [p["lon"] for p in PONTOS_ESTRATEGICOS_MAPA_CONFLITOS]
+    assert list(trace_estrategicos.text) == [p["nome"] for p in PONTOS_ESTRATEGICOS_MAPA_CONFLITOS]
+    # símbolo/cor diferentes da camada de eventos — visualmente distinto
+    assert trace_estrategicos.marker.symbol == "diamond"
+
+
+def test_mapa_gravidade_maior_gera_marcador_maior_e_mais_intenso():
+    # Goldstein -10 (mais grave) deve ter tamanho/cor de gravidade maior
+    # que Goldstein -1 (mais brando) — não precisa ser pixel exato, só a
+    # ordem relativa correta.
+    eventos = _eventos_mapa(
+        [
+            {"GLOBALEVENTID": 1, "GoldsteinScale": -10.0},
+            {"GLOBALEVENTID": 2, "GoldsteinScale": -1.0},
+        ]
+    )
+
+    fig = graficos.montar_mapa_conflitos(eventos)
+    trace_eventos = _trace_por_nome(fig, graficos.NOME_TRACE_EVENTOS)
+
+    tamanhos = list(trace_eventos.marker.size)
+    cores = list(trace_eventos.marker.color)
+    assert tamanhos[0] > tamanhos[1]
+    assert cores[0] > cores[1]  # cor mapeada pela gravidade (|Goldstein|)
+
+
+def test_mapa_sem_nenhum_evento_mostra_so_camada_estrategica_sem_erro():
+    eventos_vazio = _eventos_mapa([{}]).iloc[0:0]
+    assert eventos_vazio.empty
+
+    fig = graficos.montar_mapa_conflitos(eventos_vazio)
+
+    assert len(fig.data) == 1
+    assert fig.data[0].name == graficos.NOME_TRACE_PONTOS_ESTRATEGICOS
+    assert fig.layout.geo.projection.type == "orthographic"

@@ -594,3 +594,38 @@ SEGMENTOS_SETORIAIS_MINERACAO_METALICOS = {
     "Minerais Metálicos",
     "Siderurgia",
 }
+
+# --- Mapa do monitor de conflitos (2026-09-16) ---
+#
+# Escala de Goldstein (Goldstein, 1992, "A Conflict-Cooperation Scale for
+# WEIS Events Data") — de -10 (mais conflituoso) a +10 (mais cooperativo).
+# O GDELT usa essa mesma escala pro campo GoldsteinScale (ver
+# ingest/gdelt.py). Usado como range FIXO (não dinâmico por busca) pra
+# normalizar cor/tamanho dos marcadores de evento no mapa — assim o
+# significado de uma cor/tamanho é sempre o mesmo entre buscas diferentes,
+# não relativo só aos eventos daquela busca específica.
+GOLDSTEIN_SCALE_MINIMO = -10.0
+GOLDSTEIN_SCALE_MAXIMO = 10.0
+
+# Pontos estratégicos (estreitos/canais) marcados no mapa como contexto
+# fixo, sem dado ao vivo — os mesmos 5 principais "chokepoints" de
+# petróleo do mundo citados pela EIA (U.S. Energy Information
+# Administration) em "World Oil Transit Chokepoints"
+# (eia.gov/todayinenergy/detail.php?id=18991): Estreito de Ormuz, Canal
+# de Suez, Bab-el-Mandeb, Estreito de Malaca e Canal do Panamá.
+#
+# Coordenadas: Ormuz, Suez e Bab-el-Mandeb vêm direto da caixa de
+# coordenadas do artigo da Wikipédia de cada um (checado em 2026-09-16).
+# O Estreito de Malaca não tem um único ponto na Wikipédia — é definido
+# por dois pares de limites (o corpo d'água é extenso) — então foi usado
+# o ponto médio do par de limites do lado leste/mais estreito (perto de
+# Singapura: Tanjong Piai 1°16′N 103°31′E e The Brothers 1°11.5′N
+# 103°21′E), onde fica o gargalo de navegação mais crítico (canal de
+# Phillips, ~2,8 km de largura).
+PONTOS_ESTRATEGICOS_MAPA_CONFLITOS = [
+    {"nome": "Estreito de Ormuz", "lat": 26.6, "lon": 56.5},
+    {"nome": "Canal de Suez", "lat": 30.705, "lon": 32.344},
+    {"nome": "Estreito de Bab-el-Mandeb", "lat": 12.583, "lon": 43.333},
+    {"nome": "Estreito de Malaca", "lat": 1.23, "lon": 103.43},
+    {"nome": "Canal do Panamá", "lat": 9.12, "lon": -79.75},
+]

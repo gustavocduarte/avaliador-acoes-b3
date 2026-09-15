@@ -39,7 +39,11 @@ from avaliador_b3.empresa.comportamento import (
     calcular_volatilidade_anualizada,
     calcular_volume_medio,
 )
-from avaliador_b3.graficos import agregar_dividendos_por_ano, normalizar_base_100
+from avaliador_b3.graficos import (
+    agregar_dividendos_por_ano,
+    montar_mapa_conflitos,
+    normalizar_base_100,
+)
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.bcb_sgs import obter_serie
 from avaliador_b3.ingest.crosswalk_cnpj import (
@@ -966,33 +970,48 @@ with aba_conflitos:
             )
         elif resultado_salvo["erro"]:
             st.warning(f"GDELT: {resultado_salvo['erro']}")
-        elif resultado_salvo["eventos"].empty:
-            st.info(
-                f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
-                "— pode acontecer, mas é bem menos provável que no caso do snapshot "
-                "único; não é sinal de erro."
-            )
         else:
-            st.dataframe(
-                resultado_salvo["eventos"],
-                column_order=[
-                    "data",
-                    "ActionGeo_FullName",
-                    "ActionGeo_CountryCode",
-                    "categoria_cameo",
-                    "GoldsteinScale",
-                    "SOURCEURL",
-                ],
-                column_config={
-                    "data": st.column_config.DatetimeColumn("Data", format="DD/MM/YYYY HH:mm"),
-                    "ActionGeo_FullName": "Local",
-                    "ActionGeo_CountryCode": "País (código)",
-                    "categoria_cameo": "Tipo",
-                    "GoldsteinScale": st.column_config.NumberColumn(
-                        "Goldstein Score", format="%.1f"
-                    ),
-                    "SOURCEURL": st.column_config.LinkColumn("Fonte"),
-                },
-                hide_index=True,
-                use_container_width=True,
+            eventos_conflito_mapa = resultado_salvo["eventos"]
+
+            # Visão geral (mapa) primeiro, detalhe linha a linha (tabela)
+            # logo abaixo. Globo com projeção ortográfica — arraste pra
+            # girar (nativo do Plotly, sem rotação automática programada:
+            # instável na comunidade do Plotly, e o arraste manual já
+            # entrega o efeito pedido de forma confiável).
+            st.plotly_chart(
+                montar_mapa_conflitos(eventos_conflito_mapa), use_container_width=True
             )
+
+            if eventos_conflito_mapa.empty:
+                st.info(
+                    f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
+                    "— pode acontecer, mas é bem menos provável que no caso do snapshot "
+                    "único; não é sinal de erro. O mapa acima mostra só os pontos "
+                    "estratégicos fixos nesse caso."
+                )
+            else:
+                st.dataframe(
+                    eventos_conflito_mapa,
+                    column_order=[
+                        "data",
+                        "ActionGeo_FullName",
+                        "ActionGeo_CountryCode",
+                        "categoria_cameo",
+                        "GoldsteinScale",
+                        "SOURCEURL",
+                    ],
+                    column_config={
+                        "data": st.column_config.DatetimeColumn(
+                            "Data", format="DD/MM/YYYY HH:mm"
+                        ),
+                        "ActionGeo_FullName": "Local",
+                        "ActionGeo_CountryCode": "País (código)",
+                        "categoria_cameo": "Tipo",
+                        "GoldsteinScale": st.column_config.NumberColumn(
+                            "Goldstein Score", format="%.1f"
+                        ),
+                        "SOURCEURL": st.column_config.LinkColumn("Fonte"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
