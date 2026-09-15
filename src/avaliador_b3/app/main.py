@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import streamlit as st
 
+from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_carteira
 from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
@@ -67,6 +68,18 @@ COLUNAS_TABELA_SCREENER = [
     "metodos_utilizados",
     "aviso_desconto_extremo",
     "erro",
+]
+
+COLUNAS_TABELA_CARTEIRA = [
+    "ticker",
+    "valor_investido",
+    "preco_atual",
+    "projecao_pessimista",
+    "retorno_pessimista_percentual",
+    "projecao_base",
+    "retorno_base_percentual",
+    "projecao_otimista",
+    "retorno_otimista_percentual",
 ]
 
 
@@ -195,8 +208,20 @@ def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
     ).reset_index(drop=True)
 
 
+def _aviso_screener_vazio(instrucao: str) -> None:
+    """Mensagem de "sem resultado salvo ainda" compartilhada entre as abas
+    de Screener e de Simulador de carteira — cada uma só varia a instrução
+    de como gerar o arquivo, já que o botão que dispara isso só existe na
+    aba do Screener."""
+    st.info(
+        "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
+        f"{instrucao} — vai demorar alguns minutos."
+    )
+
+
 ABA_ANALISAR = "Analisar uma ação"
 ABA_SCREENER = "Screener (todas as ações)"
+ABA_CARTEIRA = "Simulador de carteira"
 
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈")
 st.title("Avaliador de Ações da B3")
@@ -218,8 +243,8 @@ def _ativar_aba(aba: str) -> None:
 # mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
 # session_state, atualizada via on_click nos botões que disparam rerun.
 st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER], default=st.session_state["aba_ativa"]
+aba_analisar, aba_screener, aba_carteira = st.tabs(
+    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA], default=st.session_state["aba_ativa"]
 )
 
 with aba_analisar:
@@ -432,10 +457,8 @@ with aba_screener:
     tabela_screener = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
 
     if tabela_screener is None:
-        st.info(
-            "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
-            "Clique em \"Rodar screener agora\" acima pra gerar "
-            f"{CAMINHO_SAIDA_PADRAO.name} — vai demorar alguns minutos."
+        _aviso_screener_vazio(
+            f'Clique em "Rodar screener agora" acima pra gerar {CAMINHO_SAIDA_PADRAO.name}'
         )
     else:
         atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
@@ -472,3 +495,111 @@ with aba_screener:
             hide_index=True,
             use_container_width=True,
         )
+
+with aba_carteira:
+    st.caption(
+        "Projeta quanto cada cenário (pessimista/base/otimista) renderia pro "
+        "valor investido em cada ação — a partir do resultado já salvo do "
+        "screener, sem recalcular nada ao vivo."
+    )
+
+    tabela_screener_carteira = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
+
+    if tabela_screener_carteira is None:
+        _aviso_screener_vazio(
+            'Rode o screener primeiro na aba "Screener (todas as ações)"'
+        )
+    else:
+        tickers_disponiveis = sorted(tabela_screener_carteira["ticker"])
+        tickers_selecionados = st.multiselect(
+            "Ações da carteira (restrito às ações com dado no screener salvo)",
+            options=tickers_disponiveis,
+        )
+
+        investimentos: dict[str, float] = {}
+        if tickers_selecionados:
+            st.caption("Quanto investir em cada ação:")
+            for ticker in tickers_selecionados:
+                investimentos[ticker] = st.number_input(
+                    f"{ticker} (R$)",
+                    min_value=0.0,
+                    value=1000.0,
+                    step=100.0,
+                    key=f"investimento_{ticker}",
+                )
+
+        if not tickers_selecionados:
+            st.info("Selecione ao menos uma ação pra simular.")
+        else:
+            tabela_carteira = montar_tabela_carteira(tabela_screener_carteira, investimentos)
+
+            # Ações sem nenhum método aplicável (ex: HAPV3/MRVE3 no screener
+            # real) não entram na tabela de projeção — mostrar zero ali seria
+            # um valor inventado. Em vez disso, cada uma ganha um aviso
+            # explícito, nomeando a ação e o motivo, nunca ignorada em
+            # silêncio.
+            linhas_sem_cenario = tabela_carteira[~tabela_carteira["aplicavel"]]
+            for _, linha_sem_cenario in linhas_sem_cenario.iterrows():
+                st.warning(
+                    f"{linha_sem_cenario['ticker']}: R$ {linha_sem_cenario['valor_investido']:.2f} "
+                    f"investidos, mas sem cenário — {linha_sem_cenario['motivo_nao_aplicavel']}"
+                )
+
+            tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
+            if not tabela_carteira_aplicavel.empty:
+                st.dataframe(
+                    tabela_carteira_aplicavel,
+                    column_order=COLUNAS_TABELA_CARTEIRA,
+                    column_config={
+                        "ticker": "Ticker",
+                        "valor_investido": st.column_config.NumberColumn(
+                            "Investido", format="R$ %.2f"
+                        ),
+                        "preco_atual": st.column_config.NumberColumn(
+                            "Preço atual", format="R$ %.2f"
+                        ),
+                        "projecao_pessimista": st.column_config.NumberColumn(
+                            "Pessimista (R$)", format="R$ %.2f"
+                        ),
+                        "retorno_pessimista_percentual": st.column_config.NumberColumn(
+                            "Pessimista (%)", format="%.1f%%"
+                        ),
+                        "projecao_base": st.column_config.NumberColumn(
+                            "Base (R$)", format="R$ %.2f"
+                        ),
+                        "retorno_base_percentual": st.column_config.NumberColumn(
+                            "Base (%)", format="%.1f%%"
+                        ),
+                        "projecao_otimista": st.column_config.NumberColumn(
+                            "Otimista (R$)", format="R$ %.2f"
+                        ),
+                        "retorno_otimista_percentual": st.column_config.NumberColumn(
+                            "Otimista (%)", format="%.1f%%"
+                        ),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            totais_carteira = calcular_totais_carteira(tabela_carteira)
+            st.divider()
+            st.subheader("Total da carteira")
+            if tabela_carteira_aplicavel.empty:
+                st.info(
+                    "Nenhuma das ações selecionadas tem cenário disponível — sem "
+                    "projeção pra somar (ver avisos acima)."
+                )
+            else:
+                col_investido, col_pessimista, col_base, col_otimista = st.columns(4)
+                col_investido.metric("Investido", f"R$ {totais_carteira['soma_investida']:.2f}")
+                col_pessimista.metric(
+                    "Pessimista", f"R$ {totais_carteira['total_pessimista']:.2f}"
+                )
+                col_base.metric("Base", f"R$ {totais_carteira['total_base']:.2f}")
+                col_otimista.metric("Otimista", f"R$ {totais_carteira['total_otimista']:.2f}")
+                if totais_carteira["quantidade_sem_cenario"]:
+                    st.caption(
+                        f"{totais_carteira['quantidade_sem_cenario']} ação(ões) sem cenário "
+                        "não entram nos totais projetados, mas o valor investido nelas está "
+                        "incluído em \"Investido\"."
+                    )
