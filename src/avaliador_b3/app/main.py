@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_carteira
 from avaliador_b3.config import (
@@ -251,6 +252,38 @@ def _buscar_macro() -> tuple[float | None, float | None, str | None]:
         return selic_meta, ipca_12m, None
     except Exception as erro:
         return None, None, f"Falha ao buscar Selic/IPCA do Banco Central: {erro}"
+
+
+def _widget_avancado_tradingview(ticker: str) -> str:
+    """HTML do widget "Advanced Chart" do TradingView (embutido via
+    st.components.v1.html), símbolo montado dinamicamente a partir do
+    ticker buscado na tela — ver
+    https://br.tradingview.com/widget/advanced-chart/. Puramente
+    HTML/JS estático interpolado, sem lógica Python nossa por trás; se o
+    JavaScript não carregar (rede/ambiente restrito), o widget só fica em
+    branco, sem quebrar o resto da página."""
+    return f"""
+    <style>html, body {{ height: 100%; margin: 0; }}</style>
+    <div class="tradingview-widget-container" style="height:100%;width:100%">
+      <div class="tradingview-widget-container__widget"
+        style="height:calc(100% - 32px);width:100%"></div>
+      <script type="text/javascript"
+        src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"
+        async>
+      {{
+        "autosize": true,
+        "symbol": "BMFBOVESPA:{ticker}",
+        "interval": "D",
+        "timezone": "America/Sao_Paulo",
+        "theme": "dark",
+        "style": "1",
+        "locale": "br",
+        "allow_symbol_change": true,
+        "support_host": "https://www.tradingview.com"
+      }}
+      </script>
+    </div>
+    """
 
 
 def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str):
@@ -596,6 +629,17 @@ with aba_analisar:
                 margin={"t": 20},
             )
             st.plotly_chart(figura_preco, use_container_width=True)
+
+        st.divider()
+        st.subheader("Gráfico avançado (TradingView)")
+        st.caption(
+            "Widget ao vivo do TradingView — dado direto deles, sem nenhum "
+            "processamento nosso (diferente do gráfico acima, calculado por "
+            "aqui a partir do histórico buscado via yfinance). Em ambientes "
+            "com JavaScript bloqueado/restrito, o gráfico ao vivo pode não "
+            "carregar."
+        )
+        components.html(_widget_avancado_tradingview(ticker), height=520)
 
         st.divider()
         st.subheader("Histórico de dividendos por ano")
