@@ -75,6 +75,9 @@ def _dividendos_falsos() -> pd.Series:
         (" vale3 ", "VALE3.SA"),
         ("^bvsp", "^BVSP"),
         ("^BVSP", "^BVSP"),
+        ("bz=f", "BZ=F"),
+        ("BZ=F", "BZ=F"),
+        ("cl=f", "CL=F"),
     ],
 )
 def test_ticker_yahoo_normaliza(entrada, esperado):
@@ -90,6 +93,44 @@ def test_obter_historico_caminho_feliz_grava_cache(tmp_path, monkeypatch):
     assert list(df.columns[:1]) == ["data"]
     assert len(df) == 2
     assert (tmp_path / "precos" / "PETR4.SA_3mo.csv").exists()
+
+
+def test_obter_historico_sobrevive_a_cache_com_fuso_que_observa_horario_de_verao(
+    tmp_path, monkeypatch
+):
+    # Regressão: tickers fora do Brasil (ex: "BZ=F", petróleo, fuso
+    # America/New_York) observam horário de verão — um histórico que
+    # atravessa a transição tem offsets diferentes (-04:00/-05:00) na
+    # mesma coluna. Sem normalizar pra UTC antes de cachear, o CSV grava
+    # os offsets misturados como texto, e relê-lo depois (cache hit)
+    # levanta `ValueError: Mixed timezones detected` — bug real
+    # encontrado testando o painel de correlação contra BZ=F no navegador.
+    indice = pd.DatetimeIndex(
+        ["2025-01-02", "2025-07-01"], name="Date", tz="America/New_York"
+    )
+    historico = pd.DataFrame(
+        {
+            "Open": [70.0, 66.0],
+            "High": [71.0, 67.0],
+            "Low": [69.0, 65.0],
+            "Close": [70.5, 66.5],
+            "Volume": [40000, 50000],
+            "Dividends": [0.0, 0.0],
+            "Stock Splits": [0.0, 0.0],
+        },
+        index=indice,
+    )
+    ticker_falso = _TickerFalso(resultado=historico)
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    # Primeira chamada: busca "ao vivo" e grava o cache.
+    df_buscado = precos.obter_historico("BZ=F", periodo="2y", diretorio_cache=tmp_path)
+    assert df_buscado["data"].dt.tz is not None
+
+    # Segunda chamada: lê do cache — é aqui que o bug original quebrava.
+    df_cache = precos.obter_historico("BZ=F", periodo="2y", diretorio_cache=tmp_path)
+    assert ticker_falso.chamadas == 1  # confirma que essa segunda veio do cache
+    assert len(df_cache) == 2
 
 
 def test_obter_historico_usa_cache_dentro_do_ttl(tmp_path, monkeypatch):

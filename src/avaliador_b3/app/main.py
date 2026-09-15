@@ -21,10 +21,13 @@ from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_cartei
 from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
+    ANOS_JANELA_CORRELACAO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     SERIES_BCB_SGS,
+    TICKER_PETROLEO_BRENT,
 )
+from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
     calcular_beta,
     calcular_volatilidade_anualizada,
@@ -47,6 +50,7 @@ from avaliador_b3.ingest.fundamentus import (
     TickerNaoEncontrado,
     obter_indicadores,
 )
+from avaliador_b3.ingest.gpr import obter_gpr
 from avaliador_b3.ingest.precos import (
     FalhaFontePreco,
     TickerInvalido,
@@ -99,6 +103,42 @@ def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str |
         return obter_historico_ibovespa(periodo=periodo), None
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
+
+
+@st.cache_data(ttl=3600)
+def _buscar_historico_petroleo() -> tuple[pd.DataFrame | None, str | None]:
+    """Histórico do petróleo Brent (BZ=F) na janela de correlação —
+    cacheado na sessão por 1h, não depende da ação buscada (mesmo padrão
+    de _buscar_universo_ibovespa/_buscar_macro)."""
+    return _buscar_historico(TICKER_PETROLEO_BRENT, periodo=f"{ANOS_JANELA_CORRELACAO}y")
+
+
+@st.cache_data(ttl=3600)
+def _buscar_cambio_correlacao() -> tuple[pd.DataFrame | None, str | None]:
+    """Série de câmbio USD/BRL (PTAX venda) na janela de correlação —
+    cacheada na sessão por 1h, não depende da ação buscada."""
+    hoje = datetime.now()
+    try:
+        serie = obter_serie(
+            SERIES_BCB_SGS["cambio_usd_venda"],
+            data_inicial=(hoje - timedelta(days=365 * ANOS_JANELA_CORRELACAO)).strftime("%d/%m/%Y"),
+            data_final=hoje.strftime("%d/%m/%Y"),
+        )
+        return serie, None
+    except Exception as erro:
+        return None, f"Falha ao buscar câmbio USD/BRL do Banco Central: {erro}"
+
+
+@st.cache_data(ttl=3600)
+def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
+    """Série diária do índice GPR — cacheada na sessão por 1h, não
+    depende da ação buscada. `obter_gpr` já cacheia em disco sem TTL por
+    baixo (o arquivo raramente muda), isso só evita reler/reparsear o CSV
+    a cada busca dentro da mesma sessão do Streamlit."""
+    try:
+        return obter_gpr(serie="diaria"), None
+    except Exception as erro:
+        return None, f"Falha ao buscar índice GPR: {erro}"
 
 
 @st.cache_data(ttl=3600)
@@ -176,6 +216,17 @@ def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str):
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
 
 
+def _cartao_correlacao(nome: str, resultado: dict):
+    if not resultado["aplicavel"]:
+        st.metric(nome, "—")
+        st.caption(f"Indisponível: {resultado['motivo_nao_aplicavel']}")
+        return
+
+    magnitude = classificar_magnitude_correlacao(resultado["correlacao"])
+    st.metric(nome, f"{resultado['correlacao']:.2f}")
+    st.caption(f"Correlação {magnitude} ({resultado['observacoes']} observações)")
+
+
 def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
     """Formata um número, ou "N/D" se ausente — indicador individual
     faltando (ex: banco sem Dív Líq/Patrim no Fundamentus) não deve
@@ -222,6 +273,7 @@ def _aviso_screener_vazio(instrucao: str) -> None:
 ABA_ANALISAR = "Analisar uma ação"
 ABA_SCREENER = "Screener (todas as ações)"
 ABA_CARTEIRA = "Simulador de carteira"
+ABA_CORRELACAO = "Correlação com fatores externos"
 
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈")
 st.title("Avaliador de Ações da B3")
@@ -243,8 +295,9 @@ def _ativar_aba(aba: str) -> None:
 # mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
 # session_state, atualizada via on_click nos botões que disparam rerun.
 st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener, aba_carteira = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA], default=st.session_state["aba_ativa"]
+aba_analisar, aba_screener, aba_carteira, aba_correlacao = st.tabs(
+    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CORRELACAO],
+    default=st.session_state["aba_ativa"],
 )
 
 with aba_analisar:
@@ -603,3 +656,59 @@ with aba_carteira:
                         "não entram nos totais projetados, mas o valor investido nelas está "
                         "incluído em \"Investido\"."
                     )
+
+with aba_correlacao:
+    st.caption(
+        "Correlação (Pearson) entre o retorno diário da ação e três fatores "
+        f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
+        f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
+        "variação percentual dia a dia de cada série, nunca o nível bruto — "
+        "correlacionar séries em tendência infla o número de forma espúria, "
+        "sem relação real entre elas."
+    )
+
+    ticker_correlacao = (
+        st.text_input("Ticker (ex: PETR4)", value="", key="ticker_correlacao").strip().upper()
+    )
+    buscar_correlacao = st.button(
+        "Calcular correlações", on_click=_ativar_aba, args=(ABA_CORRELACAO,)
+    )
+
+    if buscar_correlacao and not ticker_correlacao:
+        st.warning("Digite um ticker.")
+
+    if buscar_correlacao and ticker_correlacao:
+        with st.spinner(f"Buscando dados de {ticker_correlacao} e dos fatores externos..."):
+            historico_acao_correlacao, erro_acao_correlacao = _buscar_historico(
+                ticker_correlacao, periodo=f"{ANOS_JANELA_CORRELACAO}y"
+            )
+            historico_petroleo, erro_petroleo = _buscar_historico_petroleo()
+            serie_cambio, erro_cambio = _buscar_cambio_correlacao()
+            serie_gpr, erro_gpr = _buscar_gpr_diaria()
+
+        if erro_acao_correlacao:
+            st.error(f"Preço de {ticker_correlacao}: {erro_acao_correlacao}")
+        else:
+            if erro_petroleo:
+                st.warning(f"Petróleo (Brent): {erro_petroleo}")
+            if erro_cambio:
+                st.warning(f"Câmbio USD/BRL: {erro_cambio}")
+            if erro_gpr:
+                st.warning(f"GPR: {erro_gpr}")
+
+            resultados_correlacao = calcular_correlacoes_fatores(
+                historico_acao=historico_acao_correlacao,
+                historico_petroleo=historico_petroleo,
+                serie_cambio=serie_cambio,
+                serie_gpr=serie_gpr,
+            )
+
+            st.divider()
+            st.subheader(ticker_correlacao)
+            col_petroleo, col_cambio, col_gpr = st.columns(3)
+            with col_petroleo:
+                _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
+            with col_cambio:
+                _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
+            with col_gpr:
+                _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])

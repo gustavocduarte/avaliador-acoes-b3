@@ -441,3 +441,37 @@ AVISO_DESCONTO_EXTREMO = (
     "pontos do FCD (ver nota de validação em config.py), não "
     "necessariamente uma oportunidade real."
 )
+
+# --- Painel de correlação com fatores externos (2026-09-15) ---
+#
+# Ticker do petróleo Brent no Yahoo Finance (futuro contínuo, contrato
+# mais próximo). Escolhido em vez do WTI (CL=F) porque é o benchmark que
+# a própria Petrobras e a OPEP usam como referência de preço internacional
+# — mais relevante pra correlacionar com ações da B3 do que o WTI
+# americano. Confirmado estável em 2026-09-15: 503 pregões num período de
+# 2 anos via `yfinance.Ticker("BZ=F").history(period="2y")`, sem nulos.
+TICKER_PETROLEO_BRENT = "BZ=F"
+
+# Janela de histórico usada nas três correlações (ação × petróleo, ação ×
+# câmbio, ação × GPR) — 2 anos é curto o bastante pra refletir o regime de
+# mercado recente (não uma média histórica diluída de décadas) e longo o
+# bastante pra ter uma amostra razoável de retornos diários (~500 pregões).
+ANOS_JANELA_CORRELACAO = 2
+
+# Mínimo de observações (retornos diários já alinhados pelas datas em
+# comum) pra considerar uma correlação minimamente confiável. 30 é o
+# "número mágico" clássico do Teorema Central do Limite — abaixo disso a
+# distribuição amostral do coeficiente de correlação não tem garantia
+# nenhuma de se comportar bem, e reportar um número ali passaria uma
+# falsa sensação de precisão. Abaixo do mínimo, a correlação daquele par
+# específico fica marcada como indisponível (não trava as outras duas).
+MINIMO_OBSERVACOES_CORRELACAO = 30
+
+# Cortes de magnitude pra leitura textual da correlação (fraca/moderada/
+# forte) — regra de bolso comum em estatística aplicada a finanças (ex:
+# Evans, 1996, "Straightforward Statistics for the Behavioral Sciences",
+# que usa faixas semelhantes para |r|). Um heurístico de leitura rápida,
+# não um limiar estatístico rígido — por isso documentado aqui, igual aos
+# outros limiares do projeto, em vez de escondido no código.
+LIMIAR_CORRELACAO_FRACA = 0.3
+LIMIAR_CORRELACAO_FORTE = 0.6

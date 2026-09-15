@@ -53,10 +53,11 @@ class FalhaFontePreco(ErroPrecos):
 def _ticker_yahoo(ticker: str) -> str:
     """Normaliza um código B3 (ex: "petr4") para o ticker do Yahoo Finance
     (ex: "PETR4.SA"). Não duplica o sufixo se ele já vier incluso. Tickers
-    de índice (prefixo "^", ex: "^BVSP" pro Ibovespa) não são ação B3 —
-    passam direto, sem sufixo, no formato que o Yahoo já usa pra eles."""
+    de índice (prefixo "^", ex: "^BVSP" pro Ibovespa) ou de futuros
+    (sufixo "=F", ex: "BZ=F" pro petróleo Brent) não são ação B3 — passam
+    direto, sem sufixo, no formato que o Yahoo já usa pra eles."""
     ticker = ticker.strip().upper()
-    if ticker.startswith("^") or ticker.endswith(SUFIXO_TICKER_B3):
+    if ticker.startswith("^") or ticker.endswith("=F") or ticker.endswith(SUFIXO_TICKER_B3):
         return ticker
     return ticker + SUFIXO_TICKER_B3
 
@@ -126,6 +127,14 @@ def obter_historico(
         )
 
     historico = historico.reset_index().rename(columns={"Date": "data"})
+    # Tickers fora do Brasil (ex: "BZ=F", petróleo, fuso America/New_York)
+    # observam horário de verão — um histórico de meses/anos atravessa a
+    # transição e mistura offsets diferentes (-04:00/-05:00) na mesma
+    # coluna. Igual ao fix já aplicado em obter_dividendos pro mesmo tipo
+    # de problema (lá, offsets -03:00/-02:00 do Brasil pré-2019): converte
+    # pra UTC antes de cachear, pra nunca gravar um CSV com offsets
+    # mistos que pd.read_csv(parse_dates=...) não consegue reler de volta.
+    historico["data"] = historico["data"].dt.tz_convert("UTC")
 
     if usar_cache:
         caminho.parent.mkdir(parents=True, exist_ok=True)

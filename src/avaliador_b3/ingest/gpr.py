@@ -4,7 +4,9 @@ Fonte: https://www.matteoiacoviello.com/gpr.htm
 Arquivos brutos (.xls):
   - mensal: https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls
   - diaria: https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls
-    (janela recente, não o histórico completo desde 1985)
+    (apesar do nome "recent" no arquivo, cobre o histórico completo desde
+    1985 até hoje — confirmado em 2026-09-15 checando o range real de
+    datas do arquivo baixado, não só o nome do link)
 
 Os dois arquivos trazem, coladas à direita da série temporal, duas colunas de
 documentação ("var_name"/"var_label") que listam nome/descrição de cada
