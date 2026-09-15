@@ -316,11 +316,37 @@ aba_analisar, aba_screener, aba_carteira, aba_correlacao = st.tabs(
 )
 
 with aba_analisar:
-    ticker = st.text_input("Ticker (ex: PETR4)", value="").strip().upper()
+    # Buscado aqui em cima (não só depois de "Buscar") porque o dropdown
+    # abaixo precisa da lista de opções pra se desenhar — reaproveitado
+    # mais adiante na seção "Governança", não buscado de novo lá.
+    universo_ibovespa, erro_universo = _buscar_universo_ibovespa()
+    usando_dropdown = not (erro_universo or universo_ibovespa is None or universo_ibovespa.empty)
+
+    if usando_dropdown:
+        nomes_por_ticker = dict(
+            zip(universo_ibovespa["ticker"], universo_ibovespa["nome"], strict=True)
+        )
+        ticker_selecionado = st.selectbox(
+            "Ação (Ibovespa)",
+            options=list(nomes_por_ticker.keys()),
+            format_func=lambda t: f"{t} — {nomes_por_ticker[t]}",
+            index=None,
+            placeholder="Selecione uma ação...",
+        )
+        ticker = ticker_selecionado or ""
+    else:
+        # Degradação graciosa: a API da B3 pode estar fora do ar — a aba
+        # continua usável via texto livre, só sem a lista pronta.
+        st.warning(
+            "Lista de ações do Ibovespa indisponível "
+            f"({erro_universo or 'resultado vazio'}) — digite o ticker manualmente."
+        )
+        ticker = st.text_input("Ticker (ex: PETR4)", value="").strip().upper()
+
     buscar = st.button("Buscar", on_click=_ativar_aba, args=(ABA_ANALISAR,))
 
     if buscar and not ticker:
-        st.warning("Digite um ticker.")
+        st.warning("Selecione uma ação." if usando_dropdown else "Digite um ticker.")
 
     if buscar and ticker:
         with st.spinner(f"Buscando dados de {ticker}..."):
@@ -329,7 +355,6 @@ with aba_analisar:
             historico_ibovespa_beta, erro_historico_ibovespa_beta = _buscar_historico_ibovespa(
                 PERIODO_BETA
             )
-            universo_ibovespa, erro_universo = _buscar_universo_ibovespa()
             indicadores, erro_indicadores = _buscar_indicadores_fundamentus(ticker)
             dividendos, erro_dividendos = _buscar_dividendos(ticker)
             cnpj, erro_cnpj = _buscar_cnpj(ticker)
