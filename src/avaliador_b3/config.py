@@ -475,3 +475,100 @@ MINIMO_OBSERVACOES_CORRELACAO = 30
 # outros limiares do projeto, em vez de escondido no código.
 LIMIAR_CORRELACAO_FRACA = 0.3
 LIMIAR_CORRELACAO_FORTE = 0.6
+
+# --- Monitor de conflitos: escopo de países relevantes por setor (2026-09-16) ---
+#
+# Toda ação tem o Brasil como país relevante por padrão — é uma empresa
+# brasileira, risco doméstico (greve, instabilidade política, crise
+# cambial etc.) afeta qualquer setor, independente do que a empresa
+# produz ou vende. Ações de setores ligados a uma commodity específica
+# ganham PAÍSES ADICIONAIS: os principais produtores/exportadores daquela
+# commodity, porque conflito ou instabilidade nesses países pode afetar
+# preço/oferta global e, por tabela, o valuation da ação (ex: petróleo:
+# escalada no Oriente Médio tende a subir o Brent, o que muda a tese de
+# investimento em PETR4 mesmo sem nenhum evento em solo brasileiro).
+#
+# Códigos no padrão FIPS 10-4 — o mesmo usado pelo campo
+# ActionGeo_CountryCode do GDELT (ver ingest/gdelt.py), que DIFERE do ISO
+# 3166 pra vários países relevantes aqui (ex: Rússia é "RS" não "RU",
+# Iraque é "IZ" não "IQ", China é "CH" não "CN", Austrália é "AS" não
+# "AU", África do Sul é "SF" não "ZA", Ucrânia é "UP" não "UA", Kuwait é
+# "KU" não "KW"). O código do Brasil ("BR") foi confirmado contra dado
+# REAL baixado do GDELT em 2026-09-15: o evento do snapshot
+# 20260915074500 traz ActionGeo_CountryCode="BR" junto com
+# ActionGeo_FullName="Brazil". Os demais códigos foram checados contra a
+# tabela de referência FIPS 10-4 -> ISO 3166
+# (github.com/mysociety/gaze/blob/master/data/fips-10-4-to-iso-country-codes.csv),
+# um crosswalk público amplamente usado — não adivinhados a partir do
+# código ISO.
+CODIGO_GDELT_BRASIL = "BR"
+
+# Petróleo: união dos maiores produtores de petróleo cru — EUA, Rússia,
+# Arábia Saudita, Canadá, Iraque, China, Irã, Emirados Árabes Unidos e
+# Kuwait (fonte: EIA/U.S. Energy Information Administration, dados de
+# 2025, via Forbes "Top 10 Oil-Producing Countries In The World,
+# According To The EIA", 2026-07-16) — com os maiores exportadores —
+# Arábia Saudita, Rússia, EUA, Canadá, EAU, Noruega, Irã, Nigéria e
+# Cazaquistão (fonte: World Population Review, "Oil Exports by Country",
+# dados de 2024). Brasil já está coberto pela regra padrão acima (e é,
+# ele mesmo, um produtor relevante — via OPEP+), por isso não repetido
+# aqui.
+PAISES_PRODUTORES_PETROLEO_GDELT = {
+    "US",  # Estados Unidos
+    "RS",  # Rússia
+    "SA",  # Arábia Saudita
+    "CA",  # Canadá
+    "IZ",  # Iraque
+    "CH",  # China
+    "IR",  # Irã
+    "AE",  # Emirados Árabes Unidos
+    "KU",  # Kuwait
+    "NO",  # Noruega
+    "NI",  # Nigéria
+    "KZ",  # Cazaquistão
+}
+
+# Minério de ferro: união dos maiores produtores — Austrália, China,
+# Índia, Rússia, Irã, África do Sul, Canadá, EUA e Ucrânia (fonte: USGS
+# "Mineral Commodity Summaries", dados 2022-24, via Wikipedia "List of
+# countries by iron ore production") — com os maiores exportadores por
+# volume/valor — Austrália, África do Sul, Canadá e Ucrânia (fonte:
+# worldstopexports.com "Iron Ore Exports by Country", dados 2025 YTD/
+# valor 2024). Brasil já coberto pela regra padrão (e é, ele mesmo, o
+# 2º maior exportador global, atrás só da Austrália).
+PAISES_PRODUTORES_MINERIO_FERRO_GDELT = {
+    "AS",  # Austrália
+    "CH",  # China
+    "IN",  # Índia
+    "RS",  # Rússia
+    "IR",  # Irã
+    "SF",  # África do Sul
+    "CA",  # Canadá
+    "US",  # Estados Unidos
+    "UP",  # Ucrânia
+}
+
+# Segmentos setoriais (campo `segmento_setorial` de ingest/crosswalk_cnpj.py,
+# a classificação oficial da B3) que disparam cada conjunto de países
+# extras acima. Valores conferidos contra o catálogo real de emissores da
+# B3 pras 76 ações do Ibovespa em 2026-09-16.
+#
+# "Distribuição de Combustíveis" (ex: VBBR3/Vibra Energia) entra junto
+# com "Exploração. Refino e Distribuição" (ex: PETR4/PRIO3) porque a
+# margem de uma distribuidora de combustível também depende do preço do
+# petróleo cru, mesmo sem operação de exploração própria.
+SEGMENTOS_SETORIAIS_PETROLEO_GAS = {
+    "Exploração. Refino e Distribuição",
+    "Distribuição de Combustíveis",
+}
+
+# "Siderurgia" (ex: CSNA3) entra junto com "Minerais Metálicos" (ex:
+# VALE3) porque siderúrgicas brasileiras — CSN em particular — são
+# conhecidas por operar minas de minério de ferro próprias (ex: mina de
+# Casa de Pedra da CSN, em Minas Gerais), além de consumirem minério como
+# insumo principal: o setor inteiro fica exposto a choques de oferta/
+# preço do minério, não só quem extrai puro.
+SEGMENTOS_SETORIAIS_MINERACAO_METALICOS = {
+    "Minerais Metálicos",
+    "Siderurgia",
+}

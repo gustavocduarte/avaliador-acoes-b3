@@ -28,6 +28,11 @@ from avaliador_b3.config import (
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
 )
+from avaliador_b3.conflitos import (
+    descrever_escopo_paises,
+    determinar_paises_relevantes,
+    filtrar_eventos_por_paises,
+)
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
     calcular_beta,
@@ -53,6 +58,7 @@ from avaliador_b3.ingest.fundamentus import (
     TickerNaoEncontrado,
     obter_indicadores,
 )
+from avaliador_b3.ingest.gdelt import obter_eventos_conflito
 from avaliador_b3.ingest.gpr import obter_gpr
 from avaliador_b3.ingest.precos import (
     FalhaFontePreco,
@@ -142,6 +148,18 @@ def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
         return obter_gpr(serie="diaria"), None
     except Exception as erro:
         return None, f"Falha ao buscar índice GPR: {erro}"
+
+
+@st.cache_data(ttl=900)
+def _buscar_eventos_conflito() -> tuple[pd.DataFrame | None, str | None]:
+    """Snapshot mais recente de eventos de conflito do GDELT — cacheado
+    na sessão por 15 min (mesma janela de um snapshot do GDELT; recachear
+    mais rápido que isso não traria dado novo), não depende do ticker
+    buscado."""
+    try:
+        return obter_eventos_conflito(), None
+    except Exception as erro:
+        return None, f"Falha ao buscar eventos do GDELT: {erro}"
 
 
 @st.cache_data(ttl=3600)
@@ -289,6 +307,7 @@ ABA_ANALISAR = "Analisar uma ação"
 ABA_SCREENER = "Screener (todas as ações)"
 ABA_CARTEIRA = "Simulador de carteira"
 ABA_CORRELACAO = "Correlação com fatores externos"
+ABA_CONFLITOS = "Monitor de conflitos"
 
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈")
 st.title("Avaliador de Ações da B3")
@@ -310,8 +329,8 @@ def _ativar_aba(aba: str) -> None:
 # mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
 # session_state, atualizada via on_click nos botões que disparam rerun.
 st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener, aba_carteira, aba_correlacao = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CORRELACAO],
+aba_analisar, aba_screener, aba_carteira, aba_correlacao, aba_conflitos = st.tabs(
+    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CORRELACAO, ABA_CONFLITOS],
     default=st.session_state["aba_ativa"],
 )
 
@@ -591,6 +610,10 @@ with aba_analisar:
         st.divider()
         st.subheader("Comparação setorial")
         segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
+        # Guardado em session_state pra aba "Monitor de conflitos" reaproveitar
+        # (mesmo ticker escolhido aqui, sem campo de busca próprio).
+        st.session_state["ticker_analisado"] = ticker
+        st.session_state["segmento_setorial_analisado"] = segmento_setorial
         tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
         if erro_segmento_setorial:
             st.warning(f"Classificação setorial: {erro_segmento_setorial}")
@@ -869,3 +892,65 @@ with aba_correlacao:
                 _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
             with col_gpr:
                 _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
+
+with aba_conflitos:
+    st.caption(
+        "Eventos de conflito (GDELT, categorias COERCE/ASSAULT/FIGHT) nos "
+        "países relevantes pra ação escolhida na aba \"Analisar uma ação\" — "
+        "snapshot mais recente, janela de 15 minutos."
+    )
+
+    ticker_conflitos = st.session_state.get("ticker_analisado")
+
+    if not ticker_conflitos:
+        st.info(
+            'Busque uma ação na aba "Analisar uma ação" primeiro — o monitor de '
+            "conflitos usa o mesmo ticker escolhido lá, sem campo de busca próprio."
+        )
+    else:
+        segmento_setorial_conflitos = st.session_state.get("segmento_setorial_analisado")
+        paises_relevantes = determinar_paises_relevantes(segmento_setorial_conflitos)
+
+        st.subheader(ticker_conflitos)
+        st.caption(
+            f"Monitorando: {descrever_escopo_paises(segmento_setorial_conflitos)}."
+        )
+
+        with st.spinner("Buscando snapshot mais recente do GDELT..."):
+            eventos_conflito, erro_eventos_conflito = _buscar_eventos_conflito()
+
+        if erro_eventos_conflito:
+            st.warning(f"GDELT: {erro_eventos_conflito}")
+        else:
+            eventos_relevantes = filtrar_eventos_por_paises(eventos_conflito, paises_relevantes)
+
+            if eventos_relevantes.empty:
+                st.info(
+                    "Nenhum evento relevante nos últimos 15 minutos — esperado boa "
+                    "parte do tempo, já que o GDELT cobre uma janela curta por "
+                    "snapshot, não é sinal de erro."
+                )
+            else:
+                st.dataframe(
+                    eventos_relevantes,
+                    column_order=[
+                        "data",
+                        "ActionGeo_FullName",
+                        "ActionGeo_CountryCode",
+                        "categoria_cameo",
+                        "GoldsteinScale",
+                        "SOURCEURL",
+                    ],
+                    column_config={
+                        "data": st.column_config.DatetimeColumn("Data", format="DD/MM/YYYY HH:mm"),
+                        "ActionGeo_FullName": "Local",
+                        "ActionGeo_CountryCode": "País (código)",
+                        "categoria_cameo": "Tipo",
+                        "GoldsteinScale": st.column_config.NumberColumn(
+                            "Goldstein Score", format="%.1f"
+                        ),
+                        "SOURCEURL": st.column_config.LinkColumn("Fonte"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
