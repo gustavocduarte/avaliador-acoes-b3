@@ -36,6 +36,28 @@ URLS_GPR = {
 # Ordem conferida campo a campo contra uma linha real do arquivo baixado.
 URL_GDELT_LASTUPDATE = "https://data.gdeltproject.org/gdeltv2/lastupdate.txt"
 
+# O nome de arquivo de um snapshot passado segue um padrão previsível —
+# confirmado em 2026-09-16 checando o timestamp real apontado por
+# lastupdate.txt (20260915083000, alinhado exatamente a um múltiplo de 15
+# min) e testando 96 URLs passadas construídas manualmente
+# (https://data.gdeltproject.org/gdeltv2/{timestamp}.export.CSV.zip, com
+# {timestamp} indo de 15 em 15 min pra trás a partir do mais recente): as
+# 96 responderam HTTP 200. Gaps (horário sem arquivo publicado) são raros
+# mas conhecidos — tratados isoladamente por horário, sem travar a janela
+# inteira (ver conflitos.obter_eventos_relevantes_ultimas_24h).
+INTERVALO_SNAPSHOT_GDELT_MINUTOS = 15
+JANELA_MONITOR_CONFLITOS_HORAS = 24.0
+
+# Delay entre requisições ao buscar vários snapshots em sequência (janela
+# de 24h = ~96 arquivos) — mesmo princípio do yfinance/Fundamentus, mas
+# um valor menor: os arquivos do GDELT são estáticos (já publicados, sem
+# risco de "lock" concorrente) servidos de um storage tipo CDN, não uma
+# raspagem de HTML frágil como o Fundamentus — um delay pequeno já é
+# suficiente pra não bater rápido demais, sem tornar a janela de 24h
+# proibitivamente lenta (96 arquivos × alguns segundos de download já é
+# bastante tempo por si só).
+DELAY_GDELT_SEGUNDOS = 0.5
+
 COLUNAS_EVENTO_GDELT = [
     "GLOBALEVENTID", "SQLDATE", "MonthYear", "Year", "FractionDate",
     "Actor1Code", "Actor1Name", "Actor1CountryCode", "Actor1KnownGroupCode",

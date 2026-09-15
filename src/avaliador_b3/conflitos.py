@@ -1,7 +1,15 @@
 """Monitor de conflitos: escopo de países relevantes por ação (a partir do
-setor) e filtragem dos eventos de conflito do GDELT (`ingest.gdelt`) pra
-esses países. Lógica pura — não busca dado nenhum, recebe o DataFrame de
-eventos já buscado e o segmento setorial já resolvido.
+setor), filtragem dos eventos de conflito do GDELT (`ingest.gdelt`) pra
+esses países, e orquestração da busca numa janela de várias horas.
+
+A maior parte deste módulo é lógica pura (`determinar_paises_relevantes`,
+`filtrar_eventos_por_paises`, `descrever_escopo_paises`) — recebe um
+DataFrame de eventos já buscado e o segmento setorial já resolvido, não
+busca nada. A exceção é `obter_eventos_relevantes_ultimas_24h`, que
+orquestra várias chamadas a `ingest.gdelt` (uma por snapshot) — colocada
+aqui, e não em gdelt.py, porque precisa filtrar por país relevante a
+cada snapshot pra manter o uso de memória baixo (ver docstring da
+função).
 
 Regra de escopo (documentação completa, com fontes, em config.py): toda
 ação tem o Brasil como país relevante por padrão — risco doméstico afeta
@@ -12,14 +20,24 @@ produtores/exportadores daquela commodity.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from avaliador_b3.config import (
     CODIGO_GDELT_BRASIL,
+    DATA_RAW_DIR,
+    JANELA_MONITOR_CONFLITOS_HORAS,
     PAISES_PRODUTORES_MINERIO_FERRO_GDELT,
     PAISES_PRODUTORES_PETROLEO_GDELT,
     SEGMENTOS_SETORIAIS_MINERACAO_METALICOS,
     SEGMENTOS_SETORIAIS_PETROLEO_GAS,
+)
+from avaliador_b3.ingest.gdelt import COLUNAS_RESULTADO as COLUNAS_RESULTADO_GDELT
+from avaliador_b3.ingest.gdelt import (
+    gerar_timestamps_janela,
+    obter_eventos_conflito_do_snapshot,
+    obter_timestamp_mais_recente,
 )
 
 # Nomes legíveis dos códigos de país usados em PAISES_PRODUTORES_* — só pra
@@ -110,3 +128,49 @@ def descrever_escopo_paises(segmento_setorial: str | None) -> str:
         partes.append(f"principais produtores/exportadores de minério de ferro ({nomes})")
 
     return " + ".join(partes)
+
+
+def obter_eventos_relevantes_ultimas_24h(
+    segmento_setorial: str | None,
+    horas: float = JANELA_MONITOR_CONFLITOS_HORAS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> pd.DataFrame:
+    """Busca os eventos de conflito relevantes pra uma ação numa janela
+    de `horas` horas (padrão: 24h — ~96 snapshots de 15 min cada).
+
+    Processa um snapshot do GDELT de cada vez, nunca carregando os ~96
+    arquivos brutos na memória ao mesmo tempo: cada snapshot já vem
+    filtrado por categoria de conflito (feito dentro de
+    `obter_eventos_conflito_do_snapshot`), e este loop filtra também por
+    país relevante ANTES de acumular — só o resultado pequeno e já
+    filtrado fica em memória entre uma iteração e outra, nunca os
+    eventos brutos de todos os snapshots juntos. Mesmo princípio de
+    processamento incremental já usado no screener (`screener.py`).
+
+    Um horário específico faltando (gap raro do GDELT) ou qualquer outra
+    falha isolada nesse snapshot é pulado — não interrompe a busca da
+    janela inteira, mesmo padrão de isolamento de erro já usado no
+    screener pra uma ação isolada falhando."""
+    paises_relevantes = determinar_paises_relevantes(segmento_setorial)
+    timestamp_mais_recente = obter_timestamp_mais_recente()
+    timestamps = gerar_timestamps_janela(timestamp_mais_recente, horas=horas)
+
+    partes_filtradas: list[pd.DataFrame] = []
+    for timestamp in timestamps:
+        try:
+            eventos_snapshot = obter_eventos_conflito_do_snapshot(
+                timestamp, diretorio_cache=diretorio_cache
+            )
+        except Exception:
+            continue
+
+        parte_relevante = filtrar_eventos_por_paises(eventos_snapshot, paises_relevantes)
+        if not parte_relevante.empty:
+            partes_filtradas.append(parte_relevante)
+
+    if not partes_filtradas:
+        return pd.DataFrame(columns=COLUNAS_RESULTADO_GDELT)
+
+    return (
+        pd.concat(partes_filtradas, ignore_index=True).sort_values("data").reset_index(drop=True)
+    )

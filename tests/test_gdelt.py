@@ -9,6 +9,14 @@ from avaliador_b3.config import COLUNAS_EVENTO_GDELT
 from avaliador_b3.ingest import gdelt
 
 
+@pytest.fixture(autouse=True)
+def _sem_delay_gdelt(monkeypatch):
+    """Por padrão os testes não esperam o DELAY_GDELT_SEGUNDOS real entre
+    requisições — só um teste específico (abaixo) substitui esse patch
+    localmente pra inspecionar o delay em si."""
+    monkeypatch.setattr(gdelt.time, "sleep", lambda segundos: None)
+
+
 def _linha_evento(**overrides: str) -> str:
     """Monta uma linha crua (tab-delimited) de evento do GDELT, com todas as
     61 colunas vazias por padrão, exceto as passadas em `overrides`."""
@@ -206,3 +214,120 @@ def test_obter_eventos_conflito_propaga_erro_quando_zip_fora_do_ar(tmp_path, mon
 
     with pytest.raises(requests.HTTPError):
         gdelt.obter_eventos_conflito(diretorio_cache=tmp_path)
+
+
+# --- gerar_timestamps_janela --------------------------------------------
+
+
+def test_gerar_timestamps_janela_24h_tem_96_passos_de_15_min():
+    timestamps = gdelt.gerar_timestamps_janela("20260915083000", horas=24)
+
+    assert len(timestamps) == 96
+    assert timestamps[0] == "20260915083000"  # mais recente primeiro
+    assert timestamps[1] == "20260915081500"  # 15 min antes
+    assert timestamps[-1] == "20260914084500"  # 96º passo: 95*15min = 23h45min antes
+
+
+def test_gerar_timestamps_janela_janela_pequena():
+    # 1h = 4 passos de 15 min, fácil de conferir à mão.
+    timestamps = gdelt.gerar_timestamps_janela("20260915083000", horas=1)
+
+    assert timestamps == [
+        "20260915083000",
+        "20260915081500",
+        "20260915080000",
+        "20260915074500",
+    ]
+
+
+def test_gerar_timestamps_janela_atravessa_virada_de_dia():
+    timestamps = gdelt.gerar_timestamps_janela("20260915000000", horas=0.5)
+
+    assert timestamps == ["20260915000000", "20260914234500"]
+
+
+# --- obter_timestamp_mais_recente ---------------------------------------
+
+
+def test_obter_timestamp_mais_recente(monkeypatch):
+    monkeypatch.setattr(
+        gdelt.requests, "get", lambda url, timeout: _RespostaFalsa(texto=LASTUPDATE_VALIDO)
+    )
+    assert gdelt.obter_timestamp_mais_recente() == "20260914073000"
+
+
+# --- obter_eventos_conflito_do_snapshot ----------------------------------
+
+
+def test_obter_eventos_conflito_do_snapshot_busca_url_do_timestamp_exato(tmp_path, monkeypatch):
+    linha = _linha_evento(
+        GLOBALEVENTID="1", EventRootCode="19", GoldsteinScale="-10.0", DATEADDED="20260913120000"
+    )
+    zip_bytes = _zip_bytes("20260913113000.export.CSV", linha)
+    urls_chamadas = []
+
+    def get_falso(url, timeout):
+        urls_chamadas.append(url)
+        return _RespostaFalsa(conteudo=zip_bytes)
+
+    monkeypatch.setattr(gdelt.requests, "get", get_falso)
+
+    df = gdelt.obter_eventos_conflito_do_snapshot("20260913113000", diretorio_cache=tmp_path)
+
+    assert urls_chamadas == [
+        "https://data.gdeltproject.org/gdeltv2/20260913113000.export.CSV.zip"
+    ]
+    assert list(df["GLOBALEVENTID"]) == [1]
+
+
+def test_obter_eventos_conflito_do_snapshot_usa_cache_e_nao_baixa_de_novo(tmp_path, monkeypatch):
+    linha = _linha_evento(
+        GLOBALEVENTID="1", EventRootCode="19", GoldsteinScale="-10.0", DATEADDED="20260913113000"
+    )
+    zip_bytes = _zip_bytes("20260913113000.export.CSV", linha)
+    chamadas = {"zip": 0}
+
+    def get_falso(url, timeout):
+        chamadas["zip"] += 1
+        return _RespostaFalsa(conteudo=zip_bytes)
+
+    monkeypatch.setattr(gdelt.requests, "get", get_falso)
+
+    gdelt.obter_eventos_conflito_do_snapshot("20260913113000", diretorio_cache=tmp_path)
+    gdelt.obter_eventos_conflito_do_snapshot("20260913113000", diretorio_cache=tmp_path)
+
+    assert chamadas["zip"] == 1
+
+
+def test_obter_eventos_conflito_do_snapshot_propaga_erro_de_horario_faltando(tmp_path, monkeypatch):
+    # Gap raro do GDELT: um timestamp específico simplesmente não existe
+    # (404) — a função propaga o erro; quem processa uma janela de vários
+    # snapshots (conflitos.py) é quem decide pular esse horário.
+    monkeypatch.setattr(
+        gdelt.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
+    )
+
+    with pytest.raises(requests.HTTPError):
+        gdelt.obter_eventos_conflito_do_snapshot("20260913113000", diretorio_cache=tmp_path)
+
+
+def test_obter_eventos_conflito_do_snapshot_aplica_delay_so_fora_do_cache(tmp_path, monkeypatch):
+    linha = _linha_evento(
+        GLOBALEVENTID="1", EventRootCode="19", GoldsteinScale="-10.0", DATEADDED="20260913113000"
+    )
+    zip_bytes = _zip_bytes("20260913113000.export.CSV", linha)
+    monkeypatch.setattr(
+        gdelt.requests, "get", lambda url, timeout: _RespostaFalsa(conteudo=zip_bytes)
+    )
+
+    chamadas_sleep = []
+    monkeypatch.setattr(gdelt.time, "sleep", lambda segundos: chamadas_sleep.append(segundos))
+
+    gdelt.obter_eventos_conflito_do_snapshot(
+        "20260913113000", diretorio_cache=tmp_path, delay_segundos=0.5
+    )
+    gdelt.obter_eventos_conflito_do_snapshot(
+        "20260913113000", diretorio_cache=tmp_path, delay_segundos=0.5
+    )
+
+    assert chamadas_sleep == [0.5]  # só na primeira vez (segunda é cache hit)

@@ -23,6 +23,7 @@ from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    JANELA_MONITOR_CONFLITOS_HORAS,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     SERIES_BCB_SGS,
@@ -30,8 +31,7 @@ from avaliador_b3.config import (
 )
 from avaliador_b3.conflitos import (
     descrever_escopo_paises,
-    determinar_paises_relevantes,
-    filtrar_eventos_por_paises,
+    obter_eventos_relevantes_ultimas_24h,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
@@ -58,7 +58,6 @@ from avaliador_b3.ingest.fundamentus import (
     TickerNaoEncontrado,
     obter_indicadores,
 )
-from avaliador_b3.ingest.gdelt import obter_eventos_conflito
 from avaliador_b3.ingest.gpr import obter_gpr
 from avaliador_b3.ingest.precos import (
     FalhaFontePreco,
@@ -150,14 +149,23 @@ def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
         return None, f"Falha ao buscar índice GPR: {erro}"
 
 
-@st.cache_data(ttl=900)
-def _buscar_eventos_conflito() -> tuple[pd.DataFrame | None, str | None]:
-    """Snapshot mais recente de eventos de conflito do GDELT — cacheado
-    na sessão por 15 min (mesma janela de um snapshot do GDELT; recachear
-    mais rápido que isso não traria dado novo), não depende do ticker
-    buscado."""
+@st.cache_data(ttl=300)
+def _buscar_eventos_conflito_24h(
+    segmento_setorial: str | None,
+) -> tuple[pd.DataFrame | None, str | None]:
+    """Eventos de conflito relevantes numa janela de 24h (ver
+    `conflitos.obter_eventos_relevantes_ultimas_24h`) — cacheado na
+    sessão por alguns minutos, bem menos que a janela em si, só pra não
+    refazer as ~96 buscas de snapshot a cada abertura da aba. Cada
+    snapshot individual também já tem cache próprio em disco sem TTL (é
+    dado imutável uma vez publicado pelo GDELT), então mesmo depois desse
+    cache daqui expirar, reprocessar a mesma janela de 24h continua
+    barato — só os poucos snapshots realmente novos desde a última
+    chamada precisam ser baixados de novo. Parametrizado por
+    `segmento_setorial` pra cachear corretamente por setor, não por
+    ticker (dois tickers do mesmo setor compartilham o resultado)."""
     try:
-        return obter_eventos_conflito(), None
+        return obter_eventos_relevantes_ultimas_24h(segmento_setorial), None
     except Exception as erro:
         return None, f"Falha ao buscar eventos do GDELT: {erro}"
 
@@ -897,7 +905,8 @@ with aba_conflitos:
     st.caption(
         "Eventos de conflito (GDELT, categorias COERCE/ASSAULT/FIGHT) nos "
         "países relevantes pra ação escolhida na aba \"Analisar uma ação\" — "
-        "snapshot mais recente, janela de 15 minutos."
+        f"janela de {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, ~96 snapshots de 15 "
+        "min processados um de cada vez."
     )
 
     ticker_conflitos = st.session_state.get("ticker_analisado")
@@ -908,49 +917,82 @@ with aba_conflitos:
             "conflitos usa o mesmo ticker escolhido lá, sem campo de busca próprio."
         )
     else:
+        # Ticker e escopo de países aparecem sem custo nenhum assim que uma
+        # ação é escolhida — só a busca de eventos em si (a parte cara, ~96
+        # requisições) fica atrás do botão abaixo, nunca dispara sozinha só
+        # porque uma ação foi buscada na aba "Analisar uma ação".
         segmento_setorial_conflitos = st.session_state.get("segmento_setorial_analisado")
-        paises_relevantes = determinar_paises_relevantes(segmento_setorial_conflitos)
 
         st.subheader(ticker_conflitos)
         st.caption(
             f"Monitorando: {descrever_escopo_paises(segmento_setorial_conflitos)}."
         )
 
-        with st.spinner("Buscando snapshot mais recente do GDELT..."):
-            eventos_conflito, erro_eventos_conflito = _buscar_eventos_conflito()
+        if st.button(
+            f"Buscar eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h",
+            on_click=_ativar_aba,
+            args=(ABA_CONFLITOS,),
+        ):
+            st.warning(
+                f"Isso busca ~96 snapshots do GDELT (janela de "
+                f"{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, 15 em 15 min) — na primeira "
+                "vez, sem nada em cache ainda, leva minutos. Não feche esta aba "
+                "enquanto roda."
+            )
+            with st.spinner(
+                f"Buscando eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h no "
+                "GDELT — isso demora mais que um snapshot único, é esperado..."
+            ):
+                eventos_relevantes, erro_eventos_conflito = _buscar_eventos_conflito_24h(
+                    segmento_setorial_conflitos
+                )
+            # Guardado em session_state (não só na variável local) pra
+            # continuar visível em reruns futuros causados por qualquer outra
+            # interação na página — não some assim que o usuário mexe em
+            # outra coisa.
+            st.session_state["resultado_conflitos_24h"] = {
+                "ticker": ticker_conflitos,
+                "eventos": eventos_relevantes,
+                "erro": erro_eventos_conflito,
+            }
 
-        if erro_eventos_conflito:
-            st.warning(f"GDELT: {erro_eventos_conflito}")
+        resultado_salvo = st.session_state.get("resultado_conflitos_24h")
+
+        if resultado_salvo is None or resultado_salvo["ticker"] != ticker_conflitos:
+            st.info(
+                f'Clique em "Buscar eventos das últimas '
+                f'{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h" acima pra carregar os '
+                "eventos dessa ação — não busca nada automaticamente."
+            )
+        elif resultado_salvo["erro"]:
+            st.warning(f"GDELT: {resultado_salvo['erro']}")
+        elif resultado_salvo["eventos"].empty:
+            st.info(
+                f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
+                "— pode acontecer, mas é bem menos provável que no caso do snapshot "
+                "único; não é sinal de erro."
+            )
         else:
-            eventos_relevantes = filtrar_eventos_por_paises(eventos_conflito, paises_relevantes)
-
-            if eventos_relevantes.empty:
-                st.info(
-                    "Nenhum evento relevante nos últimos 15 minutos — esperado boa "
-                    "parte do tempo, já que o GDELT cobre uma janela curta por "
-                    "snapshot, não é sinal de erro."
-                )
-            else:
-                st.dataframe(
-                    eventos_relevantes,
-                    column_order=[
-                        "data",
-                        "ActionGeo_FullName",
-                        "ActionGeo_CountryCode",
-                        "categoria_cameo",
-                        "GoldsteinScale",
-                        "SOURCEURL",
-                    ],
-                    column_config={
-                        "data": st.column_config.DatetimeColumn("Data", format="DD/MM/YYYY HH:mm"),
-                        "ActionGeo_FullName": "Local",
-                        "ActionGeo_CountryCode": "País (código)",
-                        "categoria_cameo": "Tipo",
-                        "GoldsteinScale": st.column_config.NumberColumn(
-                            "Goldstein Score", format="%.1f"
-                        ),
-                        "SOURCEURL": st.column_config.LinkColumn("Fonte"),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
+            st.dataframe(
+                resultado_salvo["eventos"],
+                column_order=[
+                    "data",
+                    "ActionGeo_FullName",
+                    "ActionGeo_CountryCode",
+                    "categoria_cameo",
+                    "GoldsteinScale",
+                    "SOURCEURL",
+                ],
+                column_config={
+                    "data": st.column_config.DatetimeColumn("Data", format="DD/MM/YYYY HH:mm"),
+                    "ActionGeo_FullName": "Local",
+                    "ActionGeo_CountryCode": "País (código)",
+                    "categoria_cameo": "Tipo",
+                    "GoldsteinScale": st.column_config.NumberColumn(
+                        "Goldstein Score", format="%.1f"
+                    ),
+                    "SOURCEURL": st.column_config.LinkColumn("Fonte"),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
