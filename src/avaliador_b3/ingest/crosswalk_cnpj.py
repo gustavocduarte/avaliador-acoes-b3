@@ -19,6 +19,18 @@ Chave usada: o código do emissor (4 letras, campo "issuingCompany"), que é
 sempre o prefixo do ticker sem o dígito de classe final. Validado contra os
 76 tickers reais do Ibovespa: 100% resolvidos por essa chave — não foi
 preciso cair para casamento de nome (frágil, evitado de propósito).
+
+Classificação setorial (2026-09-16): o mesmo registro de
+`GetInitialCompanies` já traz um campo "segment" — não confundir com o
+"market" (esse sim é o segmento de LISTAGEM, Novo Mercado/N1/N2, já usado
+em `b3_universo.py`). "segment" é a classificação setorial oficial da B3
+(a granularidade mais fina do que a B3 chama de "Segmento" na página
+pública "Classificação Setorial", dentro de Setor Econômico > Subsetor >
+Segmento — não temos os dois níveis mais amplos, só esse). Validado
+manualmente contra pares óbvios do Ibovespa real: PETR4 e PRIO3 caem
+ambos em "Exploração. Refino e Distribuição"; ITUB4/BBDC4/BBAS3 caem
+todos em "Bancos"; VALE3 cai em "Minerais Metálicos" (setor diferente dos
+dois grupos acima, como esperado).
 """
 
 from __future__ import annotations
@@ -35,7 +47,7 @@ from avaliador_b3.config import DATA_RAW_DIR, URL_B3_CATALOGO_EMISSORES
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 
 TIMEOUT_SEGUNDOS = 30
-CAMPOS_OBRIGATORIOS_REGISTRO = {"issuingCompany", "codeCVM", "cnpj", "companyName"}
+CAMPOS_OBRIGATORIOS_REGISTRO = {"issuingCompany", "codeCVM", "cnpj", "companyName", "segment"}
 PADRAO_SUFIXO_CLASSE = re.compile(r"\d+$")
 
 
@@ -85,6 +97,7 @@ def _registro_para_linha(registro: dict) -> dict:
         "codigo_cvm": registro["codeCVM"],
         "cnpj": registro["cnpj"],
         "nome_empresa": registro["companyName"],
+        "segmento_setorial": registro["segment"],
     }
 
 
@@ -152,7 +165,28 @@ def resolver_cnpj(ticker: str, catalogo: pd.DataFrame) -> dict:
         "cnpj": linha["cnpj"],
         "codigo_cvm": linha["codigo_cvm"],
         "nome_empresa": linha["nome_empresa"],
+        "segmento_setorial": linha["segmento_setorial"],
     }
+
+
+def resolver_segmentos_setoriais(tickers: list[str], catalogo: pd.DataFrame) -> pd.DataFrame:
+    """Resolve o segmento setorial (ver `_registro_para_linha`) de uma
+    lista de tickers contra o catálogo já carregado, devolvendo um
+    DataFrame com `ticker` e `segmento_setorial`.
+
+    Tickers que não resolverem (`EmissorNaoEncontrado`) são simplesmente
+    omitidos do resultado — usado pra achar pares do mesmo setor entre um
+    conjunto de tickers (ex: os do screener), onde o interesse é só nos
+    que SÃO identificáveis, não é um erro que deva travar a busca toda.
+    """
+    linhas = []
+    for ticker in tickers:
+        try:
+            info = resolver_cnpj(ticker, catalogo)
+        except EmissorNaoEncontrado:
+            continue
+        linhas.append({"ticker": ticker, "segmento_setorial": info["segmento_setorial"]})
+    return pd.DataFrame(linhas, columns=["ticker", "segmento_setorial"])
 
 
 def _caminho_cache_crosswalk(diretorio_cache: Path) -> Path:

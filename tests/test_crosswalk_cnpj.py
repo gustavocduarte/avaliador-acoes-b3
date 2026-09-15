@@ -21,12 +21,19 @@ class _RespostaFalsa:
         return self._dados
 
 
-def _linha_catalogo(emissor="PETR", codigo_cvm="9512", cnpj="33000167000101", nome="PETROBRAS"):
+def _linha_catalogo(
+    emissor="PETR",
+    codigo_cvm="9512",
+    cnpj="33000167000101",
+    nome="PETROBRAS",
+    segmento_setorial="Exploração. Refino e Distribuição",
+):
     return {
         "codigo_emissor": emissor,
         "codigo_cvm": codigo_cvm,
         "cnpj": cnpj,
         "nome_empresa": nome,
+        "segmento_setorial": segmento_setorial,
     }
 
 
@@ -34,7 +41,9 @@ def _catalogo_petr_vale() -> pd.DataFrame:
     return pd.DataFrame(
         [
             _linha_catalogo(),
-            _linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A."),
+            _linha_catalogo(
+                "VALE", "4170", "33592510000154", "VALE S.A.", "Minerais Metálicos"
+            ),
         ]
     )
 
@@ -82,6 +91,7 @@ def test_registro_para_linha_caminho_feliz():
         "codigo_cvm": "9512",
         "cnpj": "33000167000101",
         "nome_empresa": "PETROBRAS",
+        "segmento_setorial": "Exploração",
     }
 
 
@@ -173,6 +183,7 @@ def test_resolver_cnpj_caminho_feliz():
         "cnpj": "33000167000101",
         "codigo_cvm": "9512",
         "nome_empresa": "PETROBRAS",
+        "segmento_setorial": "Exploração. Refino e Distribuição",
     }
 
 
@@ -182,6 +193,37 @@ def test_resolver_cnpj_levanta_erro_quando_emissor_nao_existe():
     )
     with pytest.raises(crosswalk_cnpj.EmissorNaoEncontrado, match="PETR4"):
         crosswalk_cnpj.resolver_cnpj("PETR4", catalogo)
+
+
+def test_resolver_segmentos_setoriais_resolve_todos_quando_todos_existem():
+    catalogo = _catalogo_petr_vale()
+
+    resultado = crosswalk_cnpj.resolver_segmentos_setoriais(["PETR4", "VALE3"], catalogo)
+
+    assert list(resultado["ticker"]) == ["PETR4", "VALE3"]
+    assert list(resultado["segmento_setorial"]) == [
+        "Exploração. Refino e Distribuição",
+        "Minerais Metálicos",
+    ]
+
+
+def test_resolver_segmentos_setoriais_omite_tickers_nao_encontrados_sem_erro():
+    catalogo = _catalogo_so_petr()
+
+    resultado = crosswalk_cnpj.resolver_segmentos_setoriais(
+        ["PETR4", "TICKERFANTASMA99"], catalogo
+    )
+
+    assert list(resultado["ticker"]) == ["PETR4"]
+
+
+def test_resolver_segmentos_setoriais_lista_vazia_devolve_tabela_vazia():
+    catalogo = _catalogo_petr_vale()
+
+    resultado = crosswalk_cnpj.resolver_segmentos_setoriais([], catalogo)
+
+    assert resultado.empty
+    assert list(resultado.columns) == ["ticker", "segmento_setorial"]
 
 
 def test_obter_crosswalk_ibovespa_caminho_feliz(tmp_path, monkeypatch):

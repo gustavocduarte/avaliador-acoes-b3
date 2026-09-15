@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_carteira
@@ -33,12 +34,14 @@ from avaliador_b3.empresa.comportamento import (
     calcular_volatilidade_anualizada,
     calcular_volume_medio,
 )
+from avaliador_b3.graficos import agregar_dividendos_por_ano, normalizar_base_100
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.bcb_sgs import obter_serie
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
     obter_catalogo_emissores,
     resolver_cnpj,
+    resolver_segmentos_setoriais,
 )
 from avaliador_b3.ingest.cvm import (
     CnpjNaoEncontrado,
@@ -171,6 +174,18 @@ def _buscar_cnpj(ticker: str) -> tuple[str | None, str | None]:
     try:
         catalogo = obter_catalogo_emissores()
         return resolver_cnpj(ticker, catalogo)["cnpj"], None
+    except EmissorNaoEncontrado as erro:
+        return None, str(erro)
+
+
+def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
+    """Classificação setorial oficial da B3 (campo "segment" do catálogo
+    de emissores — ver a nota de investigação em ingest/crosswalk_cnpj.py),
+    não confundir com o segmento de LISTAGEM (Novo Mercado/N1/N2) mostrado
+    em "Governança" mais abaixo."""
+    try:
+        catalogo = obter_catalogo_emissores()
+        return resolver_cnpj(ticker, catalogo)["segmento_setorial"], None
     except EmissorNaoEncontrado as erro:
         return None, str(erro)
 
@@ -489,6 +504,123 @@ with aba_analisar:
                 st.metric("Beta (vs. Ibovespa, 1a)", _fmt(beta))
                 if beta is None:
                     st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
+
+        st.divider()
+        st.subheader("Preço vs. Ibovespa (1 ano, base 100)")
+        if erro_historico_beta or erro_historico_ibovespa_beta:
+            st.info(
+                "Gráfico indisponível — histórico de preço ou do Ibovespa não pôde ser "
+                "buscado (ver avisos acima)."
+            )
+        else:
+            # Reaproveita historico_beta/historico_ibovespa_beta (PERIODO_BETA,
+            # 1 ano) já buscados pro cálculo de Beta acima — não busca dado
+            # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
+            # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
+            # ação uma linha reta ilegível.
+            figura_preco = go.Figure()
+            figura_preco.add_trace(
+                go.Scatter(
+                    x=historico_beta["data"],
+                    y=normalizar_base_100(historico_beta["Close"]),
+                    name=ticker,
+                )
+            )
+            figura_preco.add_trace(
+                go.Scatter(
+                    x=historico_ibovespa_beta["data"],
+                    y=normalizar_base_100(historico_ibovespa_beta["Close"]),
+                    name="Ibovespa",
+                )
+            )
+            figura_preco.update_layout(
+                yaxis_title="Desempenho (base 100 no início do período)",
+                xaxis_title="Data",
+                hovermode="x unified",
+                margin={"t": 20},
+            )
+            st.plotly_chart(figura_preco, use_container_width=True)
+
+        st.divider()
+        st.subheader("Histórico de dividendos por ano")
+        if erro_dividendos:
+            st.info("Gráfico indisponível — ver aviso de dividendos acima.")
+        else:
+            # Reaproveita `dividendos` já buscado pro método de Bazin acima —
+            # não busca dado novo.
+            dividendos_por_ano = agregar_dividendos_por_ano(dividendos)
+            if dividendos_por_ano.empty:
+                st.info("Nenhum dividendo pago no histórico disponível.")
+            else:
+                figura_dividendos = go.Figure(
+                    go.Bar(x=dividendos_por_ano["ano"], y=dividendos_por_ano["total"])
+                )
+                figura_dividendos.update_layout(
+                    yaxis_title="Total pago no ano (R$/ação)",
+                    xaxis_title="Ano",
+                    xaxis={"type": "category"},
+                    margin={"t": 20},
+                )
+                st.plotly_chart(figura_dividendos, use_container_width=True)
+
+        st.divider()
+        st.subheader("Comparação setorial")
+        segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
+        tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
+        if erro_segmento_setorial:
+            st.warning(f"Classificação setorial: {erro_segmento_setorial}")
+        elif tabela_screener_setor is None:
+            _aviso_screener_vazio('Rode o screener primeiro na aba "Screener (todas as ações)"')
+        else:
+            try:
+                catalogo_setorial = obter_catalogo_emissores()
+            except Exception as erro:
+                st.warning(f"Catálogo de emissores da B3: {erro}")
+            else:
+                # Resolve o segmento setorial de cada ticker do screener já
+                # salvo (dado local, sem nova busca de rede além do catálogo
+                # já cacheado) pra achar os pares do mesmo setor da ação
+                # buscada. Os números da tabela (preço, valor combinado,
+                # desconto) vêm direto do screener — não são recalculados.
+                segmentos_screener = resolver_segmentos_setoriais(
+                    list(tabela_screener_setor["ticker"]), catalogo_setorial
+                )
+                tickers_do_setor = segmentos_screener[
+                    segmentos_screener["segmento_setorial"] == segmento_setorial
+                ]["ticker"]
+                tabela_pares = tabela_screener_setor[
+                    tabela_screener_setor["ticker"].isin(tickers_do_setor)
+                ]
+                if tabela_pares.empty:
+                    st.info(
+                        f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
+                        "encontrada no resultado salvo do screener."
+                    )
+                else:
+                    st.caption(f"Segmento setorial (B3): {segmento_setorial}")
+                    st.dataframe(
+                        tabela_pares,
+                        column_order=[
+                            "ticker",
+                            "preco_atual",
+                            "valor_combinado",
+                            "desconto_percentual",
+                        ],
+                        column_config={
+                            "ticker": "Ticker",
+                            "preco_atual": st.column_config.NumberColumn(
+                                "Preço atual", format="R$ %.2f"
+                            ),
+                            "valor_combinado": st.column_config.NumberColumn(
+                                "Valor combinado", format="R$ %.2f"
+                            ),
+                            "desconto_percentual": st.column_config.NumberColumn(
+                                "Desconto", format="%.1f%%"
+                            ),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                    )
 
 with aba_screener:
     st.caption(
