@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from avaliador_b3.config import (
+    ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
@@ -56,13 +57,6 @@ from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_valor_combinado
 from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
-
-# Ano de referência pro FCD: 2025 ainda não estava publicado pela CVM na
-# época em que isso foi escrito (confirmado no adapter da CVM), então usa
-# 2024 como padrão fixo por ora — trocar por uma detecção automática do
-# ano mais recente disponível é um refinamento futuro, fora do escopo
-# desse protótipo.
-ANO_REFERENCIA_FCD = 2024
 
 
 def _buscar_historico(ticker: str, periodo: str) -> tuple[pd.DataFrame | None, str | None]:

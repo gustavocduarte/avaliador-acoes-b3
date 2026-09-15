@@ -75,6 +75,17 @@ CATEGORIAS_CONFLITO_CAMEO = {
 SUFIXO_TICKER_B3 = ".SA"
 TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
 
+# Delay entre requisições reais ao yfinance (não aplicado em cache hit) —
+# mesmo raciocínio do DELAY_FUNDAMENTUS_SEGUNDOS. O screener bate no
+# yfinance várias vezes por ação (histórico em 2 janelas + dividendos) ×
+# ~76 ações do Ibovespa = centenas de requisições em sequência. yfinance é
+# uma API não-oficial sem limite de taxa documentado (ao contrário do
+# BCB/CVM, fontes governamentais estáveis) mas conhecida por limitar
+# agressivamente rajadas de requisições — 1,5s (igual ao Fundamentus,
+# decisão de 2026-09-14) é uma margem de segurança conservadora, não uma
+# cifra pesquisada numa fonte externa.
+DELAY_PRECOS_SEGUNDOS = 1.5
+
 # Índice Ibovespa via yfinance — confirmado em 2026-09-14 que "^BVSP" (sem
 # sufixo ".SA", diferente de uma ação B3) devolve histórico real com
 # Close/Volume. Usado pro cálculo de Beta (bloco de comportamento da ação)
@@ -265,6 +276,13 @@ ANOS_HISTORICO_MINIMO_BAZIN = 5
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 
+# Ano de referência pro FCD: 2025 ainda não estava publicado pela CVM na
+# época em que isso foi escrito (confirmado no adapter da CVM), então usa
+# 2024 como padrão fixo por ora — trocar por uma detecção automática do
+# ano mais recente disponível é um refinamento futuro. Compartilhado entre
+# app/main.py e screener.py, pra não divergir entre os dois.
+ANO_REFERENCIA_FCD = 2024
+
 # Taxa de crescimento explícita: CAGR do FCF entre o ano de referência e
 # `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes (dois pontos, não a série
 # inteira — CAGR só precisa dos extremos). Só é calculável se os dois
@@ -387,5 +405,39 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 # CAGR de 2 pontos, sem abater dívida absoluta) — não um motivo pra
 # desconfiar da implementação, mas um lembrete de que o número do FCD
 # sozinho não deve ser lido como "preço-alvo", e sim como um dos três
-# métodos a serem combinados (ver o combinador de valor justo, ainda a
-# implementar).
+# métodos a serem combinados (ver o combinador de valor justo).
+
+# --- Limiares de "desconto extremo" do screener (2026-09-14) ---
+#
+# O screener roda o pipeline completo nas ~76 ações do Ibovespa e ordena
+# por desconto = (valor_combinado - preço_atual) / preço_atual × 100. A
+# fragilidade da CAGR de 2 pontos do FCD (documentada acima) pode produzir
+# descontos absurdos numa ação isolada sem que isso seja sinal de
+# oportunidade real. Em vez de filtrar essas linhas (o usuário quer vê-las,
+# só sinalizadas), marcamos as que passam de um limiar.
+#
+# Os limiares abaixo foram checados contra a distribuição real das 74
+# ações com valor combinado aplicável, na mesma rodada de validação do
+# screener:
+#
+# - Lado positivo: a sugestão inicial de +200% se confirmou um bom corte —
+#   a distribuição é densa e contínua até ~206% (COGN3), com um salto
+#   grande pro próximo valor (763%, MGLU3). +200% separa 4 outliers claros
+#   do resto sem cortar no meio de um aglomerado.
+# - Lado negativo: a sugestão inicial de -70% foi trocada por -100%. Com
+#   -70%, 8 das 74 ações (11%) seriam marcadas, numa faixa contínua e sem
+#   quebra visível (de -73% a -109%) — não parecia capturar "extremo", só
+#   "bem descontado". -100% tem uma justificativa estrutural, não só
+#   estatística: desconto < -100% só é matematicamente possível quando o
+#   valor_combinado é negativo — um "valor justo negativo" é sempre
+#   artefato das premissas do modelo (nunca uma leitura literal de que a
+#   empresa vale menos que zero), então qualquer ocorrência já é suspeita
+#   por construção. Na prática, isso pegou só 3 das 74 ações na validação
+#   real — um recorte bem mais seletivo.
+DESCONTO_EXTREMO_LIMITE_SUPERIOR = 200.0
+DESCONTO_EXTREMO_LIMITE_INFERIOR = -100.0
+AVISO_DESCONTO_EXTREMO = (
+    "Desconto extremo — provavelmente reflete sensibilidade da CAGR de 2 "
+    "pontos do FCD (ver nota de validação em config.py), não "
+    "necessariamente uma oportunidade real."
+)

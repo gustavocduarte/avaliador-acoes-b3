@@ -8,6 +8,14 @@ import yfinance as yf
 from avaliador_b3.ingest import precos
 
 
+@pytest.fixture(autouse=True)
+def _sem_delay_yfinance(monkeypatch):
+    """Por padrão, os testes não esperam o DELAY_PRECOS_SEGUNDOS real entre
+    requisições — só os testes que verificam o delay em si (abaixo)
+    substituem esse patch localmente pra inspecionar as chamadas."""
+    monkeypatch.setattr(precos.time, "sleep", lambda segundos: None)
+
+
 class _TickerFalso:
     def __init__(
         self,
@@ -200,6 +208,22 @@ def test_obter_historico_ibovespa_usa_ticker_caret_bvsp_sem_sufixo(tmp_path, mon
     assert (tmp_path / "precos" / "^BVSP_3mo.csv").exists()
 
 
+def test_obter_historico_aplica_delay_antes_de_requisicao_real_mas_nao_em_cache(
+    tmp_path, monkeypatch
+):
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    esperas = []
+    monkeypatch.setattr(precos.time, "sleep", lambda segundos: esperas.append(segundos))
+
+    precos.obter_historico("PETR4", diretorio_cache=tmp_path, delay_segundos=2.5)
+    assert esperas == [2.5]
+
+    precos.obter_historico("PETR4", diretorio_cache=tmp_path, delay_segundos=2.5)
+    assert esperas == [2.5]  # segunda chamada veio do cache, não dormiu de novo
+
+
 def test_obter_dividendos_caminho_feliz_grava_cache(tmp_path, monkeypatch):
     ticker_falso = _TickerFalso(dividendos_resultado=_dividendos_falsos())
     monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
@@ -241,6 +265,22 @@ def test_obter_dividendos_forcar_atualizacao_ignora_cache_valido(tmp_path, monke
     )
 
     assert ticker_falso.chamadas_dividendos == 2
+
+
+def test_obter_dividendos_aplica_delay_antes_de_requisicao_real_mas_nao_em_cache(
+    tmp_path, monkeypatch
+):
+    ticker_falso = _TickerFalso(dividendos_resultado=_dividendos_falsos())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    esperas = []
+    monkeypatch.setattr(precos.time, "sleep", lambda segundos: esperas.append(segundos))
+
+    precos.obter_dividendos("PETR4", diretorio_cache=tmp_path, delay_segundos=2.5)
+    assert esperas == [2.5]
+
+    precos.obter_dividendos("PETR4", diretorio_cache=tmp_path, delay_segundos=2.5)
+    assert esperas == [2.5]  # segunda chamada veio do cache, não dormiu de novo
 
 
 def test_obter_dividendos_levanta_ticker_invalido_quando_yfinance_sinaliza(tmp_path, monkeypatch):

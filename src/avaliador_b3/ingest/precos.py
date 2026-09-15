@@ -12,6 +12,11 @@ adapter trata dois caminhos de falha bem diferentes:
 Cache local em `data/raw/precos/` com TTL curto (minutos, não "para
 sempre"): diferente das séries do BCB/GPR/GDELT, preço de ação fica velho
 rápido, e o próprio Yahoo já entrega com delay de ~15 min.
+
+Delay configurável antes de cada requisição real (não em cache hit) — o
+screener bate no yfinance várias vezes por ação (histórico em 2 janelas +
+dividendos) × ~76 ações do Ibovespa, e essa API não-oficial é conhecida
+por limitar taxa agressivamente sem isso.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ import yfinance as yf
 
 from avaliador_b3.config import (
     DATA_RAW_DIR,
+    DELAY_PRECOS_SEGUNDOS,
     SUFIXO_TICKER_B3,
     TICKER_IBOVESPA,
     TTL_CACHE_DIVIDENDOS_SEGUNDOS,
@@ -77,6 +83,7 @@ def obter_historico(
     forcar_atualizacao: bool = False,
     ttl_segundos: int = TTL_CACHE_PRECOS_SEGUNDOS,
     diretorio_cache: Path = DATA_RAW_DIR,
+    delay_segundos: float = DELAY_PRECOS_SEGUNDOS,
 ) -> pd.DataFrame:
     """Busca o histórico de preços de uma ação da B3.
 
@@ -85,12 +92,19 @@ def obter_historico(
 
     Levanta `TickerInvalido` se o ticker não existir, ou `FalhaFontePreco`
     se a busca falhar por outro motivo (rate limit, erro de rede, etc.).
+
+    `delay_segundos` é aplicado antes de cada requisição real (não em
+    cache hit) — existe pra não bater rápido demais no yfinance quando o
+    screener passar por várias dezenas de tickers em sequência.
     """
     ticker_yahoo = _ticker_yahoo(ticker)
     caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
         return pd.read_csv(caminho, parse_dates=["data"])
+
+    if delay_segundos > 0:
+        time.sleep(delay_segundos)
 
     try:
         historico = yf.Ticker(ticker_yahoo).history(period=periodo)
@@ -126,6 +140,7 @@ def obter_historico_ibovespa(
     forcar_atualizacao: bool = False,
     ttl_segundos: int = TTL_CACHE_PRECOS_SEGUNDOS,
     diretorio_cache: Path = DATA_RAW_DIR,
+    delay_segundos: float = DELAY_PRECOS_SEGUNDOS,
 ) -> pd.DataFrame:
     """Histórico do índice Ibovespa (mesmo formato de `obter_historico`,
     reaproveitando cache/tratamento de erro) — usado pro cálculo de Beta
@@ -138,6 +153,7 @@ def obter_historico_ibovespa(
         forcar_atualizacao=forcar_atualizacao,
         ttl_segundos=ttl_segundos,
         diretorio_cache=diretorio_cache,
+        delay_segundos=delay_segundos,
     )
 
 
@@ -151,6 +167,7 @@ def obter_dividendos(
     forcar_atualizacao: bool = False,
     ttl_segundos: int = TTL_CACHE_DIVIDENDOS_SEGUNDOS,
     diretorio_cache: Path = DATA_RAW_DIR,
+    delay_segundos: float = DELAY_PRECOS_SEGUNDOS,
 ) -> pd.DataFrame:
     """Busca o histórico completo de dividendos pagos por uma ação da B3
     (todas as datas disponíveis no Yahoo Finance — ex: PETR4 tem registros
@@ -174,6 +191,9 @@ def obter_dividendos(
         df_cache = pd.read_csv(caminho)
         df_cache["data"] = pd.to_datetime(df_cache["data"], utc=True)
         return df_cache
+
+    if delay_segundos > 0:
+        time.sleep(delay_segundos)
 
     try:
         serie = yf.Ticker(ticker_yahoo).dividends
