@@ -354,7 +354,6 @@ def _aviso_screener_vazio(instrucao: str) -> None:
 ABA_ANALISAR = "Analisar uma ação"
 ABA_SCREENER = "Screener (todas as ações)"
 ABA_CARTEIRA = "Simulador de carteira"
-ABA_CORRELACAO = "Correlação com fatores externos"
 ABA_CONFLITOS = "Monitor de conflitos"
 
 # Ticker pré-selecionado e buscado automaticamente só na primeira abertura da
@@ -382,8 +381,8 @@ def _ativar_aba(aba: str) -> None:
 # mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
 # session_state, atualizada via on_click nos botões que disparam rerun.
 st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener, aba_carteira, aba_correlacao, aba_conflitos = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CORRELACAO, ABA_CONFLITOS],
+aba_analisar, aba_screener, aba_carteira, aba_conflitos = st.tabs(
+    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CONFLITOS],
     default=st.session_state["aba_ativa"],
 )
 
@@ -471,6 +470,16 @@ with aba_analisar:
             dividendos, erro_dividendos = _buscar_dividendos(ticker)
             cnpj, erro_cnpj = _buscar_cnpj(ticker)
             selic_meta, ipca_12m, erro_macro = _buscar_macro()
+            # Pro card "Correlação com fatores externos" mais abaixo — custo
+            # parecido com o resto (mais duas séries de 2 anos e uma leitura
+            # de arquivo do GPR), por isso já busca aqui junto, sem exigir
+            # clique extra.
+            historico_acao_correlacao, erro_acao_correlacao = _buscar_historico(
+                ticker, periodo=f"{ANOS_JANELA_CORRELACAO}y"
+            )
+            historico_petroleo, erro_petroleo = _buscar_historico_petroleo()
+            serie_cambio, erro_cambio = _buscar_cambio_correlacao()
+            serie_gpr, erro_gpr = _buscar_gpr_diaria()
 
             # Erros de FCF não são exibidos à parte — já aparecem no motivo de
             # "não aplicável" do próprio card do FCD.
@@ -887,6 +896,41 @@ with aba_analisar:
                             use_container_width=True,
                         )
 
+        st.divider()
+        st.subheader("Correlação com fatores externos")
+        st.caption(
+            "Correlação (Pearson) entre o retorno diário da ação e três fatores "
+            f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
+            f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
+            "variação percentual dia a dia de cada série, nunca o nível bruto — "
+            "correlacionar séries em tendência infla o número de forma espúria, "
+            "sem relação real entre elas."
+        )
+        if erro_acao_correlacao:
+            st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
+        else:
+            if erro_petroleo:
+                st.warning(f"Petróleo (Brent): {erro_petroleo}")
+            if erro_cambio:
+                st.warning(f"Câmbio USD/BRL: {erro_cambio}")
+            if erro_gpr:
+                st.warning(f"GPR: {erro_gpr}")
+
+            resultados_correlacao = calcular_correlacoes_fatores(
+                historico_acao=historico_acao_correlacao,
+                historico_petroleo=historico_petroleo,
+                serie_cambio=serie_cambio,
+                serie_gpr=serie_gpr,
+            )
+
+            col_petroleo, col_cambio, col_gpr = st.columns(3)
+            with col_petroleo:
+                _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
+            with col_cambio:
+                _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
+            with col_gpr:
+                _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
+
 with aba_screener:
     st.caption(
         "Ranking de todas as ações do Ibovespa por desconto em relação ao "
@@ -1246,62 +1290,6 @@ with aba_carteira:
                         hide_index=True,
                         use_container_width=True,
                     )
-
-with aba_correlacao:
-    st.caption(
-        "Correlação (Pearson) entre o retorno diário da ação e três fatores "
-        f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
-        f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
-        "variação percentual dia a dia de cada série, nunca o nível bruto — "
-        "correlacionar séries em tendência infla o número de forma espúria, "
-        "sem relação real entre elas."
-    )
-
-    ticker_correlacao = (
-        st.text_input("Ticker (ex: PETR4)", value="", key="ticker_correlacao").strip().upper()
-    )
-    buscar_correlacao = st.button(
-        "Calcular correlações", on_click=_ativar_aba, args=(ABA_CORRELACAO,)
-    )
-
-    if buscar_correlacao and not ticker_correlacao:
-        st.warning("Digite um ticker.")
-
-    if buscar_correlacao and ticker_correlacao:
-        with st.spinner(f"Buscando dados de {ticker_correlacao} e dos fatores externos..."):
-            historico_acao_correlacao, erro_acao_correlacao = _buscar_historico(
-                ticker_correlacao, periodo=f"{ANOS_JANELA_CORRELACAO}y"
-            )
-            historico_petroleo, erro_petroleo = _buscar_historico_petroleo()
-            serie_cambio, erro_cambio = _buscar_cambio_correlacao()
-            serie_gpr, erro_gpr = _buscar_gpr_diaria()
-
-        if erro_acao_correlacao:
-            st.error(f"Preço de {ticker_correlacao}: {erro_acao_correlacao}")
-        else:
-            if erro_petroleo:
-                st.warning(f"Petróleo (Brent): {erro_petroleo}")
-            if erro_cambio:
-                st.warning(f"Câmbio USD/BRL: {erro_cambio}")
-            if erro_gpr:
-                st.warning(f"GPR: {erro_gpr}")
-
-            resultados_correlacao = calcular_correlacoes_fatores(
-                historico_acao=historico_acao_correlacao,
-                historico_petroleo=historico_petroleo,
-                serie_cambio=serie_cambio,
-                serie_gpr=serie_gpr,
-            )
-
-            st.divider()
-            st.subheader(ticker_correlacao)
-            col_petroleo, col_cambio, col_gpr = st.columns(3)
-            with col_petroleo:
-                _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
-            with col_cambio:
-                _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
-            with col_gpr:
-                _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
 
 with aba_conflitos:
     st.caption(

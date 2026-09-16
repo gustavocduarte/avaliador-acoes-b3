@@ -8,10 +8,12 @@ propósito, revertida depois — que motivou o teste original) e, desde
 abertura da sessão (ver `TICKER_PADRAO_PRIMEIRA_ABERTURA` em app/main.py).
 
 Como a busca automática da primeira abertura dispara o mesmo fluxo de
-"Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro), os testes
-que passam pelo carregamento inicial da aba com o universo disponível
-também mockam essas fontes pra continuarem rápidos e determinísticos, sem
-rede de verdade — ver `_bloquear_buscas_de_rede_por_ticker`.
+"Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro e, desde
+que a Correlação com fatores externos passou a viver dentro desta aba,
+também petróleo/câmbio/GPR), os testes que passam pelo carregamento
+inicial da aba com o universo disponível também mockam essas fontes pra
+continuarem rápidos e determinísticos, sem rede de verdade — ver
+`_bloquear_buscas_de_rede_por_ticker`.
 """
 
 from pathlib import Path
@@ -66,10 +68,12 @@ def _catalogo_emissores_vazio() -> pd.DataFrame:
 def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     """Mocka todas as fontes externas chamadas dentro do fluxo de "Buscar"
     (preço/histórico, indicadores do Fundamentus, dividendos, catálogo de
-    emissores da B3 e Selic/IPCA do BCB) pra levantar rapidamente o mesmo
-    tipo de erro "não encontrado"/"falha" que cada uma já trataria de
-    verdade — mantém os testes que agora disparam a busca automática da
-    primeira abertura tão rápidos e determinísticos quanto eram antes."""
+    emissores da B3, Selic/IPCA/câmbio do BCB e o índice GPR) pra levantar
+    rapidamente o mesmo tipo de erro "não encontrado"/"falha" que cada uma
+    já trataria de verdade — mantém os testes que agora disparam a busca
+    automática da primeira abertura (que hoje também inclui a correlação
+    com fatores externos, movida pra dentro desta aba) tão rápidos e
+    determinísticos quanto eram antes."""
 
     def _falha_precos(*args, **kwargs):
         raise TickerInvalido(MENSAGEM_ERRO_MOCK)
@@ -95,6 +99,7 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
         raise RuntimeError(MENSAGEM_ERRO_MOCK)
 
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_macro)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
 
 
 def test_dropdown_lista_acoes_do_ibovespa_quando_universo_disponivel(monkeypatch):
@@ -251,6 +256,7 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
         lambda *args, **kwargs: _catalogo_emissores_vazio(),
     )
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_macro)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
@@ -259,3 +265,29 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     precos_atuais = [metrica for metrica in at.metric if metrica.label == "Preço atual"]
     assert len(precos_atuais) == 1
     assert precos_atuais[0].value == "R$ 50.43"
+
+
+# --- Correlação com fatores externos, movida pra dentro de "Analisar uma ---
+# --- ação" (não é mais uma aba separada) -------------------------------------
+
+
+def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monkeypatch):
+    # A antiga aba "Correlação com fatores externos" foi removida — a
+    # seção agora mora dentro de "Analisar uma ação" e aparece junto do
+    # resto, reaproveitando o ticker já buscado ali. Confirmado logo no
+    # primeiro carregamento da sessão (busca automática de PETR4), sem
+    # precisar de nenhum clique extra.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert "Correlação com fatores externos" not in [tab.label for tab in at.tabs]
+    assert any(
+        subheader.value == "Correlação com fatores externos" for subheader in at.subheader
+    )
