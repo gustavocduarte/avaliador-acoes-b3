@@ -49,6 +49,38 @@ def agregar_dividendos_por_ano(dividendos: pd.DataFrame) -> pd.DataFrame:
     return agregado.sort_values("ano").reset_index(drop=True)
 
 
+def calcular_dividend_yield_por_ano(
+    dividendos_por_ano: pd.DataFrame, historico_precos: pd.DataFrame
+) -> pd.DataFrame:
+    """Dividend Yield por ano civil: soma de dividendos pagos no ano
+    (`dividendos_por_ano`, ver `agregar_dividendos_por_ano`) dividida pelo
+    preço médio de fechamento da ação NESSE MESMO ano — não o preço atual
+    —, calculado a partir de `historico_precos` (mesmo formato de
+    `ingest.precos.obter_historico`, tipicamente `period="max"` pra cobrir
+    todos os anos com dividendo pago).
+
+    Devolve um DataFrame com colunas `ano` e `yield_percentual`, contendo
+    só os anos de `dividendos_por_ano` que TÊM preço disponível em
+    `historico_precos` — um ano sem nenhum candle nesse histórico (ação
+    listada há menos tempo que o histórico de dividendos, ou o preço
+    "max" veio vazio/indisponível) é omitido, não vira um yield inventado
+    com denominador ausente.
+    """
+    if dividendos_por_ano.empty or historico_precos.empty:
+        return pd.DataFrame(columns=["ano", "yield_percentual"])
+
+    preco_medio_por_ano = (
+        historico_precos.assign(ano=historico_precos["data"].dt.year)
+        .groupby("ano", as_index=False)["Close"]
+        .mean()
+        .rename(columns={"Close": "preco_medio"})
+    )
+
+    yield_por_ano = dividendos_por_ano.merge(preco_medio_por_ano, on="ano", how="inner")
+    yield_por_ano["yield_percentual"] = yield_por_ano["total"] / yield_por_ano["preco_medio"] * 100
+    return yield_por_ano[["ano", "yield_percentual"]].sort_values("ano").reset_index(drop=True)
+
+
 NOME_TRACE_PONTOS_ESTRATEGICOS = "Estreitos/canais estratégicos"
 NOME_TRACE_EVENTOS = "Eventos de conflito"
 

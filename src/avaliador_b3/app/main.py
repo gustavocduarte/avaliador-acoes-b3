@@ -42,6 +42,7 @@ from avaliador_b3.empresa.comportamento import (
 )
 from avaliador_b3.graficos import (
     agregar_dividendos_por_ano,
+    calcular_dividend_yield_por_ano,
     montar_mapa_conflitos,
     normalizar_base_100,
 )
@@ -100,13 +101,21 @@ COLUNAS_TABELA_CARTEIRA = [
 ]
 
 
-def _buscar_historico(ticker: str, periodo: str) -> tuple[pd.DataFrame | None, str | None]:
+def _buscar_historico(
+    ticker: str, periodo: str, auto_adjust: bool = True
+) -> tuple[pd.DataFrame | None, str | None]:
     """Histórico de preço da ação. `periodo` varia por uso: a mesma janela
     curta (`PERIODO_HISTORICO_COMPORTAMENTO`) serve pro preço atual (último
     fechamento) e pra volume/volatilidade; Beta usa uma janela própria mais
-    longa (`PERIODO_BETA`) — ver o comentário em config.py."""
+    longa (`PERIODO_BETA`) — ver o comentário em config.py.
+
+    `auto_adjust=True` (padrão) pra tudo que é cálculo de RETORNO (Beta,
+    volatilidade, "Preço vs. Ibovespa"). O Dividend Yield histórico é a
+    única exceção — precisa do preço NOMINAL da época, não ajustado
+    retroativamente por dividendos futuros — ver o docstring de
+    `ingest.precos.obter_historico`."""
     try:
-        return obter_historico(ticker, periodo=periodo), None
+        return obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust), None
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
 
@@ -712,16 +721,106 @@ with aba_analisar:
                 if dividendos_por_ano.empty:
                     st.info("Nenhum dividendo pago no histórico disponível.")
                 else:
-                    figura_dividendos = go.Figure(
-                        go.Bar(x=dividendos_por_ano["ano"], y=dividendos_por_ano["total"])
+                    # period="max" (não reaproveita o histórico de 1 ano já
+                    # buscado pro Beta/gráfico de preço acima) porque o Dividend
+                    # Yield por ano precisa do preço médio de TODOS os anos com
+                    # dividendo pago, que podem ir bem além de 1 ano atrás.
+                    # auto_adjust=False: preço NOMINAL da época, não ajustado
+                    # retroativamente por dividendos futuros — ver docstring de
+                    # _buscar_historico/ingest.precos.obter_historico.
+                    historico_max, erro_historico_max = _buscar_historico(
+                        ticker, "max", auto_adjust=False
                     )
+                    dividend_yield_por_ano = calcular_dividend_yield_por_ano(
+                        dividendos_por_ano,
+                        historico_max
+                        if not erro_historico_max
+                        else pd.DataFrame(columns=["data", "Close"]),
+                    )
+
+                    figura_dividendos = go.Figure()
+                    figura_dividendos.add_trace(
+                        go.Bar(
+                            x=dividendos_por_ano["ano"],
+                            y=dividendos_por_ano["total"],
+                            name="Dividendos",
+                            text=dividendos_por_ano["total"],
+                            texttemplate="R$ %{text:.2f}",
+                            textposition="outside",
+                            hovertemplate="R$ %{y:.2f}<extra></extra>",
+                        )
+                    )
+                    if not dividend_yield_por_ano.empty:
+                        figura_dividendos.add_trace(
+                            go.Scatter(
+                                x=dividend_yield_por_ano["ano"],
+                                y=dividend_yield_por_ano["yield_percentual"],
+                                name="Dividend Yield",
+                                mode="lines+markers+text",
+                                text=dividend_yield_por_ano["yield_percentual"],
+                                texttemplate="%{text:.1f}%",
+                                textposition="top center",
+                                yaxis="y2",
+                                hovertemplate="%{y:.1f}%<extra></extra>",
+                            )
+                        )
                     figura_dividendos.update_layout(
                         yaxis_title="Total pago no ano (R$/ação)",
                         xaxis_title="Ano",
                         xaxis={"type": "category"},
-                        margin={"t": 20},
+                        yaxis2={
+                            "title": "Dividend Yield (%)",
+                            "overlaying": "y",
+                            "side": "right",
+                            "showgrid": False,
+                        },
+                        hovermode="x unified",
+                        legend={
+                            "orientation": "h",
+                            "yanchor": "bottom",
+                            "y": 1.02,
+                            "xanchor": "left",
+                            "x": 0,
+                        },
+                        margin={"t": 40},
                     )
                     st.plotly_chart(figura_dividendos, use_container_width=True)
+
+                    # Degradação transparente: yield ausente ou parcial não é
+                    # erro, mas merece uma linha explicando o motivo — mesmo
+                    # padrão de aviso nomeado usado no resto do projeto.
+                    if erro_historico_max:
+                        st.caption(f"Dividend Yield indisponível: {erro_historico_max}")
+                    elif dividend_yield_por_ano.empty:
+                        st.caption(
+                            "Dividend Yield indisponível — sem preço histórico "
+                            "suficiente pros anos com dividendo pago."
+                        )
+                    else:
+                        if len(dividend_yield_por_ano) < len(dividendos_por_ano):
+                            st.caption(
+                                "Dividend Yield mostrado só pros anos com preço "
+                                "histórico disponível — ação listada há menos "
+                                "tempo que o histórico de dividendos."
+                            )
+                        # Limitação conhecida da FONTE (yfinance), não do
+                        # cálculo — mesmo padrão de transparência já usado pra
+                        # outras limitações do yfinance no projeto (ver
+                        # ingest/precos.py). Quando a empresa fragmenta o
+                        # dividendo de uma mesma data em várias parcelas (comum
+                        # na Petrobras, dividendo + JCP anunciados juntos), o
+                        # yfinance às vezes só captura parte do valor total
+                        # daquele dia — confirmado comparando PETR4 2022 contra
+                        # uma fonte de mercado externa (dadosdemercado.com.br):
+                        # yfinance perdeu ~R$1,61/ação de um único dia
+                        # (22/11/2022) por esse motivo. Não é um remendo
+                        # perseguível caso a caso, só uma limitação a avisar.
+                        st.caption(
+                            "Dividend Yield histórico pode ficar um pouco "
+                            "subestimado em anos com dividendo pago em várias "
+                            "parcelas no mesmo dia — limitação de completude de "
+                            "dado do yfinance, não do cálculo."
+                        )
 
         with coluna_comparacao_setorial:
             st.subheader("Comparação setorial")

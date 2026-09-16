@@ -62,12 +62,24 @@ def _ticker_yahoo(ticker: str) -> str:
     return ticker + SUFIXO_TICKER_B3
 
 
-def _caminho_cache(ticker_yahoo: str, periodo: str, diretorio_cache: Path) -> Path:
+def _caminho_cache(
+    ticker_yahoo: str, periodo: str, diretorio_cache: Path, auto_adjust: bool = True
+) -> Path:
     # O período precisa fazer parte da chave de cache — sem isso, pedir o
     # mesmo ticker com períodos diferentes (ex: "3mo" pra volume/
     # volatilidade e "1y" pra Beta) faz uma busca sobrescrever o cache da
     # outra, e uma delas passa a ler dado do período errado silenciosamente.
-    return diretorio_cache / "precos" / f"{ticker_yahoo}_{periodo}.csv"
+    # `auto_adjust` também precisa fazer parte da chave, pelo mesmo motivo:
+    # preço ajustado (retroativamente por todos os dividendos futuros, bom
+    # pra cálculo de retorno/Beta) e preço nominal da época (bom pra
+    # Dividend Yield histórico, ver graficos.calcular_dividend_yield_por_ano)
+    # são dados BEM diferentes pro mesmo ticker/período — sem isso, uma
+    # busca sobrescreveria o cache da outra silenciosamente, igual ao bug
+    # de período já corrigido aqui. Sem sufixo no caso padrão (auto_adjust
+    # True) pra não invalidar nenhum cache já gravado em disco antes dessa
+    # mudança.
+    sufixo_ajuste = "" if auto_adjust else "_naoajustado"
+    return diretorio_cache / "precos" / f"{ticker_yahoo}_{periodo}{sufixo_ajuste}.csv"
 
 
 def _cache_valido(caminho: Path, ttl_segundos: int) -> bool:
@@ -85,6 +97,7 @@ def obter_historico(
     ttl_segundos: int = TTL_CACHE_PRECOS_SEGUNDOS,
     diretorio_cache: Path = DATA_RAW_DIR,
     delay_segundos: float = DELAY_PRECOS_SEGUNDOS,
+    auto_adjust: bool = True,
 ) -> pd.DataFrame:
     """Busca o histórico de preços de uma ação da B3.
 
@@ -97,9 +110,23 @@ def obter_historico(
     `delay_segundos` é aplicado antes de cada requisição real (não em
     cache hit) — existe pra não bater rápido demais no yfinance quando o
     screener passar por várias dezenas de tickers em sequência.
+
+    `auto_adjust` (padrão `True`, igual ao padrão do yfinance) controla se
+    "Close" vem ajustado retroativamente por dividendos (e splits) — bom
+    pra cálculo de RETORNO (Beta, volatilidade, "Preço vs. Ibovespa"), já
+    que aí o que importa é a variação percentual real pro investidor,
+    dividendo incluso. Passar `auto_adjust=False` devolve o preço NOMINAL
+    de cada dia (o que realmente foi negociado na época) — necessário pra
+    Dividend Yield histórico (`graficos.calcular_dividend_yield_por_ano`):
+    usar o preço ajustado ali sub-avalia (às vezes bem) o preço da época,
+    porque um ajuste retroativo por TODOS os dividendos futuros também
+    "desconta" dividendos que ainda nem tinham sido pagos naquele
+    momento — bug real encontrado comparando o Dividend Yield de 2021 da
+    PETR4 contra uma fonte de mercado externa (~20% esperado, 73,5%
+    calculado com preço ajustado).
     """
     ticker_yahoo = _ticker_yahoo(ticker)
-    caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache)
+    caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache, auto_adjust)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
         return pd.read_csv(caminho, parse_dates=["data"])
@@ -108,7 +135,7 @@ def obter_historico(
         time.sleep(delay_segundos)
 
     try:
-        historico = yf.Ticker(ticker_yahoo).history(period=periodo)
+        historico = yf.Ticker(ticker_yahoo).history(period=periodo, auto_adjust=auto_adjust)
     except yf.exceptions.YFTickerMissingError as erro:
         raise TickerInvalido(
             f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance."

@@ -31,8 +31,9 @@ class _TickerFalso:
         self.chamadas = 0
         self.chamadas_dividendos = 0
 
-    def history(self, period):
+    def history(self, period, auto_adjust=True):
         self.chamadas += 1
+        self.ultimo_auto_adjust = auto_adjust
         if self._excecao is not None:
             raise self._excecao
         return self._resultado
@@ -167,7 +168,7 @@ def test_obter_historico_cache_nao_mistura_periodos_diferentes(tmp_path, monkeyp
     chamadas_por_periodo = {"3mo": 0, "1y": 0}
 
     class _TickerFalsoPorPeriodo:
-        def history(self, period):
+        def history(self, period, auto_adjust=True):
             chamadas_por_periodo[period] += 1
             return historico_3mo if period == "3mo" else historico_1y
 
@@ -182,6 +183,57 @@ def test_obter_historico_cache_nao_mistura_periodos_diferentes(tmp_path, monkeyp
     assert chamadas_por_periodo == {"3mo": 1, "1y": 1}
     assert (tmp_path / "precos" / "PETR4.SA_3mo.csv").exists()
     assert (tmp_path / "precos" / "PETR4.SA_1y.csv").exists()
+
+
+def test_obter_historico_usa_auto_adjust_true_por_padrao(tmp_path, monkeypatch):
+    # Padrão do yfinance, correto pra cálculo de RETORNO (Beta,
+    # volatilidade, "Preço vs. Ibovespa") — mesmo comportamento de sempre,
+    # só confirmado explicitamente aqui.
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+    assert ticker_falso.ultimo_auto_adjust is True
+
+
+def test_obter_historico_repassa_auto_adjust_false_pro_yfinance(tmp_path, monkeypatch):
+    # Preço NOMINAL da época (não ajustado por dividendos futuros) —
+    # necessário pro Dividend Yield histórico, ver
+    # graficos.calcular_dividend_yield_por_ano e o docstring de
+    # obter_historico pro bug real que isso corrigiu (PETR4 2021: 73,5%
+    # calculado com preço ajustado vs. ~20% esperado, preço nominal).
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    precos.obter_historico("PETR4", diretorio_cache=tmp_path, auto_adjust=False)
+
+    assert ticker_falso.ultimo_auto_adjust is False
+
+
+def test_obter_historico_cache_nao_mistura_auto_adjust_diferente(tmp_path, monkeypatch):
+    # Regressão do bug real: preço ajustado e preço nominal são dados BEM
+    # diferentes pro mesmo ticker/período — sem uma chave de cache
+    # separada, uma busca sobrescreveria (ou leria) o cache da outra
+    # silenciosamente, mesma categoria do bug de período já coberto acima.
+    chamadas_por_auto_adjust = {True: 0, False: 0}
+
+    class _TickerFalsoPorAjuste:
+        def history(self, period, auto_adjust=True):
+            chamadas_por_auto_adjust[auto_adjust] += 1
+            return _historico_falso()
+
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: _TickerFalsoPorAjuste())
+
+    precos.obter_historico("PETR4", periodo="max", diretorio_cache=tmp_path, auto_adjust=True)
+    precos.obter_historico("PETR4", periodo="max", diretorio_cache=tmp_path, auto_adjust=False)
+    # Refazer a busca ajustada precisa vir do cache ajustado, não do
+    # cache "não ajustado" que foi buscado depois.
+    precos.obter_historico("PETR4", periodo="max", diretorio_cache=tmp_path, auto_adjust=True)
+
+    assert chamadas_por_auto_adjust == {True: 1, False: 1}
+    assert (tmp_path / "precos" / "PETR4.SA_max.csv").exists()
+    assert (tmp_path / "precos" / "PETR4.SA_max_naoajustado.csv").exists()
 
 
 def test_obter_historico_forcar_atualizacao_ignora_cache_valido(tmp_path, monkeypatch):

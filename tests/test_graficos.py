@@ -117,6 +117,65 @@ def test_agregar_dividendos_por_ano_com_fuso_horario():
     assert agregado["total"].iloc[0] == pytest.approx(0.7)
 
 
+# --- calcular_dividend_yield_por_ano ------------------------------------------
+
+
+def _historico_precos(pares: list[tuple[str, float]]) -> pd.DataFrame:
+    # tz-aware igual ao que obter_historico devolve de verdade (ver
+    # ingest/precos.py) — .dt.year precisa funcionar igual nesse caso.
+    datas = pd.to_datetime([data for data, _ in pares], utc=True)
+    fechamentos = [fechamento for _, fechamento in pares]
+    return pd.DataFrame({"data": datas, "Close": fechamentos})
+
+
+def test_yield_e_dividendo_do_ano_dividido_pelo_preco_medio_do_ano():
+    dividendos_por_ano = pd.DataFrame({"ano": [2024], "total": [2.0]})
+    # Preço médio de 2024 = (20 + 30 + 40) / 3 = 30.0
+    historico = _historico_precos(
+        [("2024-01-01", 20.0), ("2024-06-01", 30.0), ("2024-12-01", 40.0)]
+    )
+
+    yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico)
+
+    assert list(yield_por_ano["ano"]) == [2024]
+    assert yield_por_ano["yield_percentual"].iloc[0] == pytest.approx(2.0 / 30.0 * 100)
+
+
+def test_omite_ano_de_dividendo_sem_preco_historico_disponivel():
+    # Ação listada há menos tempo que o histórico de dividendos — 2020 não
+    # tem nenhum candle no histórico de preço (ex: period="max" mais curto
+    # que o histórico de dividendos) — deve sumir do resultado, não virar
+    # um yield com denominador inventado.
+    dividendos_por_ano = pd.DataFrame({"ano": [2020, 2024], "total": [1.0, 2.0]})
+    historico = _historico_precos([("2024-06-01", 25.0)])
+
+    yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico)
+
+    assert list(yield_por_ano["ano"]) == [2024]
+
+
+def test_sem_nenhum_dividendo_devolve_yield_vazio_sem_erro():
+    dividendos_por_ano = pd.DataFrame(columns=["ano", "total"])
+    historico = _historico_precos([("2024-06-01", 25.0)])
+
+    yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico)
+
+    assert yield_por_ano.empty
+    assert list(yield_por_ano.columns) == ["ano", "yield_percentual"]
+
+
+def test_sem_nenhum_preco_historico_devolve_yield_vazio_sem_erro():
+    # Falha/ausência total do histórico "max" (não só de um ano isolado)
+    # não pode quebrar o cálculo — mesmo critério de degradação graciosa
+    # usado no resto do projeto.
+    dividendos_por_ano = pd.DataFrame({"ano": [2024], "total": [2.0]})
+    historico_vazio = pd.DataFrame(columns=["data", "Close"])
+
+    yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico_vazio)
+
+    assert yield_por_ano.empty
+
+
 # --- montar_mapa_conflitos ---------------------------------------------------
 
 
