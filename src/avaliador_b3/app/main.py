@@ -19,11 +19,17 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
-from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_carteira
+from avaliador_b3.carteira import (
+    calcular_cagr_implicito,
+    calcular_ganho_nominal_vs_real,
+    calcular_totais_carteira,
+    montar_tabela_carteira,
+)
 from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    HORIZONTE_PROJECAO_FCD_ANOS,
     JANELA_MONITOR_CONFLITOS_HORAS,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
@@ -46,6 +52,9 @@ from avaliador_b3.graficos import (
     calcular_dividend_yield_por_ano,
     montar_mapa_conflitos,
     normalizar_base_100,
+    projetar_curva_composta,
+    projetar_curva_inflacao,
+    projetar_curva_linear,
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.bcb_sgs import obter_serie
@@ -1065,6 +1074,199 @@ with aba_carteira:
                         f"{totais_carteira['quantidade_sem_cenario']} ação(ões) sem cenário "
                         "não entram nos totais projetados, mas o valor investido nelas está "
                         "incluído em \"Investido\"."
+                    )
+
+                st.divider()
+                st.subheader("Projeção de crescimento")
+                st.caption(
+                    "Projeção baseada nos modelos de valor justo do próprio projeto "
+                    "(Graham/Bazin/FCD) — não é garantia nem previsão de mercado."
+                )
+
+                n_anos = HORIZONTE_PROJECAO_FCD_ANOS
+                soma_investida = totais_carteira["soma_investida"]
+                valor_por_cenario = {
+                    "pessimista": totais_carteira["total_pessimista"],
+                    "base": totais_carteira["total_base"],
+                    "otimista": totais_carteira["total_otimista"],
+                }
+                cagr_por_cenario = {
+                    cenario: calcular_cagr_implicito(soma_investida, valor, n_anos)
+                    for cenario, valor in valor_por_cenario.items()
+                }
+                ROTULO_CENARIO = {
+                    "pessimista": "Pessimista",
+                    "base": "Base",
+                    "otimista": "Otimista",
+                }
+
+                # "\$" (não "$" cru): st.write renderiza markdown, e "$...$"
+                # vira LaTeX — com 3 "R$" na mesma frase, os dois primeiros
+                # formam um par e o Streamlit tenta renderizar o trecho entre
+                # eles como fórmula matemática. Bug real encontrado testando
+                # essa frase no navegador.
+                st.write(
+                    f"R\\$ {soma_investida:.2f} investidos hoje podem valer entre "
+                    f"R\\$ {valor_por_cenario['pessimista']:.2f} (pessimista) e "
+                    f"R\\$ {valor_por_cenario['otimista']:.2f} (otimista) em {n_anos} anos."
+                )
+                for cenario, rotulo in ROTULO_CENARIO.items():
+                    cagr = cagr_por_cenario[cenario]
+                    if cagr is not None:
+                        st.caption(f"{rotulo}: equivale a {cagr * 100:.1f}% ao ano.")
+                    else:
+                        # Cenário com valor projetado não positivo (possível com
+                        # FCD muito sensível numa ação específica) não tem taxa
+                        # composta real — ver docstring de calcular_cagr_implicito.
+                        st.caption(
+                            f"{rotulo}: sem taxa composta real (valor projetado "
+                            "não positivo)."
+                        )
+
+                with st.expander("Como funciona essa projeção?"):
+                    st.markdown(
+                        "Os valores pessimista, base e otimista vêm dos mesmos três "
+                        "cenários calculados para cada ação (o menor, a média, e o "
+                        "maior entre os métodos de valor justo aplicáveis — Graham, "
+                        "Bazin e FCD). A partir do valor investido hoje e do valor de "
+                        "cada cenário, calculamos a taxa de crescimento anual que "
+                        f"levaria de um até o outro em {n_anos} anos — essa é a curva "
+                        "'Com juros compostos'. A versão 'Sem juros compostos' "
+                        "distribui o mesmo crescimento total do período de forma "
+                        "linear, ano a ano, só para comparação visual. A linha de "
+                        "inflação projeta o mesmo valor investido corrigido pelo IPCA "
+                        "dos últimos 12 meses, mantido constante — não é uma previsão "
+                        "de inflação futura, é uma suposição de referência."
+                    )
+
+                # IPCA já é buscado (e cacheado por 1h) na aba "Analisar uma
+                # ação" pro WACC do FCD — reaproveita a mesma busca aqui, não
+                # dispara nada novo se já tiver rodado nessa sessão.
+                _, ipca_12m_carteira, erro_macro_carteira = _buscar_macro()
+
+                SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
+                SELECAO_LINEAR = "Sem juros compostos (linear)"
+                SELECAO_INFLACAO = "Inflação (IPCA)"
+                CORES_CENARIO = {
+                    "pessimista": "#EF553B",
+                    "base": "#636EFA",
+                    "otimista": "#00CC96",
+                }
+
+                opcoes_selecionadas = (
+                    st.pills(
+                        "Mostrar no gráfico",
+                        options=[SELECAO_JUROS_COMPOSTOS, SELECAO_LINEAR, SELECAO_INFLACAO],
+                        selection_mode="multi",
+                        default=[SELECAO_JUROS_COMPOSTOS],
+                    )
+                    or []
+                )
+
+                if not opcoes_selecionadas:
+                    st.info("Selecione ao menos uma opção acima pra ver o gráfico.")
+                else:
+                    fig_projecao = go.Figure()
+
+                    if SELECAO_JUROS_COMPOSTOS in opcoes_selecionadas:
+                        for cenario, rotulo in ROTULO_CENARIO.items():
+                            cagr = cagr_por_cenario[cenario]
+                            if cagr is None:
+                                continue
+                            curva = projetar_curva_composta(soma_investida, cagr, n_anos)
+                            fig_projecao.add_trace(
+                                go.Scatter(
+                                    x=curva["ano"],
+                                    y=curva["valor"],
+                                    mode="lines",
+                                    name=f"{rotulo} (composto)",
+                                    line={"color": CORES_CENARIO[cenario]},
+                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                )
+                            )
+
+                    if SELECAO_LINEAR in opcoes_selecionadas:
+                        for cenario, rotulo in ROTULO_CENARIO.items():
+                            curva = projetar_curva_linear(
+                                soma_investida, valor_por_cenario[cenario], n_anos
+                            )
+                            fig_projecao.add_trace(
+                                go.Scatter(
+                                    x=curva["ano"],
+                                    y=curva["valor"],
+                                    mode="lines",
+                                    name=f"{rotulo} (linear)",
+                                    line={"color": CORES_CENARIO[cenario], "dash": "dash"},
+                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                )
+                            )
+
+                    if SELECAO_INFLACAO in opcoes_selecionadas:
+                        if ipca_12m_carteira is None:
+                            st.caption(f"Inflação (IPCA) indisponível: {erro_macro_carteira}")
+                        else:
+                            curva_ipca = projetar_curva_inflacao(
+                                soma_investida, ipca_12m_carteira, n_anos
+                            )
+                            fig_projecao.add_trace(
+                                go.Scatter(
+                                    x=curva_ipca["ano"],
+                                    y=curva_ipca["valor"],
+                                    mode="lines",
+                                    name="Inflação (IPCA, suposição constante)",
+                                    line={"color": "#00d4ff", "dash": "dot"},
+                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                )
+                            )
+
+                    if fig_projecao.data:
+                        fig_projecao.update_layout(
+                            xaxis_title="Anos",
+                            yaxis_title="Valor projetado (R$)",
+                            hovermode="x unified",
+                            margin={"t": 20},
+                        )
+                        st.plotly_chart(fig_projecao, use_container_width=True)
+                    else:
+                        st.info(
+                            "Nada pra mostrar — os cenários selecionados não têm dado "
+                            "disponível (ver avisos acima)."
+                        )
+
+                if ipca_12m_carteira is None:
+                    st.caption(
+                        f"Ganho real (descontado o IPCA) indisponível: {erro_macro_carteira}"
+                    )
+                else:
+                    st.caption(f"Ganho nominal vs. real (descontado o IPCA) em {n_anos} anos:")
+                    tabela_ganho = pd.DataFrame(
+                        [
+                            {
+                                "cenario": rotulo,
+                                **calcular_ganho_nominal_vs_real(
+                                    soma_investida,
+                                    valor_por_cenario[cenario],
+                                    ipca_12m_carteira,
+                                    n_anos,
+                                ),
+                            }
+                            for cenario, rotulo in ROTULO_CENARIO.items()
+                        ]
+                    )
+                    st.dataframe(
+                        tabela_ganho,
+                        column_order=["cenario", "ganho_nominal", "ganho_real"],
+                        column_config={
+                            "cenario": "Cenário",
+                            "ganho_nominal": st.column_config.NumberColumn(
+                                "Ganho nominal", format="R$ %.2f"
+                            ),
+                            "ganho_real": st.column_config.NumberColumn(
+                                "Ganho real (IPCA)", format="R$ %.2f"
+                            ),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
                     )
 
 with aba_correlacao:

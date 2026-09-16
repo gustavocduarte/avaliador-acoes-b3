@@ -28,6 +28,49 @@ def normalizar_base_100(serie: pd.Series) -> pd.Series:
     return serie / primeiro_valor * 100
 
 
+def projetar_curva_composta(valor_investido: float, cagr: float, anos: int) -> pd.DataFrame:
+    """Curva ano a ano de `valor_investido` crescendo a juros compostos a
+    `cagr` (decimal, ver `carteira.calcular_cagr_implicito`) por `anos`
+    anos: `valor_investido × (1 + cagr) ^ t`, pra `t` de 0 a `anos`
+    (inclusive nas duas pontas — `anos + 1` pontos ao todo).
+
+    Devolve um DataFrame com colunas `ano` e `valor`."""
+    anos_lista = list(range(anos + 1))
+    return pd.DataFrame(
+        {"ano": anos_lista, "valor": [valor_investido * (1 + cagr) ** t for t in anos_lista]}
+    )
+
+
+def projetar_curva_linear(valor_investido: float, valor_destino: float, anos: int) -> pd.DataFrame:
+    """Curva ano a ano de `valor_investido` crescendo em linha reta
+    (crescimento simples, não composto) até `valor_destino` em `anos`
+    anos: `valor_investido + (valor_destino - valor_investido) × t/anos`.
+
+    Mesmo ponto inicial (`valor_investido`, ano 0) e final (`valor_destino`,
+    ano `anos`) da curva composta pro mesmo cenário — só a trajetória
+    intermediária difere, útil pra visualizar o efeito dos juros
+    compostos por contraste direto no mesmo gráfico."""
+    anos_lista = list(range(anos + 1))
+    incremento = valor_destino - valor_investido
+    return pd.DataFrame(
+        {
+            "ano": anos_lista,
+            "valor": [valor_investido + incremento * t / anos for t in anos_lista],
+        }
+    )
+
+
+def projetar_curva_inflacao(valor_investido: float, ipca_anual: float, anos: int) -> pd.DataFrame:
+    """Curva de referência: `valor_investido` corrigido pelo IPCA atual
+    (12 meses, decimal) composto ano a ano — mesma suposição de "IPCA
+    constante" (não uma previsão) documentada no resto do projeto (ver
+    `_buscar_macro` em app/main.py). Matematicamente idêntica a
+    `projetar_curva_composta` (juros compostos é juros compostos,
+    independente da taxa representar retorno de ação ou inflação) — nome
+    e uso semanticamente diferentes, por isso uma função própria."""
+    return projetar_curva_composta(valor_investido, ipca_anual, anos)
+
+
 def agregar_dividendos_por_ano(dividendos: pd.DataFrame) -> pd.DataFrame:
     """Soma os dividendos pagos por ano civil (ano da data de pagamento),
     devolvendo um DataFrame com colunas `ano` (int) e `total` (float),

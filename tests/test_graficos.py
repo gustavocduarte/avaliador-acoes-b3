@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from avaliador_b3 import graficos
+from avaliador_b3 import carteira, graficos
 from avaliador_b3.config import PONTOS_ESTRATEGICOS_MAPA_CONFLITOS
 
 # --- normalizar_base_100 -----------------------------------------------------
@@ -48,6 +48,63 @@ def test_normalizar_base_100_ignora_nulos_iniciais_pro_primeiro_valor():
 
     assert normalizada.iloc[1] == pytest.approx(100.0)
     assert normalizada.iloc[2] == pytest.approx(110.0)
+
+
+# --- projetar_curva_composta / projetar_curva_linear / projetar_curva_inflacao
+
+
+def test_curva_composta_tem_anos_mais_1_pontos_com_extremos_corretos():
+    curva = graficos.projetar_curva_composta(1000.0, 0.10, 5)
+
+    assert list(curva["ano"]) == [0, 1, 2, 3, 4, 5]
+    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
+    assert curva["valor"].iloc[-1] == pytest.approx(1000.0 * 1.10**5)
+
+
+def test_curva_composta_e_curva_linear_tem_mesmo_ponto_inicial_e_final():
+    # Mesmo início/fim, trajetória diferente — é o contraste que o
+    # gráfico quer mostrar (efeito dos juros compostos).
+    valor_investido, valor_destino, anos = 1000.0, 2000.0, 5
+    cagr = carteira.calcular_cagr_implicito(valor_investido, valor_destino, anos)
+    assert cagr is not None
+
+    composta = graficos.projetar_curva_composta(valor_investido, cagr, anos)
+    linear = graficos.projetar_curva_linear(valor_investido, valor_destino, anos)
+
+    assert composta["valor"].iloc[0] == pytest.approx(linear["valor"].iloc[0])
+    assert composta["valor"].iloc[-1] == pytest.approx(linear["valor"].iloc[-1])
+
+
+def test_curva_composta_e_linear_diferem_nos_pontos_intermediarios():
+    # Juros compostos crescem mais devagar no início e aceleram depois —
+    # no meio do horizonte, o valor composto fica ABAIXO do linear quando
+    # o destino é maior que o investido (convexidade da curva exponencial).
+    valor_investido, valor_destino, anos = 1000.0, 2000.0, 5
+    cagr = 2 ** (1 / 5) - 1
+
+    composta = graficos.projetar_curva_composta(valor_investido, cagr, anos)
+    linear = graficos.projetar_curva_linear(valor_investido, valor_destino, anos)
+
+    meio = 2  # ano intermediário, nem ponta nem fim
+    assert composta["valor"].iloc[meio] != pytest.approx(linear["valor"].iloc[meio])
+    assert composta["valor"].iloc[meio] < linear["valor"].iloc[meio]
+
+
+def test_curva_linear_funciona_com_destino_negativo():
+    # Cenário pessimista de valor combinado negativo (possível no
+    # projeto) não tem CAGR real, mas a reta linear é sempre calculável.
+    curva = graficos.projetar_curva_linear(1000.0, -200.0, 5)
+
+    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
+    assert curva["valor"].iloc[-1] == pytest.approx(-200.0)
+    assert curva["valor"].is_monotonic_decreasing
+
+
+def test_curva_inflacao_e_composta_com_a_taxa_do_ipca():
+    curva_inflacao = graficos.projetar_curva_inflacao(1000.0, 0.05, 5)
+    curva_composta_equivalente = graficos.projetar_curva_composta(1000.0, 0.05, 5)
+
+    pd.testing.assert_frame_equal(curva_inflacao, curva_composta_equivalente)
 
 
 # --- agregar_dividendos_por_ano ----------------------------------------------

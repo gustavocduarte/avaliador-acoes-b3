@@ -125,6 +125,48 @@ def montar_tabela_carteira(
     return pd.DataFrame(linhas)
 
 
+def calcular_cagr_implicito(
+    valor_investido: float, valor_destino: float, anos: int
+) -> float | None:
+    """Taxa de crescimento anual composta (CAGR, em decimal — 0,10 = 10%
+    a.a.) implícita pra ir de `valor_investido` até `valor_destino` em
+    `anos` anos: `(valor_destino / valor_investido) ** (1 / anos) - 1`.
+
+    Devolve `None` (não um número inventado) quando o cálculo não tem
+    solução real: `valor_investido` ou `anos` não positivos (divisão por
+    zero), ou `valor_destino` não positivo — um cenário de valor
+    combinado negativo é possível no projeto (ver screener, ex: FCD muito
+    sensível pra uma ação específica) e não tem uma taxa composta real
+    correspondente, já que raiz de índice par de número negativo não
+    existe nos reais. O chamador deve tratar `None` como "sem CAGR pra
+    esse cenário", não substituir por zero."""
+    if valor_investido <= 0 or valor_destino <= 0 or anos <= 0:
+        return None
+    return (valor_destino / valor_investido) ** (1 / anos) - 1
+
+
+def calcular_ganho_nominal_vs_real(
+    valor_investido: float, valor_destino: float, ipca_anual: float, anos: int
+) -> dict:
+    """Ganho nominal (R$ de amanhã, sem desconto nenhum) vs. ganho real
+    (R$ de hoje, descontando a inflação projetada pelo IPCA atual — ver
+    `ipca_anual`, mesma suposição de "IPCA constante" documentada no
+    resto do projeto) pra ir de `valor_investido` até `valor_destino` em
+    `anos` anos.
+
+    `valor_destino_real` é `valor_destino` deflacionado pela inflação
+    acumulada no período — o quanto aquele valor futuro vale em poder de
+    compra de hoje. `ganho_real` pode ser menor que `ganho_nominal` (ou
+    até negativo, mesmo com `ganho_nominal` positivo) quando o retorno
+    projetado não acompanha a inflação."""
+    valor_destino_real = valor_destino / (1 + ipca_anual) ** anos
+    return {
+        "ganho_nominal": valor_destino - valor_investido,
+        "valor_destino_real": valor_destino_real,
+        "ganho_real": valor_destino_real - valor_investido,
+    }
+
+
 def calcular_totais_carteira(tabela_carteira: pd.DataFrame) -> dict:
     """Totais da carteira: soma investida (todos os tickers selecionados,
     mesmo os sem cenário — o dinheiro foi alocado do mesmo jeito) e o

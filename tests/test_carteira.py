@@ -219,3 +219,67 @@ def test_calcular_totais_soma_projecoes_de_multiplas_acoes_aplicaveis():
     assert totais["soma_investida"] == pytest.approx(2000.0)
     assert totais["total_base"] == pytest.approx(2500.0)
     assert totais["quantidade_sem_cenario"] == 0
+
+
+# --- calcular_cagr_implicito --------------------------------------------------
+
+
+def test_cagr_implicito_dobra_o_valor_em_5_anos():
+    # 2^(1/5) - 1 ≈ 14,87% a.a. — conferência manual clássica de CAGR.
+    cagr = carteira.calcular_cagr_implicito(1000.0, 2000.0, 5)
+    assert cagr == pytest.approx(2 ** (1 / 5) - 1)
+    assert cagr == pytest.approx(0.148698, abs=1e-5)
+
+
+def test_cagr_implicito_valor_destino_igual_ao_investido_e_zero():
+    assert carteira.calcular_cagr_implicito(1000.0, 1000.0, 5) == pytest.approx(0.0)
+
+
+def test_cagr_implicito_negativo_quando_destino_menor_que_investido():
+    cagr = carteira.calcular_cagr_implicito(1000.0, 500.0, 5)
+    assert cagr < 0
+    assert cagr == pytest.approx(0.5 ** (1 / 5) - 1)
+
+
+def test_cagr_implicito_e_none_quando_valor_destino_nao_positivo():
+    # Cenário pessimista de valor combinado negativo é possível no projeto
+    # (FCD muito sensível numa ação específica) — sem CAGR real correspondente.
+    assert carteira.calcular_cagr_implicito(1000.0, -50.0, 5) is None
+    assert carteira.calcular_cagr_implicito(1000.0, 0.0, 5) is None
+
+
+def test_cagr_implicito_e_none_quando_investido_ou_anos_nao_positivos():
+    assert carteira.calcular_cagr_implicito(0.0, 2000.0, 5) is None
+    assert carteira.calcular_cagr_implicito(-100.0, 2000.0, 5) is None
+    assert carteira.calcular_cagr_implicito(1000.0, 2000.0, 0) is None
+
+
+# --- calcular_ganho_nominal_vs_real -------------------------------------------
+
+
+def test_ganho_nominal_vs_real_com_inflacao_positiva():
+    # Investido 1000, destino nominal 2000 em 5 anos, IPCA 5% a.a.
+    # Valor real = 2000 / 1.05^5 ≈ 1567,05.
+    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, 0.05, 5)
+
+    assert resultado["ganho_nominal"] == pytest.approx(1000.0)
+    assert resultado["valor_destino_real"] == pytest.approx(2000.0 / 1.05**5)
+    assert resultado["ganho_real"] == pytest.approx(2000.0 / 1.05**5 - 1000.0)
+    assert resultado["ganho_real"] < resultado["ganho_nominal"]
+
+
+def test_ganho_nominal_vs_real_sem_inflacao_os_dois_ganhos_sao_iguais():
+    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, 0.0, 5)
+
+    assert resultado["ganho_nominal"] == pytest.approx(1000.0)
+    assert resultado["ganho_real"] == pytest.approx(1000.0)
+
+
+def test_ganho_nominal_vs_real_ganho_nominal_positivo_mas_real_negativo():
+    # Retorno nominal de 10% em 5 anos com IPCA acumulado bem maior que
+    # isso — poder de compra final fica abaixo do investido, mesmo com
+    # "lucro" nominal positivo.
+    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 1100.0, 0.15, 5)
+
+    assert resultado["ganho_nominal"] == pytest.approx(100.0)
+    assert resultado["ganho_real"] < 0
