@@ -27,6 +27,7 @@ from avaliador_b3.config import (
     JANELA_MONITOR_CONFLITOS_HORAS,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
+    PERIODO_PRECO_ATUAL,
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
 )
@@ -104,10 +105,12 @@ COLUNAS_TABELA_CARTEIRA = [
 def _buscar_historico(
     ticker: str, periodo: str, auto_adjust: bool = True
 ) -> tuple[pd.DataFrame | None, str | None]:
-    """Histórico de preço da ação. `periodo` varia por uso: a mesma janela
-    curta (`PERIODO_HISTORICO_COMPORTAMENTO`) serve pro preço atual (último
-    fechamento) e pra volume/volatilidade; Beta usa uma janela própria mais
-    longa (`PERIODO_BETA`) — ver o comentário em config.py.
+    """Histórico de preço da ação. `periodo` varia por uso: a janela curta
+    `PERIODO_HISTORICO_COMPORTAMENTO` serve pra volume/volatilidade; Beta
+    usa uma janela própria mais longa (`PERIODO_BETA`); o card "Preço
+    atual" usa `PERIODO_PRECO_ATUAL`, separado dos outros dois — ver o
+    comentário em config.py (o histórico diário mais longo atrasa um
+    pregão inteiro, até já encerrado).
 
     `auto_adjust=True` (padrão) pra tudo que é cálculo de RETORNO (Beta,
     volatilidade, "Preço vs. Ibovespa"). O Dividend Yield histórico é a
@@ -459,6 +462,16 @@ with aba_analisar:
     if buscar and ticker:
         with st.spinner(f"Buscando dados de {ticker}..."):
             historico, erro_historico = _buscar_historico(ticker, PERIODO_HISTORICO_COMPORTAMENTO)
+            # Busca separada (não reaproveita `historico`) só pro card "Preço
+            # atual": o endpoint de histórico diário do yfinance (o mesmo por
+            # trás de PERIODO_HISTORICO_COMPORTAMENTO) atrasa um pregão
+            # inteiro, mesmo já encerrado — period="1d" traz o fechamento
+            # mais recente disponível de verdade. Ver o comentário em
+            # config.py com a investigação completa (discrepância real
+            # encontrada contra o TradingView).
+            historico_preco_atual, erro_preco_atual = _buscar_historico(
+                ticker, PERIODO_PRECO_ATUAL
+            )
             historico_beta, erro_historico_beta = _buscar_historico(ticker, PERIODO_BETA)
             historico_ibovespa_beta, erro_historico_ibovespa_beta = _buscar_historico_ibovespa(
                 PERIODO_BETA
@@ -478,10 +491,10 @@ with aba_analisar:
 
         st.subheader(ticker)
 
-        if erro_historico:
-            st.error(f"Preço: {erro_historico}")
+        if erro_preco_atual:
+            st.error(f"Preço: {erro_preco_atual}")
         else:
-            st.metric("Preço atual", f"R$ {historico['Close'].iloc[-1]:.2f}")
+            st.metric("Preço atual", f"R$ {historico_preco_atual['Close'].iloc[-1]:.2f}")
 
         if erro_indicadores:
             st.warning(f"Fundamentus: {erro_indicadores}")

@@ -190,3 +190,69 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
     assert not at.exception
     assert any(subheader.value == "VALE3" for subheader in at.subheader)
+
+
+# --- "Preço atual" usa período separado do histórico de comportamento -------
+
+
+def _historico_por_periodo(fechamentos_por_periodo: dict[str, float]):
+    """Fake de `obter_historico` que devolve um Close DIFERENTE conforme o
+    `periodo` pedido — usado pra provar que "Preço atual" e o histórico de
+    volume/volatilidade vêm de buscas (períodos) separadas, não da mesma."""
+
+    def _fake(ticker, periodo="3mo", auto_adjust=True, **kwargs):
+        if periodo not in fechamentos_por_periodo:
+            raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+        return pd.DataFrame(
+            {
+                "data": pd.to_datetime(["2026-09-15"], utc=True),
+                "Close": [fechamentos_por_periodo[periodo]],
+                "Volume": [30_000_000],
+            }
+        )
+
+    return _fake
+
+
+def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
+    # Regressão: o histórico diário mais longo (period="3mo", usado pra
+    # volume/volatilidade) atrasa um pregão inteiro no yfinance, mesmo já
+    # encerrado — descoberto comparando "Preço atual" contra o preço ao
+    # vivo do widget do TradingView (PETR4: R$ 48,92 no card vs. R$ 50,43
+    # no TradingView, um pregão inteiro de defasagem). "Preço atual"
+    # precisa vir de PERIODO_PRECO_ATUAL ("1d"), não do mesmo histórico
+    # usado pra volume/volatilidade — os dois têm valores DIFERENTES aqui
+    # de propósito, pra provar que vêm de buscas separadas.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo({"1d": 50.43, "3mo": 48.92, "1y": 48.92}),
+    )
+
+    def _falha_fundamentus(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    def _falha_dividendos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_macro(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_dividendos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_macro)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    precos_atuais = [metrica for metrica in at.metric if metrica.label == "Preço atual"]
+    assert len(precos_atuais) == 1
+    assert precos_atuais[0].value == "R$ 50.43"

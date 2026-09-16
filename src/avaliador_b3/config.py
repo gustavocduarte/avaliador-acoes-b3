@@ -136,6 +136,22 @@ TICKER_IBOVESPA = "^BVSP"
 PERIODO_HISTORICO_COMPORTAMENTO = "3mo"
 PERIODO_BETA = "1y"
 
+# Período separado só pro card "Preço atual" (2026-09-16): investigando uma
+# discrepância real (PETR4 mostrando R$ 48,92 no nosso card contra R$ 50,43
+# ao vivo no widget do TradingView, ~3% de diferença batendo com a alta
+# intradiária do dia), confirmamos que o endpoint de histórico DIÁRIO do
+# yfinance (period="3mo"/"5d", usado em PERIODO_HISTORICO_COMPORTAMENTO)
+# atrasa um pregão inteiro — não só o candle do dia ainda em aberto, mesmo
+# o fechamento do dia anterior, já encerrado, pode estar ausente. Testado
+# diretamente contra o yfinance: period="5d" parou em 2026-09-14 (uma
+# segunda-feira), enquanto period="1d" já trazia o fechamento de
+# 2026-09-15 (R$ 50,43, batendo com o TradingView). "Preço atual" passou a
+# usar esse período separado; volume médio/volatilidade (mesmo bloco de
+# "Comportamento da ação") continuam em PERIODO_HISTORICO_COMPORTAMENTO —
+# o atraso de um pregão é um problema real pro preço mostrado como "atual"
+# na tela, mas irrelevante pra uma métrica de janela de 3 meses.
+PERIODO_PRECO_ATUAL = "1d"
+
 # Dividendos via yfinance (`Ticker.dividends`) — mesma fonte de preço,
 # confirmado em 2026-09-14 que já traz o histórico completo (ex: PETR4 tem
 # registros desde 2005). Diferente do preço, dividendo é declarado poucas
