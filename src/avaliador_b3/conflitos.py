@@ -1,21 +1,30 @@
-"""Monitor de conflitos: escopo de países relevantes por ação (a partir do
-setor), filtragem dos eventos de conflito do GDELT (`ingest.gdelt`) pra
-esses países, e orquestração da busca numa janela de várias horas.
+"""Monitor de conflitos: escopo de países monitorados, filtragem dos
+eventos de conflito do GDELT (`ingest.gdelt`) pra esses países, e
+orquestração da busca numa janela de várias horas.
 
 A maior parte deste módulo é lógica pura (`determinar_paises_relevantes`,
-`filtrar_eventos_por_paises`, `descrever_escopo_paises`) — recebe um
-DataFrame de eventos já buscado e o segmento setorial já resolvido, não
-busca nada. A exceção é `obter_eventos_relevantes_ultimas_24h`, que
-orquestra várias chamadas a `ingest.gdelt` (uma por snapshot) — colocada
-aqui, e não em gdelt.py, porque precisa filtrar por país relevante a
-cada snapshot pra manter o uso de memória baixo (ver docstring da
-função).
+`filtrar_eventos_por_paises`, `descrever_escopo_paises`,
+`descrever_paises_monitorados`) — recebe um DataFrame de eventos já
+buscado (e, pro caso por setor, o segmento setorial já resolvido), não
+busca nada. As exceções são `_buscar_eventos_por_paises` (orquestra
+várias chamadas a `ingest.gdelt`, uma por snapshot — colocada aqui, e
+não em gdelt.py, porque precisa filtrar por país relevante a cada
+snapshot pra manter o uso de memória baixo, ver docstring da função) e
+`rodar_monitor_conflitos` (persiste o resultado em disco).
 
-Regra de escopo (documentação completa, com fontes, em config.py): toda
-ação tem o Brasil como país relevante por padrão — risco doméstico afeta
-qualquer setor. Ações de petróleo/gás ou de mineração de
-metálicos/siderurgia ganham, além do Brasil, os principais países
-produtores/exportadores daquela commodity.
+Escopo (2026-09-16): o Monitor de conflitos na interface (app/main.py)
+passou a usar um escopo FIXO e universal — `PAISES_MONITORADOS`, união de
+todos os países já relevantes pra qualquer ação do projeto (Brasil +
+produtores de petróleo + produtores de minério de ferro) — não depende
+mais de nenhuma ação/setor escolhido. `determinar_paises_relevantes` (o
+escopo por SETOR de uma ação específica) continua aqui como lógica
+testada e reaproveitável, só não é mais chamada pela interface.
+
+Regra de escopo por setor (documentação completa, com fontes, em
+config.py): toda ação tem o Brasil como país relevante por padrão —
+risco doméstico afeta qualquer setor. Ações de petróleo/gás ou de
+mineração de metálicos/siderurgia ganham, além do Brasil, os principais
+países produtores/exportadores daquela commodity.
 """
 
 from __future__ import annotations
@@ -26,6 +35,7 @@ import pandas as pd
 
 from avaliador_b3.config import (
     CODIGO_GDELT_BRASIL,
+    DATA_PROCESSED_DIR,
     DATA_RAW_DIR,
     JANELA_MONITOR_CONFLITOS_HORAS,
     PAISES_PRODUTORES_MINERIO_FERRO_GDELT,
@@ -33,7 +43,9 @@ from avaliador_b3.config import (
     SEGMENTOS_SETORIAIS_MINERACAO_METALICOS,
     SEGMENTOS_SETORIAIS_PETROLEO_GAS,
 )
+from avaliador_b3.ingest.gdelt import COLUNAS_NUMERICAS as COLUNAS_NUMERICAS_GDELT
 from avaliador_b3.ingest.gdelt import COLUNAS_RESULTADO as COLUNAS_RESULTADO_GDELT
+from avaliador_b3.ingest.gdelt import DTYPES_LEITURA_CACHE as DTYPES_LEITURA_CACHE_GDELT
 from avaliador_b3.ingest.gdelt import (
     gerar_timestamps_janela,
     obter_eventos_conflito_do_snapshot,
@@ -130,13 +142,42 @@ def descrever_escopo_paises(segmento_setorial: str | None) -> str:
     return " + ".join(partes)
 
 
-def obter_eventos_relevantes_ultimas_24h(
-    segmento_setorial: str | None,
-    horas: float = JANELA_MONITOR_CONFLITOS_HORAS,
-    diretorio_cache: Path = DATA_RAW_DIR,
+# País monitorados pelo Monitor de conflitos na interface: escopo FIXO e
+# universal, união de todos os países já relevantes pra qualquer ação do
+# projeto — não depende de nenhuma ação/setor escolhido (ver docstring do
+# módulo). Reaproveita os mesmos conjuntos documentados (com fontes) em
+# config.py, não duplica a lista de países.
+PAISES_MONITORADOS = (
+    {CODIGO_GDELT_BRASIL} | PAISES_PRODUTORES_PETROLEO_GDELT | PAISES_PRODUTORES_MINERIO_FERRO_GDELT
+)
+
+
+def descrever_paises_monitorados() -> str:
+    """Frase legível descrevendo o escopo fixo e universal de
+    `PAISES_MONITORADOS` — mesmo espírito de `descrever_escopo_paises`,
+    mas sem depender de nenhuma ação/setor: é o escopo usado pelo Monitor
+    de conflitos na interface."""
+    nomes_petroleo = ", ".join(
+        sorted(NOMES_PAISES_GDELT[codigo] for codigo in PAISES_PRODUTORES_PETROLEO_GDELT)
+    )
+    nomes_minerio = ", ".join(
+        sorted(NOMES_PAISES_GDELT[codigo] for codigo in PAISES_PRODUTORES_MINERIO_FERRO_GDELT)
+    )
+    return (
+        "Brasil (sempre) + principais produtores/exportadores de petróleo "
+        f"({nomes_petroleo}) + principais produtores/exportadores de "
+        f"minério de ferro ({nomes_minerio})"
+    )
+
+
+def _buscar_eventos_por_paises(
+    paises_relevantes: set[str],
+    horas: float,
+    diretorio_cache: Path,
 ) -> pd.DataFrame:
-    """Busca os eventos de conflito relevantes pra uma ação numa janela
-    de `horas` horas (padrão: 24h — ~96 snapshots de 15 min cada).
+    """Busca os eventos de conflito relevantes pra um conjunto de países
+    numa janela de `horas` horas (padrão do chamador: 24h — ~96 snapshots
+    de 15 min cada).
 
     Processa um snapshot do GDELT de cada vez, nunca carregando os ~96
     arquivos brutos na memória ao mesmo tempo: cada snapshot já vem
@@ -151,7 +192,6 @@ def obter_eventos_relevantes_ultimas_24h(
     falha isolada nesse snapshot é pulado — não interrompe a busca da
     janela inteira, mesmo padrão de isolamento de erro já usado no
     screener pra uma ação isolada falhando."""
-    paises_relevantes = determinar_paises_relevantes(segmento_setorial)
     timestamp_mais_recente = obter_timestamp_mais_recente()
     timestamps = gerar_timestamps_janela(timestamp_mais_recente, horas=horas)
 
@@ -174,3 +214,84 @@ def obter_eventos_relevantes_ultimas_24h(
     return (
         pd.concat(partes_filtradas, ignore_index=True).sort_values("data").reset_index(drop=True)
     )
+
+
+def obter_eventos_relevantes_ultimas_24h(
+    segmento_setorial: str | None,
+    horas: float = JANELA_MONITOR_CONFLITOS_HORAS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> pd.DataFrame:
+    """Busca os eventos de conflito relevantes pra uma ação (escopo por
+    SETOR, ver `determinar_paises_relevantes`) numa janela de `horas`
+    horas — ver `_buscar_eventos_por_paises` pro processamento
+    incremental e isolamento de erro por snapshot."""
+    paises_relevantes = determinar_paises_relevantes(segmento_setorial)
+    return _buscar_eventos_por_paises(paises_relevantes, horas, diretorio_cache)
+
+
+def obter_eventos_conflito_ultimas_24h(
+    horas: float = JANELA_MONITOR_CONFLITOS_HORAS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> pd.DataFrame:
+    """Busca os eventos de conflito no escopo universal e fixo
+    (`PAISES_MONITORADOS`) numa janela de `horas` horas — usada pelo
+    Monitor de conflitos na interface, que não depende mais de nenhuma
+    ação/setor escolhido. Ver `_buscar_eventos_por_paises` pro
+    processamento incremental e isolamento de erro por snapshot."""
+    return _buscar_eventos_por_paises(PAISES_MONITORADOS, horas, diretorio_cache)
+
+
+CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "conflitos_24h.csv"
+
+
+def rodar_monitor_conflitos(
+    horas: float = JANELA_MONITOR_CONFLITOS_HORAS,
+    diretorio_cache: Path = DATA_RAW_DIR,
+    caminho_saida: Path = CAMINHO_SAIDA_PADRAO,
+) -> pd.DataFrame:
+    """Busca os eventos de conflito no escopo universal
+    (`obter_eventos_conflito_ultimas_24h`) e grava o resultado em
+    `caminho_saida`, sobrescrevendo qualquer busca anterior — mesmo
+    padrão de persistência do screener (`screener.rodar_screener`): dado
+    "salvo em disco, não ao vivo", carregado por padrão na interface
+    (`carregar_eventos_conflito_salvos`), atualizado só sob demanda via
+    botão explícito. Zero eventos na janela é um resultado válido e
+    também é salvo (não é erro — ver `filtrar_eventos_por_paises`)."""
+    eventos = obter_eventos_conflito_ultimas_24h(horas=horas, diretorio_cache=diretorio_cache)
+    caminho_saida.parent.mkdir(parents=True, exist_ok=True)
+    eventos.to_csv(caminho_saida, index=False)
+    return eventos
+
+
+def carregar_eventos_conflito_salvos(
+    caminho: Path = CAMINHO_SAIDA_PADRAO,
+) -> pd.DataFrame | None:
+    """Lê o resultado da última busca de 24h já salvo em disco (não busca
+    nada ao vivo) — devolve `None` se o arquivo ainda não existir
+    (primeira vez rodando o projeto) ou existir só como um arquivo
+    vazio/truncado (ex: processo interrompido no meio da escrita),
+    tratado do mesmo jeito que "ainda não existe" (mesmo padrão de
+    `app.main._carregar_screener_salvo`).
+
+    Mesma tipagem de leitura usada pro cache de snapshot em
+    `ingest.gdelt` (`DTYPES_LEITURA_CACHE`/`COLUNAS_NUMERICAS`), pelo
+    mesmo motivo: sem forçar colunas de código como texto, o pandas
+    perderia o zero à esquerda de `EventRootCode` (ex: "05" -> 5)."""
+    if not caminho.exists():
+        return None
+
+    try:
+        eventos = pd.read_csv(
+            caminho,
+            parse_dates=["data"],
+            dtype=DTYPES_LEITURA_CACHE_GDELT,
+            keep_default_na=False,
+        )
+    except pd.errors.EmptyDataError:
+        return None
+
+    for coluna in COLUNAS_NUMERICAS_GDELT:
+        if coluna in eventos.columns:
+            eventos[coluna] = pd.to_numeric(eventos[coluna], errors="coerce")
+
+    return eventos

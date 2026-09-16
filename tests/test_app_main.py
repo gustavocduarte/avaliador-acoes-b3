@@ -177,11 +177,14 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
     # Trocar a ação selecionada, sozinho, não deve disparar nova busca
     # automática — a flag em session_state já foi consumida na abertura.
+    # Sem clicar em "Buscar", o bloco de resultado não roda de novo nesse
+    # rerun (mesmo comportamento de qualquer troca de ação sem busca) —
+    # não aparece nem o resultado antigo (PETR4) nem um novo (VALE3).
     at.selectbox[0].select("VALE3").run(timeout=60)
 
     assert not at.exception
     assert at.selectbox[0].value == "VALE3"
-    assert any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert not any(subheader.value == "PETR4" for subheader in at.subheader)
     assert not any(subheader.value == "VALE3" for subheader in at.subheader)
 
     # Só depois do clique manual em "Buscar" é que a busca de VALE3 roda —

@@ -122,6 +122,25 @@ def test_descrever_escopo_menciona_petroleo_pro_setor_certo():
     assert "Arábia Saudita" in descricao
 
 
+# --- PAISES_MONITORADOS / descrever_paises_monitorados (escopo universal, ---
+# --- não depende de nenhuma ação/setor escolhido) ----------------------------
+
+
+def test_paises_monitorados_e_uniao_de_brasil_petroleo_e_minerio():
+    assert conflitos.PAISES_MONITORADOS == (
+        {"BR"} | PAISES_PRODUTORES_PETROLEO_GDELT | PAISES_PRODUTORES_MINERIO_FERRO_GDELT
+    )
+
+
+def test_descrever_paises_monitorados_menciona_brasil_petroleo_e_minerio():
+    descricao = conflitos.descrever_paises_monitorados()
+    assert "Brasil" in descricao
+    assert "petróleo" in descricao.lower()
+    assert "minério" in descricao.lower()
+    assert "Arábia Saudita" in descricao  # produtor de petróleo
+    assert "Austrália" in descricao  # produtor de minério de ferro
+
+
 # --- obter_eventos_relevantes_ultimas_24h (janela, processamento incremental)
 
 
@@ -211,3 +230,166 @@ def test_sem_nenhum_evento_relevante_devolve_tabela_vazia_com_colunas(
 
     assert resultado.empty
     assert list(resultado.columns) == conflitos.COLUNAS_RESULTADO_GDELT
+
+
+# --- obter_eventos_conflito_ultimas_24h (mesmo processamento incremental, --
+# --- mas escopo universal — sem depender de nenhuma ação/setor) -------------
+
+
+def test_universal_acumula_eventos_de_pais_monitorado_fora_do_brasil(
+    monkeypatch, _quatro_timestamps
+):
+    # Sem nenhum segmento setorial: um evento na Arábia Saudita (produtor
+    # de petróleo) já entra — diferente do escopo por setor "Bancos" usado
+    # nos testes acima, que não incluiria a Arábia Saudita.
+    por_timestamp = {
+        ts: pd.DataFrame(
+            [
+                _evento_com_data("SA", "2026-09-16 07:00:00", i * 2),
+                _evento_com_data("FR", "2026-09-16 07:00:00", i * 2 + 1),
+            ]
+        )
+        for i, ts in enumerate(_quatro_timestamps)
+    }
+    monkeypatch.setattr(
+        conflitos, "obter_eventos_conflito_do_snapshot", lambda ts, **kw: por_timestamp[ts]
+    )
+
+    resultado = conflitos.obter_eventos_conflito_ultimas_24h(horas=1)
+
+    assert len(resultado) == 4  # 1 evento relevante (SA) por snapshot, 4 snapshots
+    assert (resultado["ActionGeo_CountryCode"] == "SA").all()
+
+
+def test_universal_pula_snapshot_que_falha_sem_quebrar_a_janela_inteira(
+    monkeypatch, _quatro_timestamps
+):
+    def buscar_falso(timestamp, **kwargs):
+        if timestamp == "20260916073000":
+            raise RuntimeError("gap simulado — horário sem arquivo publicado")
+        return pd.DataFrame([_evento_com_data("BR", "2026-09-16 07:00:00", 1)])
+
+    monkeypatch.setattr(conflitos, "obter_eventos_conflito_do_snapshot", buscar_falso)
+
+    resultado = conflitos.obter_eventos_conflito_ultimas_24h(horas=1)
+
+    assert len(resultado) == 3
+
+
+def test_universal_sem_nenhum_evento_relevante_devolve_tabela_vazia_com_colunas(
+    monkeypatch, _quatro_timestamps
+):
+    monkeypatch.setattr(
+        conflitos,
+        "obter_eventos_conflito_do_snapshot",
+        lambda ts, **kw: pd.DataFrame([_evento_com_data("FR", "2026-09-16 07:00:00", 1)]),
+    )
+
+    resultado = conflitos.obter_eventos_conflito_ultimas_24h(horas=1)
+
+    assert resultado.empty
+    assert list(resultado.columns) == conflitos.COLUNAS_RESULTADO_GDELT
+
+
+# --- rodar_monitor_conflitos / carregar_eventos_conflito_salvos (persistência,
+# --- mesmo padrão do screener.csv: "carrega o salvo, botão explícito atualiza")
+
+
+def _evento_completo(codigo_pais: str, event_root_code: str, evento_id: int) -> dict:
+    return {
+        "GLOBALEVENTID": evento_id,
+        "data": pd.Timestamp("2026-09-16 07:45:00"),
+        "EventRootCode": event_root_code,
+        "categoria_cameo": "FIGHT",
+        "EventCode": "190",
+        "GoldsteinScale": -5.0,
+        "NumMentions": 3,
+        "NumArticles": 2,
+        "AvgTone": -4.5,
+        "ActionGeo_FullName": f"Local em {codigo_pais}",
+        "ActionGeo_CountryCode": codigo_pais,
+        "ActionGeo_Lat": 10.0,
+        "ActionGeo_Long": 20.0,
+        "SOURCEURL": "https://example.com",
+    }
+
+
+def _eventos_completos(linhas: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(linhas)[conflitos.COLUNAS_RESULTADO_GDELT]
+
+
+def test_carregar_eventos_conflito_salvos_devolve_none_quando_arquivo_nao_existe(tmp_path):
+    caminho = tmp_path / "conflitos_24h.csv"
+    assert conflitos.carregar_eventos_conflito_salvos(caminho) is None
+
+
+def test_carregar_eventos_conflito_salvos_devolve_none_quando_arquivo_vazio(tmp_path):
+    # Mesmo cenário de "processo interrompido no meio da escrita" já
+    # tratado em app.main._carregar_screener_salvo.
+    caminho = tmp_path / "conflitos_24h.csv"
+    caminho.write_text("")
+    assert conflitos.carregar_eventos_conflito_salvos(caminho) is None
+
+
+def test_rodar_monitor_conflitos_grava_e_recarrega_preservando_zero_a_esquerda(
+    tmp_path, monkeypatch
+):
+    # EventRootCode "05" precisa continuar "05" (não virar 5) depois de
+    # salvo em disco e relido — mesmo cuidado já validado pro cache de
+    # snapshot do GDELT (ingest.gdelt.DTYPES_LEITURA_CACHE).
+    monkeypatch.setattr(
+        conflitos,
+        "obter_eventos_conflito_ultimas_24h",
+        lambda **kw: _eventos_completos([_evento_completo("BR", "05", 1)]),
+    )
+    caminho_saida = tmp_path / "conflitos_24h.csv"
+
+    resultado = conflitos.rodar_monitor_conflitos(caminho_saida=caminho_saida)
+
+    assert caminho_saida.exists()
+    assert resultado.iloc[0]["EventRootCode"] == "05"
+
+    recarregado = conflitos.carregar_eventos_conflito_salvos(caminho_saida)
+    assert recarregado.iloc[0]["EventRootCode"] == "05"
+    assert recarregado.iloc[0]["ActionGeo_CountryCode"] == "BR"
+
+
+def test_rodar_monitor_conflitos_zero_eventos_e_salvo_como_resultado_valido(
+    tmp_path, monkeypatch
+):
+    # Zero eventos na janela não é erro (ver filtrar_eventos_por_paises) —
+    # também precisa ser salvo, não só mantido em memória.
+    monkeypatch.setattr(
+        conflitos,
+        "obter_eventos_conflito_ultimas_24h",
+        lambda **kw: pd.DataFrame(columns=conflitos.COLUNAS_RESULTADO_GDELT),
+    )
+    caminho_saida = tmp_path / "conflitos_24h.csv"
+
+    resultado = conflitos.rodar_monitor_conflitos(caminho_saida=caminho_saida)
+
+    assert resultado.empty
+    assert caminho_saida.exists()
+
+    recarregado = conflitos.carregar_eventos_conflito_salvos(caminho_saida)
+    assert recarregado is not None
+    assert recarregado.empty
+
+
+def test_rodar_monitor_conflitos_sobrescreve_busca_anterior(tmp_path, monkeypatch):
+    respostas = iter(
+        [
+            _eventos_completos([_evento_completo("BR", "05", 1)]),
+            _eventos_completos([_evento_completo("US", "19", 2)]),
+        ]
+    )
+    monkeypatch.setattr(
+        conflitos, "obter_eventos_conflito_ultimas_24h", lambda **kw: next(respostas)
+    )
+    caminho_saida = tmp_path / "conflitos_24h.csv"
+
+    conflitos.rodar_monitor_conflitos(caminho_saida=caminho_saida)
+    conflitos.rodar_monitor_conflitos(caminho_saida=caminho_saida)
+
+    recarregado = conflitos.carregar_eventos_conflito_salvos(caminho_saida)
+    assert list(recarregado["ActionGeo_CountryCode"]) == ["US"]

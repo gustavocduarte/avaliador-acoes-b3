@@ -37,9 +37,11 @@ from avaliador_b3.config import (
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
 )
+from avaliador_b3.conflitos import CAMINHO_SAIDA_PADRAO as CAMINHO_SAIDA_CONFLITOS_PADRAO
 from avaliador_b3.conflitos import (
-    descrever_escopo_paises,
-    obter_eventos_relevantes_ultimas_24h,
+    carregar_eventos_conflito_salvos,
+    descrever_paises_monitorados,
+    rodar_monitor_conflitos,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
@@ -173,27 +175,6 @@ def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
         return obter_gpr(serie="diaria"), None
     except Exception as erro:
         return None, f"Falha ao buscar índice GPR: {erro}"
-
-
-@st.cache_data(ttl=300)
-def _buscar_eventos_conflito_24h(
-    segmento_setorial: str | None,
-) -> tuple[pd.DataFrame | None, str | None]:
-    """Eventos de conflito relevantes numa janela de 24h (ver
-    `conflitos.obter_eventos_relevantes_ultimas_24h`) — cacheado na
-    sessão por alguns minutos, bem menos que a janela em si, só pra não
-    refazer as ~96 buscas de snapshot a cada abertura da aba. Cada
-    snapshot individual também já tem cache próprio em disco sem TTL (é
-    dado imutável uma vez publicado pelo GDELT), então mesmo depois desse
-    cache daqui expirar, reprocessar a mesma janela de 24h continua
-    barato — só os poucos snapshots realmente novos desde a última
-    chamada precisam ser baixados de novo. Parametrizado por
-    `segmento_setorial` pra cachear corretamente por setor, não por
-    ticker (dois tickers do mesmo setor compartilham o resultado)."""
-    try:
-        return obter_eventos_relevantes_ultimas_24h(segmento_setorial), None
-    except Exception as erro:
-        return None, f"Falha ao buscar eventos do GDELT: {erro}"
 
 
 @st.cache_data(ttl=3600)
@@ -360,9 +341,10 @@ def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
 
 def _aviso_screener_vazio(instrucao: str) -> None:
     """Mensagem de "sem resultado salvo ainda" compartilhada entre as abas
-    de Screener e de Simulador de carteira — cada uma só varia a instrução
-    de como gerar o arquivo, já que o botão que dispara isso só existe na
-    aba do Screener."""
+    de Screener, Simulador de carteira e Monitor de conflitos — cada uma
+    só varia a instrução de como gerar o arquivo (cada uma tem seu
+    próprio botão hoje: "Rodar screener agora" ou "Buscar eventos
+    agora")."""
     st.info(
         "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
         f"{instrucao} — vai demorar alguns minutos."
@@ -847,10 +829,6 @@ with aba_analisar:
         with coluna_comparacao_setorial:
             st.subheader("Comparação setorial")
             segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
-            # Guardado em session_state pra aba "Monitor de conflitos" reaproveitar
-            # (mesmo ticker escolhido aqui, sem campo de busca próprio).
-            st.session_state["ticker_analisado"] = ticker
-            st.session_state["segmento_setorial_analisado"] = segmento_setorial
             tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
             if erro_segmento_setorial:
                 st.warning(f"Classificação setorial: {erro_segmento_setorial}")
@@ -1327,111 +1305,86 @@ with aba_correlacao:
 
 with aba_conflitos:
     st.caption(
-        "Eventos de conflito (GDELT, categorias COERCE/ASSAULT/FIGHT) nos "
-        "países relevantes pra ação escolhida na aba \"Analisar uma ação\" — "
+        "Eventos de conflito (GDELT, categorias COERCE/ASSAULT/FIGHT) — "
         f"janela de {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, ~96 snapshots de 15 "
         "min processados um de cada vez."
     )
+    # Escopo fixo e universal (não depende de nenhuma ação/setor escolhido
+    # em outra aba) — ver conflitos.PAISES_MONITORADOS.
+    st.caption(f"Monitorando: {descrever_paises_monitorados()}.")
 
-    ticker_conflitos = st.session_state.get("ticker_analisado")
+    if st.button(
+        "Buscar eventos agora",
+        on_click=_ativar_aba,
+        args=(ABA_CONFLITOS,),
+    ):
+        st.warning(
+            f"Isso busca ~96 snapshots do GDELT (janela de "
+            f"{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, 15 em 15 min) — na primeira "
+            "vez, sem nada em cache ainda, leva minutos. Não feche esta aba "
+            "enquanto roda."
+        )
+        with st.spinner(
+            f"Buscando eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h no "
+            "GDELT — isso demora mais que um snapshot único, é esperado..."
+        ):
+            rodar_monitor_conflitos()
+        st.success("Busca concluída — resultado salvo em disco.")
+        st.rerun()
 
-    if not ticker_conflitos:
-        st.info(
-            'Busque uma ação na aba "Analisar uma ação" primeiro — o monitor de '
-            "conflitos usa o mesmo ticker escolhido lá, sem campo de busca próprio."
+    eventos_conflito_salvos = carregar_eventos_conflito_salvos(CAMINHO_SAIDA_CONFLITOS_PADRAO)
+
+    if eventos_conflito_salvos is None:
+        _aviso_screener_vazio(
+            'Clique em "Buscar eventos agora" acima pra gerar '
+            f"{CAMINHO_SAIDA_CONFLITOS_PADRAO.name}"
         )
     else:
-        # Ticker e escopo de países aparecem sem custo nenhum assim que uma
-        # ação é escolhida — só a busca de eventos em si (a parte cara, ~96
-        # requisições) fica atrás do botão abaixo, nunca dispara sozinha só
-        # porque uma ação foi buscada na aba "Analisar uma ação".
-        segmento_setorial_conflitos = st.session_state.get("segmento_setorial_analisado")
-
-        st.subheader(ticker_conflitos)
+        atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_CONFLITOS_PADRAO.stat().st_mtime)
         st.caption(
-            f"Monitorando: {descrever_escopo_paises(segmento_setorial_conflitos)}."
+            f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
+            "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
         )
 
-        if st.button(
-            f"Buscar eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h",
-            on_click=_ativar_aba,
-            args=(ABA_CONFLITOS,),
-        ):
-            st.warning(
-                f"Isso busca ~96 snapshots do GDELT (janela de "
-                f"{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, 15 em 15 min) — na primeira "
-                "vez, sem nada em cache ainda, leva minutos. Não feche esta aba "
-                "enquanto roda."
-            )
-            with st.spinner(
-                f"Buscando eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h no "
-                "GDELT — isso demora mais que um snapshot único, é esperado..."
-            ):
-                eventos_relevantes, erro_eventos_conflito = _buscar_eventos_conflito_24h(
-                    segmento_setorial_conflitos
-                )
-            # Guardado em session_state (não só na variável local) pra
-            # continuar visível em reruns futuros causados por qualquer outra
-            # interação na página — não some assim que o usuário mexe em
-            # outra coisa.
-            st.session_state["resultado_conflitos_24h"] = {
-                "ticker": ticker_conflitos,
-                "eventos": eventos_relevantes,
-                "erro": erro_eventos_conflito,
-            }
+        # Visão geral (mapa) primeiro, detalhe linha a linha (tabela) logo
+        # abaixo. Globo com projeção ortográfica — arraste pra girar
+        # (nativo do Plotly, sem rotação automática programada: instável
+        # na comunidade do Plotly, e o arraste manual já entrega o efeito
+        # pedido de forma confiável).
+        st.plotly_chart(
+            montar_mapa_conflitos(eventos_conflito_salvos), use_container_width=True
+        )
 
-        resultado_salvo = st.session_state.get("resultado_conflitos_24h")
-
-        if resultado_salvo is None or resultado_salvo["ticker"] != ticker_conflitos:
+        if eventos_conflito_salvos.empty:
             st.info(
-                f'Clique em "Buscar eventos das últimas '
-                f'{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h" acima pra carregar os '
-                "eventos dessa ação — não busca nada automaticamente."
+                f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
+                "— pode acontecer, mas é bem menos provável que no caso do snapshot "
+                "único; não é sinal de erro. O mapa acima mostra só os pontos "
+                "estratégicos fixos nesse caso."
             )
-        elif resultado_salvo["erro"]:
-            st.warning(f"GDELT: {resultado_salvo['erro']}")
         else:
-            eventos_conflito_mapa = resultado_salvo["eventos"]
-
-            # Visão geral (mapa) primeiro, detalhe linha a linha (tabela)
-            # logo abaixo. Globo com projeção ortográfica — arraste pra
-            # girar (nativo do Plotly, sem rotação automática programada:
-            # instável na comunidade do Plotly, e o arraste manual já
-            # entrega o efeito pedido de forma confiável).
-            st.plotly_chart(
-                montar_mapa_conflitos(eventos_conflito_mapa), use_container_width=True
+            st.dataframe(
+                eventos_conflito_salvos,
+                column_order=[
+                    "data",
+                    "ActionGeo_FullName",
+                    "ActionGeo_CountryCode",
+                    "categoria_cameo",
+                    "GoldsteinScale",
+                    "SOURCEURL",
+                ],
+                column_config={
+                    "data": st.column_config.DatetimeColumn(
+                        "Data", format="DD/MM/YYYY HH:mm"
+                    ),
+                    "ActionGeo_FullName": "Local",
+                    "ActionGeo_CountryCode": "País (código)",
+                    "categoria_cameo": "Tipo",
+                    "GoldsteinScale": st.column_config.NumberColumn(
+                        "Goldstein Score", format="%.1f"
+                    ),
+                    "SOURCEURL": st.column_config.LinkColumn("Fonte"),
+                },
+                hide_index=True,
+                use_container_width=True,
             )
-
-            if eventos_conflito_mapa.empty:
-                st.info(
-                    f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
-                    "— pode acontecer, mas é bem menos provável que no caso do snapshot "
-                    "único; não é sinal de erro. O mapa acima mostra só os pontos "
-                    "estratégicos fixos nesse caso."
-                )
-            else:
-                st.dataframe(
-                    eventos_conflito_mapa,
-                    column_order=[
-                        "data",
-                        "ActionGeo_FullName",
-                        "ActionGeo_CountryCode",
-                        "categoria_cameo",
-                        "GoldsteinScale",
-                        "SOURCEURL",
-                    ],
-                    column_config={
-                        "data": st.column_config.DatetimeColumn(
-                            "Data", format="DD/MM/YYYY HH:mm"
-                        ),
-                        "ActionGeo_FullName": "Local",
-                        "ActionGeo_CountryCode": "País (código)",
-                        "categoria_cameo": "Tipo",
-                        "GoldsteinScale": st.column_config.NumberColumn(
-                            "Goldstein Score", format="%.1f"
-                        ),
-                        "SOURCEURL": st.column_config.LinkColumn("Fonte"),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
