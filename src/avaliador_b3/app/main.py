@@ -354,7 +354,7 @@ ABA_CARTEIRA = "Simulador de carteira"
 ABA_CORRELACAO = "Correlação com fatores externos"
 ABA_CONFLITOS = "Monitor de conflitos"
 
-st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈")
+st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
 st.title("Avaliador de Ações da B3")
 st.caption(
     "Protótipo mínimo — teste de integração visual dos adapters e modelos já "
@@ -491,7 +491,10 @@ with aba_analisar:
             }
 
         st.divider()
-        coluna_graham, coluna_bazin, coluna_fcd = st.columns(3)
+        resultado_combinado = calcular_valor_combinado(
+            resultado_graham, resultado_bazin, resultado_fcd
+        )
+        coluna_graham, coluna_bazin, coluna_fcd, coluna_combinado = st.columns(4)
         with coluna_graham:
             _cartao_metodo("Graham", resultado_graham, "valor_justo")
         with coluna_bazin:
@@ -501,84 +504,104 @@ with aba_analisar:
             if resultado_fcd["aplicavel"]:
                 origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
                 st.caption(f"Beta no WACC: {resultado_fcd['beta_utilizado']:.2f} ({origem_beta})")
-
-        st.divider()
-        resultado_combinado = calcular_valor_combinado(
-            resultado_graham, resultado_bazin, resultado_fcd
-        )
-        if resultado_combinado["aplicavel"]:
-            st.metric("Valor combinado", f"R$ {resultado_combinado['valor_combinado']:.2f}")
-            st.caption(
-                "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
-            )
-        else:
-            st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
-
-        st.divider()
-        st.subheader("Saúde financeira")
-        if indicadores is None:
-            st.info("Indisponível — ver aviso do Fundamentus acima.")
-        else:
-            col_a, col_b, col_c, col_d = st.columns(4)
-            col_a.metric("ROE", _fmt(indicadores["roe_percentual"], "{:.1f}%"))
-            col_b.metric(
-                "Margem líquida", _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%")
-            )
-            col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
-            col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
-            col_e, col_f, col_g, _col_h = st.columns(4)
-            col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
-            col_f.metric("Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"]))
-            col_g.metric(
-                "Cresc. receita (5a)",
-                _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
-            )
-            st.caption(
-                "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
-                "Fundamentus não reporta alguns desses índices no mesmo formato."
-            )
-
-        st.divider()
-        st.subheader("Governança")
-        linha_universo = (
-            universo_ibovespa[universo_ibovespa["ticker"] == ticker]
-            if universo_ibovespa is not None
-            else None
-        )
-        col_segmento, col_free_float = st.columns(2)
-        with col_segmento:
-            if erro_universo:
-                st.warning(f"Segmento de listagem: {erro_universo}")
-            elif linha_universo is not None and not linha_universo.empty:
-                st.metric("Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"])
-            else:
-                st.metric("Segmento de listagem", "—")
+        with coluna_combinado:
+            if resultado_combinado["aplicavel"]:
+                st.metric("Valor combinado", f"R$ {resultado_combinado['valor_combinado']:.2f}")
                 st.caption(
-                    f"{ticker!r} não está na carteira teórica atual do Ibovespa — essa é a "
-                    "única fonte de segmento de listagem que já temos."
+                    "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
                 )
-        with col_free_float:
-            st.metric("Free float", "Pendente")
-            st.caption(
-                "Nenhum adapter atual extrai free float — nem o universo do Ibovespa "
-                "(b3_universo.py) nem o catálogo de emissores (crosswalk_cnpj.py) trazem "
-                "esse campo. Fica como pendência explícita, não um valor inventado."
+            else:
+                st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
+
+        with st.expander("Como funciona esse cálculo?"):
+            st.markdown(
+                "**Graham** — fórmula de Benjamin Graham (mentor de Warren Buffett): "
+                "valor justo = raiz quadrada de (22,5 × LPA × VPA). Só se aplica a "
+                "empresas com lucro e patrimônio líquido positivos.\n\n"
+                "**Bazin (preço teto)** — método do investidor Décio Bazin, focado em "
+                "dividendos: calcula o preço máximo que garantiria um retorno de 6% ao "
+                "ano só em dividendos, baseado no histórico de pagamento da empresa. Só "
+                "se aplica a quem tem histórico consistente de dividendo.\n\n"
+                "**FCD (Fluxo de Caixa Descontado)** — projeta os fluxos de caixa "
+                "futuros da empresa e traz isso a valor presente, descontando pelo "
+                "custo de capital (WACC). É o único dos três que funciona mesmo para "
+                "empresas sem lucro no momento, já que olha geração de caixa futura, "
+                "não resultado contábil passado.\n\n"
+                "**Valor combinado** — média simples apenas dos métodos que se aplicam "
+                "à empresa específica analisada, nunca uma média forçada dos três. Se "
+                "só um método for aplicável, o combinado é igual a esse método sozinho."
             )
 
         st.divider()
-        st.subheader("Comportamento da ação")
-        if erro_historico:
-            st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
+        coluna_saude, coluna_governanca = st.columns(2)
+        with coluna_saude:
+            st.subheader("Saúde financeira")
+            if indicadores is None:
+                st.info("Indisponível — ver aviso do Fundamentus acima.")
+            else:
+                col_a, col_b, col_c, col_d = st.columns(4)
+                col_a.metric("ROE", _fmt(indicadores["roe_percentual"], "{:.1f}%"))
+                col_b.metric(
+                    "Margem líquida", _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%")
+                )
+                col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
+                col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
+                col_e, col_f, col_g, _col_h = st.columns(4)
+                col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
+                col_f.metric(
+                    "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
+                )
+                col_g.metric(
+                    "Cresc. receita (5a)",
+                    _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
+                )
+                st.caption(
+                    "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
+                    "Fundamentus não reporta alguns desses índices no mesmo formato."
+                )
 
-        col_volume, col_volatilidade, col_beta = st.columns(3)
+        with coluna_governanca:
+            st.subheader("Governança")
+            linha_universo = (
+                universo_ibovespa[universo_ibovespa["ticker"] == ticker]
+                if universo_ibovespa is not None
+                else None
+            )
+            col_segmento, col_free_float = st.columns(2)
+            with col_segmento:
+                if erro_universo:
+                    st.warning(f"Segmento de listagem: {erro_universo}")
+                elif linha_universo is not None and not linha_universo.empty:
+                    st.metric(
+                        "Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"]
+                    )
+                else:
+                    st.metric("Segmento de listagem", "—")
+                    st.caption(
+                        f"{ticker!r} não está na carteira teórica atual do Ibovespa — essa é "
+                        "a única fonte de segmento de listagem que já temos."
+                    )
+            with col_free_float:
+                st.metric("Free float", "Pendente")
+                st.caption(
+                    "Nenhum adapter atual extrai free float — nem o universo do Ibovespa "
+                    "(b3_universo.py) nem o catálogo de emissores (crosswalk_cnpj.py) "
+                    "trazem esse campo. Fica como pendência explícita, não um valor "
+                    "inventado."
+                )
 
-        if not erro_historico:
-            volume_medio = calcular_volume_medio(historico)
-            volatilidade = calcular_volatilidade_anualizada(historico)
-            col_volume.metric("Volume médio (3m)", f"{volume_medio:,.0f}".replace(",", "."))
-            col_volatilidade.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
+        st.divider()
+        coluna_comportamento, coluna_grafico_preco = st.columns([1, 2])
+        with coluna_comportamento:
+            st.subheader("Comportamento da ação")
+            if erro_historico:
+                st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
+            else:
+                volume_medio = calcular_volume_medio(historico)
+                volatilidade = calcular_volatilidade_anualizada(historico)
+                st.metric("Volume médio (3m)", f"{volume_medio:,.0f}".replace(",", "."))
+                st.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
 
-        with col_beta:
             # Beta usa uma janela própria mais longa (PERIODO_BETA) que
             # volume/volatilidade, de propósito — ver comentário em config.py.
             # Reaproveita o `beta` já calculado acima (mesmo valor usado no
@@ -594,41 +617,41 @@ with aba_analisar:
                 if beta is None:
                     st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
 
-        st.divider()
-        st.subheader("Preço vs. Ibovespa (1 ano, base 100)")
-        if erro_historico_beta or erro_historico_ibovespa_beta:
-            st.info(
-                "Gráfico indisponível — histórico de preço ou do Ibovespa não pôde ser "
-                "buscado (ver avisos acima)."
-            )
-        else:
-            # Reaproveita historico_beta/historico_ibovespa_beta (PERIODO_BETA,
-            # 1 ano) já buscados pro cálculo de Beta acima — não busca dado
-            # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
-            # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
-            # ação uma linha reta ilegível.
-            figura_preco = go.Figure()
-            figura_preco.add_trace(
-                go.Scatter(
-                    x=historico_beta["data"],
-                    y=normalizar_base_100(historico_beta["Close"]),
-                    name=ticker,
+        with coluna_grafico_preco:
+            st.subheader("Preço vs. Ibovespa (1 ano, base 100)")
+            if erro_historico_beta or erro_historico_ibovespa_beta:
+                st.info(
+                    "Gráfico indisponível — histórico de preço ou do Ibovespa não pôde ser "
+                    "buscado (ver avisos acima)."
                 )
-            )
-            figura_preco.add_trace(
-                go.Scatter(
-                    x=historico_ibovespa_beta["data"],
-                    y=normalizar_base_100(historico_ibovespa_beta["Close"]),
-                    name="Ibovespa",
+            else:
+                # Reaproveita historico_beta/historico_ibovespa_beta (PERIODO_BETA,
+                # 1 ano) já buscados pro cálculo de Beta acima — não busca dado
+                # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
+                # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
+                # ação uma linha reta ilegível.
+                figura_preco = go.Figure()
+                figura_preco.add_trace(
+                    go.Scatter(
+                        x=historico_beta["data"],
+                        y=normalizar_base_100(historico_beta["Close"]),
+                        name=ticker,
+                    )
                 )
-            )
-            figura_preco.update_layout(
-                yaxis_title="Desempenho (base 100 no início do período)",
-                xaxis_title="Data",
-                hovermode="x unified",
-                margin={"t": 20},
-            )
-            st.plotly_chart(figura_preco, use_container_width=True)
+                figura_preco.add_trace(
+                    go.Scatter(
+                        x=historico_ibovespa_beta["data"],
+                        y=normalizar_base_100(historico_ibovespa_beta["Close"]),
+                        name="Ibovespa",
+                    )
+                )
+                figura_preco.update_layout(
+                    yaxis_title="Desempenho (base 100 no início do período)",
+                    xaxis_title="Data",
+                    hovermode="x unified",
+                    margin={"t": 20},
+                )
+                st.plotly_chart(figura_preco, use_container_width=True)
 
         st.divider()
         st.subheader("Gráfico avançado (TradingView)")
@@ -642,89 +665,93 @@ with aba_analisar:
         components.html(_widget_avancado_tradingview(ticker), height=520)
 
         st.divider()
-        st.subheader("Histórico de dividendos por ano")
-        if erro_dividendos:
-            st.info("Gráfico indisponível — ver aviso de dividendos acima.")
-        else:
-            # Reaproveita `dividendos` já buscado pro método de Bazin acima —
-            # não busca dado novo.
-            dividendos_por_ano = agregar_dividendos_por_ano(dividendos)
-            if dividendos_por_ano.empty:
-                st.info("Nenhum dividendo pago no histórico disponível.")
+        coluna_dividendos, coluna_comparacao_setorial = st.columns(2)
+        with coluna_dividendos:
+            st.subheader("Histórico de dividendos por ano")
+            if erro_dividendos:
+                st.info("Gráfico indisponível — ver aviso de dividendos acima.")
             else:
-                figura_dividendos = go.Figure(
-                    go.Bar(x=dividendos_por_ano["ano"], y=dividendos_por_ano["total"])
-                )
-                figura_dividendos.update_layout(
-                    yaxis_title="Total pago no ano (R$/ação)",
-                    xaxis_title="Ano",
-                    xaxis={"type": "category"},
-                    margin={"t": 20},
-                )
-                st.plotly_chart(figura_dividendos, use_container_width=True)
-
-        st.divider()
-        st.subheader("Comparação setorial")
-        segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
-        # Guardado em session_state pra aba "Monitor de conflitos" reaproveitar
-        # (mesmo ticker escolhido aqui, sem campo de busca próprio).
-        st.session_state["ticker_analisado"] = ticker
-        st.session_state["segmento_setorial_analisado"] = segmento_setorial
-        tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
-        if erro_segmento_setorial:
-            st.warning(f"Classificação setorial: {erro_segmento_setorial}")
-        elif tabela_screener_setor is None:
-            _aviso_screener_vazio('Rode o screener primeiro na aba "Screener (todas as ações)"')
-        else:
-            try:
-                catalogo_setorial = obter_catalogo_emissores()
-            except Exception as erro:
-                st.warning(f"Catálogo de emissores da B3: {erro}")
-            else:
-                # Resolve o segmento setorial de cada ticker do screener já
-                # salvo (dado local, sem nova busca de rede além do catálogo
-                # já cacheado) pra achar os pares do mesmo setor da ação
-                # buscada. Os números da tabela (preço, valor combinado,
-                # desconto) vêm direto do screener — não são recalculados.
-                segmentos_screener = resolver_segmentos_setoriais(
-                    list(tabela_screener_setor["ticker"]), catalogo_setorial
-                )
-                tickers_do_setor = segmentos_screener[
-                    segmentos_screener["segmento_setorial"] == segmento_setorial
-                ]["ticker"]
-                tabela_pares = tabela_screener_setor[
-                    tabela_screener_setor["ticker"].isin(tickers_do_setor)
-                ]
-                if tabela_pares.empty:
-                    st.info(
-                        f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
-                        "encontrada no resultado salvo do screener."
-                    )
+                # Reaproveita `dividendos` já buscado pro método de Bazin acima —
+                # não busca dado novo.
+                dividendos_por_ano = agregar_dividendos_por_ano(dividendos)
+                if dividendos_por_ano.empty:
+                    st.info("Nenhum dividendo pago no histórico disponível.")
                 else:
-                    st.caption(f"Segmento setorial (B3): {segmento_setorial}")
-                    st.dataframe(
-                        tabela_pares,
-                        column_order=[
-                            "ticker",
-                            "preco_atual",
-                            "valor_combinado",
-                            "desconto_percentual",
-                        ],
-                        column_config={
-                            "ticker": "Ticker",
-                            "preco_atual": st.column_config.NumberColumn(
-                                "Preço atual", format="R$ %.2f"
-                            ),
-                            "valor_combinado": st.column_config.NumberColumn(
-                                "Valor combinado", format="R$ %.2f"
-                            ),
-                            "desconto_percentual": st.column_config.NumberColumn(
-                                "Desconto", format="%.1f%%"
-                            ),
-                        },
-                        hide_index=True,
-                        use_container_width=True,
+                    figura_dividendos = go.Figure(
+                        go.Bar(x=dividendos_por_ano["ano"], y=dividendos_por_ano["total"])
                     )
+                    figura_dividendos.update_layout(
+                        yaxis_title="Total pago no ano (R$/ação)",
+                        xaxis_title="Ano",
+                        xaxis={"type": "category"},
+                        margin={"t": 20},
+                    )
+                    st.plotly_chart(figura_dividendos, use_container_width=True)
+
+        with coluna_comparacao_setorial:
+            st.subheader("Comparação setorial")
+            segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
+            # Guardado em session_state pra aba "Monitor de conflitos" reaproveitar
+            # (mesmo ticker escolhido aqui, sem campo de busca próprio).
+            st.session_state["ticker_analisado"] = ticker
+            st.session_state["segmento_setorial_analisado"] = segmento_setorial
+            tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
+            if erro_segmento_setorial:
+                st.warning(f"Classificação setorial: {erro_segmento_setorial}")
+            elif tabela_screener_setor is None:
+                _aviso_screener_vazio(
+                    'Rode o screener primeiro na aba "Screener (todas as ações)"'
+                )
+            else:
+                try:
+                    catalogo_setorial = obter_catalogo_emissores()
+                except Exception as erro:
+                    st.warning(f"Catálogo de emissores da B3: {erro}")
+                else:
+                    # Resolve o segmento setorial de cada ticker do screener já
+                    # salvo (dado local, sem nova busca de rede além do catálogo
+                    # já cacheado) pra achar os pares do mesmo setor da ação
+                    # buscada. Os números da tabela (preço, valor combinado,
+                    # desconto) vêm direto do screener — não são recalculados.
+                    segmentos_screener = resolver_segmentos_setoriais(
+                        list(tabela_screener_setor["ticker"]), catalogo_setorial
+                    )
+                    tickers_do_setor = segmentos_screener[
+                        segmentos_screener["segmento_setorial"] == segmento_setorial
+                    ]["ticker"]
+                    tabela_pares = tabela_screener_setor[
+                        tabela_screener_setor["ticker"].isin(tickers_do_setor)
+                    ]
+                    if tabela_pares.empty:
+                        st.info(
+                            f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
+                            "encontrada no resultado salvo do screener."
+                        )
+                    else:
+                        st.caption(f"Segmento setorial (B3): {segmento_setorial}")
+                        st.dataframe(
+                            tabela_pares,
+                            column_order=[
+                                "ticker",
+                                "preco_atual",
+                                "valor_combinado",
+                                "desconto_percentual",
+                            ],
+                            column_config={
+                                "ticker": "Ticker",
+                                "preco_atual": st.column_config.NumberColumn(
+                                    "Preço atual", format="R$ %.2f"
+                                ),
+                                "valor_combinado": st.column_config.NumberColumn(
+                                    "Valor combinado", format="R$ %.2f"
+                                ),
+                                "desconto_percentual": st.column_config.NumberColumn(
+                                    "Desconto", format="%.1f%%"
+                                ),
+                            },
+                            hide_index=True,
+                            use_container_width=True,
+                        )
 
 with aba_screener:
     st.caption(
