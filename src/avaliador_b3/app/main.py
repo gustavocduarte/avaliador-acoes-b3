@@ -354,6 +354,11 @@ ABA_CARTEIRA = "Simulador de carteira"
 ABA_CORRELACAO = "Correlação com fatores externos"
 ABA_CONFLITOS = "Monitor de conflitos"
 
+# Ticker pré-selecionado e buscado automaticamente só na primeira abertura da
+# sessão (ver `busca_inicial_automatica_feita` em session_state, mais abaixo)
+# — mostra um resultado de exemplo de cara, sem exigir clique em "Buscar".
+TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
+
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
 st.title("Avaliador de Ações da B3")
 st.caption(
@@ -386,28 +391,58 @@ with aba_analisar:
     universo_ibovespa, erro_universo = _buscar_universo_ibovespa()
     usando_dropdown = not (erro_universo or universo_ibovespa is None or universo_ibovespa.empty)
 
+    busca_inicial_ja_feita = st.session_state.get("busca_inicial_automatica_feita", False)
+
     if usando_dropdown:
         nomes_por_ticker = dict(
             zip(universo_ibovespa["ticker"], universo_ibovespa["nome"], strict=True)
         )
+        opcoes_ticker = list(nomes_por_ticker.keys())
+        # Pré-seleciona o ticker padrão só na primeira abertura da sessão
+        # (session_state ainda sem a flag) — nas próximas reruns, `index`
+        # deixa de forçar nada e o dropdown segue 100% manual, preservando
+        # o que a pessoa escolher por conta própria. `key` explícita e
+        # ESTÁVEL é essencial aqui: sem ela, o Streamlit deriva a
+        # identidade do widget (entre outras coisas) do próprio `index` —
+        # como `index` muda de 0 pra None entre reruns, um widget sem
+        # `key` fixa "reseta" nesse ponto e perde a seleção do usuário.
+        indice_inicial = (
+            opcoes_ticker.index(TICKER_PADRAO_PRIMEIRA_ABERTURA)
+            if not busca_inicial_ja_feita and TICKER_PADRAO_PRIMEIRA_ABERTURA in opcoes_ticker
+            else None
+        )
         ticker_selecionado = st.selectbox(
             "Ação (Ibovespa)",
-            options=list(nomes_por_ticker.keys()),
+            options=opcoes_ticker,
             format_func=lambda t: f"{t} — {nomes_por_ticker[t]}",
-            index=None,
+            key="dropdown_ticker_analisar",
+            index=indice_inicial,
             placeholder="Selecione uma ação...",
         )
         ticker = ticker_selecionado or ""
     else:
         # Degradação graciosa: a API da B3 pode estar fora do ar — a aba
-        # continua usável via texto livre, só sem a lista pronta.
+        # continua usável via texto livre, só sem a lista pronta. Sem
+        # dropdown não há como pré-selecionar nada, então a busca
+        # automática da primeira abertura não se aplica nesse caminho.
         st.warning(
             "Lista de ações do Ibovespa indisponível "
             f"({erro_universo or 'resultado vazio'}) — digite o ticker manualmente."
         )
         ticker = st.text_input("Ticker (ex: PETR4)", value="").strip().upper()
 
-    buscar = st.button("Buscar", on_click=_ativar_aba, args=(ABA_ANALISAR,))
+    buscar_clicado = st.button("Buscar", on_click=_ativar_aba, args=(ABA_ANALISAR,))
+
+    # Dispara a busca automaticamente só na primeira abertura da sessão,
+    # equivalente a já ter clicado em "Buscar" uma vez — marca a flag em
+    # session_state antes de qualquer coisa pra garantir que isso não se
+    # repete em nenhum rerun futuro (troca de aba, outra busca, etc.).
+    busca_automatica_primeira_abertura = (
+        usando_dropdown and not busca_inicial_ja_feita and ticker == TICKER_PADRAO_PRIMEIRA_ABERTURA
+    )
+    if busca_automatica_primeira_abertura:
+        st.session_state["busca_inicial_automatica_feita"] = True
+    buscar = buscar_clicado or busca_automatica_primeira_abertura
 
     if buscar and not ticker:
         st.warning("Selecione uma ação." if usando_dropdown else "Digite um ticker.")
