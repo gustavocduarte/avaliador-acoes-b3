@@ -49,6 +49,7 @@ from avaliador_b3.empresa.comportamento import (
     calcular_volatilidade_anualizada,
     calcular_volume_medio,
 )
+from avaliador_b3.empresa.valor_mercado import calcular_valor_mercado_e_firma
 from avaliador_b3.graficos import (
     agregar_dividendos_por_ano,
     calcular_dividend_yield_por_ano,
@@ -142,11 +143,17 @@ def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str |
 
 
 @st.cache_data(ttl=3600)
-def _buscar_historico_petroleo() -> tuple[pd.DataFrame | None, str | None]:
-    """Histórico do petróleo Brent (BZ=F) na janela de correlação —
-    cacheado na sessão por 1h, não depende da ação buscada (mesmo padrão
-    de _buscar_universo_ibovespa/_buscar_macro)."""
-    return _buscar_historico(TICKER_PETROLEO_BRENT, periodo=f"{ANOS_JANELA_CORRELACAO}y")
+def _buscar_historico_petroleo(
+    periodo: str = f"{ANOS_JANELA_CORRELACAO}y",
+) -> tuple[pd.DataFrame | None, str | None]:
+    """Histórico do petróleo Brent (BZ=F) — cacheado na sessão por 1h
+    (por período: `st.cache_data` já cacheia por combinação de
+    argumentos, mesmo padrão de `ingest.precos.obter_historico`), não
+    depende da ação buscada (mesmo padrão de
+    _buscar_universo_ibovespa/_buscar_macro). Período padrão é a mesma
+    janela de correlação (2 anos); a seção "Comparando com Petróleo
+    (Brent)" passa períodos maiores (5/10 anos) explicitamente."""
+    return _buscar_historico(TICKER_PETROLEO_BRENT, periodo=periodo)
 
 
 @st.cache_data(ttl=3600)
@@ -335,6 +342,14 @@ def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
     return template.format(valor) if valor is not None else "N/D"
 
 
+def _fmt_bilhoes(valor: float | None) -> str:
+    """Formata um valor grande (Valor de Mercado, Valor de Firma, Dívida
+    Líquida — ordem de grandeza de bilhões pras ações da B3) em R$
+    bilhões, mesma convenção da imprensa financeira brasileira — ou
+    "N/D" se ausente."""
+    return f"R$ {valor / 1e9:.2f} bi".replace(".", ",") if valor is not None else "N/D"
+
+
 def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
     """Lê o resultado do screener já salvo em disco (não roda nada ao
     vivo) — devolve None se o arquivo ainda não existir (primeira vez,
@@ -471,6 +486,21 @@ with aba_analisar:
         st.warning("Selecione uma ação." if usando_dropdown else "Digite um ticker.")
 
     if buscar and ticker:
+        st.session_state["ticker_com_resultado_exibido"] = ticker
+
+    # "Sticky": uma vez buscado com sucesso, o resultado continua visível em
+    # reruns disparados por outros widgets DENTRO da seção de resultado (ex:
+    # as pills de "Comparando com Petróleo" mais abaixo) — sem isso, só trocar
+    # a janela de comparação apagaria a página inteira, já que qualquer
+    # widget com estado dispara um rerun do zero e `buscar` sozinho só é True
+    # no exato rerun do clique em "Buscar". As buscas abaixo já têm cache
+    # próprio (disco com TTL, ou st.cache_data), então reexecutá-las num
+    # rerun "sticky" é barato — não bate na rede de novo.
+    mostrar_resultado = bool(ticker) and (
+        buscar or ticker == st.session_state.get("ticker_com_resultado_exibido")
+    )
+
+    if mostrar_resultado:
         with st.spinner(f"Buscando dados de {ticker}..."):
             historico, erro_historico = _buscar_historico(ticker, PERIODO_HISTORICO_COMPORTAMENTO)
             # Busca separada (não reaproveita `historico`) só pro card "Preço
@@ -534,6 +564,11 @@ with aba_analisar:
         divida_liquida_sobre_patrimonio = (
             indicadores["divida_liquida_sobre_patrimonio"] if indicadores else None
         )
+        # Dívida líquida em valor ABSOLUTO (campo próprio do Fundamentus,
+        # ausente pra bancos — ver CAMPOS_FUNDAMENTUS_OPCIONAIS), não a
+        # mesma coisa que divida_liquida_sobre_patrimonio acima (a
+        # proporção). Usada só pro Valor de Firma mais abaixo.
+        divida_liquida = indicadores["divida_liquida"] if indicadores else None
 
         # Beta real (janela de 1 ano, calculada uma vez e reaproveitada no WACC
         # do FCD e no card de "Comportamento da ação" abaixo). None quando não
@@ -651,7 +686,7 @@ with aba_analisar:
                 )
                 col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
                 col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
-                col_e, col_f, col_g, _col_h = st.columns(4)
+                col_e, col_f, col_g, col_h = st.columns(4)
                 col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
                 col_f.metric(
                     "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
@@ -660,6 +695,17 @@ with aba_analisar:
                     "Cresc. receita (5a)",
                     _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
                 )
+                valores_mercado_firma = calcular_valor_mercado_e_firma(
+                    preco_atual, numero_acoes, divida_liquida
+                )
+                col_h.metric(
+                    "Valor de mercado", _fmt_bilhoes(valores_mercado_firma["valor_mercado"])
+                )
+                col_i, col_j, _col_k, _col_l = st.columns(4)
+                col_i.metric(
+                    "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
+                )
+                col_j.metric("Valor de firma", _fmt_bilhoes(valores_mercado_firma["valor_firma"]))
                 st.caption(
                     "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
                     "Fundamentus não reporta alguns desses índices no mesmo formato."
@@ -757,6 +803,62 @@ with aba_analisar:
                     margin={"t": 20},
                 )
                 st.plotly_chart(figura_preco, use_container_width=True)
+
+        st.divider()
+        st.subheader("Comparando com Petróleo (Brent)")
+        JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
+        janela_petroleo_selecionada = st.pills(
+            "Janela de comparação",
+            options=list(JANELAS_COMPARACAO_PETROLEO.keys()),
+            default="2 anos",
+            key="janela_comparacao_petroleo",
+        )
+        if not janela_petroleo_selecionada:
+            st.info("Selecione uma janela acima pra ver o gráfico.")
+        else:
+            periodo_petroleo = JANELAS_COMPARACAO_PETROLEO[janela_petroleo_selecionada]
+            with st.spinner(
+                f"Buscando histórico de {ticker} e do petróleo (Brent) em "
+                f"{janela_petroleo_selecionada}..."
+            ):
+                historico_acao_petroleo, erro_acao_petroleo = _buscar_historico(
+                    ticker, periodo=periodo_petroleo
+                )
+                historico_petroleo_janela, erro_petroleo_janela = _buscar_historico_petroleo(
+                    periodo=periodo_petroleo
+                )
+
+            if erro_acao_petroleo:
+                st.error(f"Preço de {ticker}: {erro_acao_petroleo}")
+            elif erro_petroleo_janela:
+                st.error(f"Petróleo (Brent): {erro_petroleo_janela}")
+            else:
+                # Mesma normalização base 100 do gráfico "Preço vs.
+                # Ibovespa" acima (graficos.normalizar_base_100) — escalas
+                # brutas bem diferentes (ação em R$ dezenas, Brent em
+                # US$ dezenas) ficariam ilegíveis lado a lado sem isso.
+                figura_petroleo = go.Figure()
+                figura_petroleo.add_trace(
+                    go.Scatter(
+                        x=historico_acao_petroleo["data"],
+                        y=normalizar_base_100(historico_acao_petroleo["Close"]),
+                        name=ticker,
+                    )
+                )
+                figura_petroleo.add_trace(
+                    go.Scatter(
+                        x=historico_petroleo_janela["data"],
+                        y=normalizar_base_100(historico_petroleo_janela["Close"]),
+                        name="Petróleo (Brent)",
+                    )
+                )
+                figura_petroleo.update_layout(
+                    yaxis_title="Desempenho (base 100 no início do período)",
+                    xaxis_title="Data",
+                    hovermode="x unified",
+                    margin={"t": 20},
+                )
+                st.plotly_chart(figura_petroleo, use_container_width=True)
 
         st.divider()
         st.subheader("Gráfico avançado (TradingView)")

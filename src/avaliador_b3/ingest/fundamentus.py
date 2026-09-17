@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 from avaliador_b3.config import (
     CABECALHOS_FUNDAMENTUS,
     CAMPOS_FUNDAMENTUS,
+    CAMPOS_FUNDAMENTUS_OPCIONAIS,
     DATA_RAW_DIR,
     DELAY_FUNDAMENTUS_SEGUNDOS,
     URL_FUNDAMENTUS_DETALHES,
@@ -96,6 +97,12 @@ def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
     indicadores: dict = {"ticker": ticker}
     for rotulo, nome_campo in CAMPOS_FUNDAMENTUS.items():
         indicadores[nome_campo] = _parse_numero(rotulos_valores[rotulo])
+    # Opcionais (ver CAMPOS_FUNDAMENTUS_OPCIONAIS): ausência do rótulo na
+    # página (não só valor vazio) é esperada pra certos tipos de empresa
+    # — tratada como "-" (vira None via _parse_numero), não como sinal de
+    # a página ter mudado de estrutura.
+    for rotulo, nome_campo in CAMPOS_FUNDAMENTUS_OPCIONAIS.items():
+        indicadores[nome_campo] = _parse_numero(rotulos_valores.get(rotulo, "-"))
     return indicadores
 
 
@@ -112,8 +119,10 @@ def obter_indicadores(
 ) -> dict:
     """Busca os indicadores fundamentalistas de uma ação no Fundamentus:
     ROE, margem líquida, LPA, VPA, liquidez corrente, dívida líquida/
-    patrimônio (não há dívida líquida/EBITDA nessa fonte — ver
-    `CAMPOS_FUNDAMENTUS` em config.py) e crescimento de receita em 5 anos.
+    patrimônio, crescimento de receita em 5 anos, número de ações e
+    patrimônio líquido (ver `CAMPOS_FUNDAMENTUS` em config.py) e dívida
+    líquida em valor absoluto (`CAMPOS_FUNDAMENTUS_OPCIONAIS` — ausente
+    pra bancos, vira `None`, não erro).
 
     Levanta `TickerNaoEncontrado` se o papel não existir no Fundamentus, ou
     `EstruturaPaginaMudou` se a página existir mas faltar algum campo

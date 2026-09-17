@@ -218,6 +218,25 @@ CAMPOS_FUNDAMENTUS = {
     # valor justo por ação. Confirmado presente na página de PETR4/VALE3/
     # ITUB4 em 2026-09-14.
     "Nro. Ações": "numero_acoes",
+    # Adicionado pra Valor de Mercado/Valor de Firma (junto com "Nro.
+    # Ações" acima e "Dív. Líquida" em CAMPOS_FUNDAMENTUS_OPCIONAIS
+    # abaixo). Confirmado presente tanto em empresa não-financeira
+    # (PETR4) quanto banco (ITUB4) em 2026-09-17 — diferente de "Dív.
+    # Líquida", que só existe pra não-financeiras.
+    "Patrim. Líq": "patrimonio_liquido",
+}
+
+# Campos que podem estar totalmente AUSENTES da página do Fundamentus pra
+# certos tipos de empresa — diferente dos campos de CAMPOS_FUNDAMENTUS
+# acima (sempre presentes como rótulo na página; só o VALOR vira "-"
+# quando não aplicável, ex: "Dív Líq / Patrim" pra banco). "Dív. Líquida"
+# simplesmente não aparece como rótulo na página de bancos — confirmado
+# contra ITUB4 real em 2026-09-17 (nem o <td class="label"> existe).
+# Exigir esse campo em CAMPOS_FUNDAMENTUS quebraria TODA busca de
+# indicadores de banco com EstruturaPaginaMudou, por isso um dict
+# separado — ausência vira None (indicador opcional), não erro.
+CAMPOS_FUNDAMENTUS_OPCIONAIS = {
+    "Dív. Líquida": "divida_liquida",
 }
 
 # CVM (Comissão de Valores Mobiliários), Dados Abertos — Demonstrações

@@ -64,6 +64,24 @@ def test_extrair_rotulos_valores_contra_pagina_real_petr4():
     assert rotulos_valores["Dív Líq / Patrim"] == "0,65"
     assert rotulos_valores["Cres. Rec (5a)"] == "-2,3%"
     assert rotulos_valores["Nro. Ações"] == "12.888.700.000"
+    # Valor de Mercado/Valor de Firma: confirmado presente na página real
+    # (2026-09-17) — "Dív. Líquida" bate com "Dív. Bruta" - "Disponibilidades"
+    # (366.533.000.000 - 53.764.000.000), não é um número arbitrário.
+    assert rotulos_valores["Patrim. Líq"] == "480.950.000.000"
+    assert rotulos_valores["Dív. Líquida"] == "312.769.000.000"
+
+
+def test_extrair_rotulos_valores_contra_pagina_real_itub4_banco_sem_divida_liquida():
+    # Diferente de PETR4: confirmado que "Dív. Líquida" simplesmente não
+    # existe como rótulo na página de um banco (nem "-", ausente mesmo) —
+    # "Dív Líq / Patrim" continua presente, só com valor "-". Fixture
+    # real capturada em 2026-09-17.
+    html = _html_fixture("fundamentus_itub4.html")
+    rotulos_valores = fundamentus._extrair_rotulos_valores(html)
+
+    assert rotulos_valores["Dív Líq / Patrim"] == "-"
+    assert rotulos_valores["Patrim. Líq"] == "207.648.000.000"
+    assert "Dív. Líquida" not in rotulos_valores
 
 
 def test_extrair_rotulos_valores_pagina_de_ticker_invalido_fica_vazia():
@@ -71,8 +89,11 @@ def test_extrair_rotulos_valores_pagina_de_ticker_invalido_fica_vazia():
     assert fundamentus._extrair_rotulos_valores(html) == {}
 
 
-def test_montar_indicadores_caminho_feliz():
-    rotulos_valores = {
+def _rotulos_valores_completos(**sobrescritas: str) -> dict[str, str]:
+    """Todos os campos obrigatórios de CAMPOS_FUNDAMENTUS com valores
+    válidos — `sobrescritas` troca/adiciona rótulos específicos por
+    teste (ex: omitir "Dív. Líquida" pra simular um banco)."""
+    base = {
         "ROE": "27,7%",
         "Marg. Líquida": "24,4%",
         "LPA": "10,35",
@@ -81,8 +102,15 @@ def test_montar_indicadores_caminho_feliz():
         "Dív Líq / Patrim": "0,65",
         "Cres. Rec (5a)": "-2,3%",
         "Nro. Ações": "12.888.700.000",
+        "Patrim. Líq": "480.950.000.000",
+        "Dív. Líquida": "312.769.000.000",
     }
-    indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
+    base.update(sobrescritas)
+    return base
+
+
+def test_montar_indicadores_caminho_feliz():
+    indicadores = fundamentus._montar_indicadores("PETR4", _rotulos_valores_completos())
 
     assert indicadores == {
         "ticker": "PETR4",
@@ -94,6 +122,8 @@ def test_montar_indicadores_caminho_feliz():
         "divida_liquida_sobre_patrimonio": 0.65,
         "crescimento_receita_5a_percentual": -2.3,
         "numero_acoes": 12888700000.0,
+        "patrimonio_liquido": 480950000000.0,
+        "divida_liquida": 312769000000.0,
     }
 
 
@@ -101,6 +131,37 @@ def test_montar_indicadores_levanta_erro_quando_falta_campo():
     rotulos_valores = {"ROE": "27,7%", "LPA": "10,35"}  # faltam os outros
     with pytest.raises(fundamentus.EstruturaPaginaMudou, match="PETR4"):
         fundamentus._montar_indicadores("PETR4", rotulos_valores)
+
+
+def test_montar_indicadores_campo_opcional_ausente_vira_none_sem_erro():
+    # "Dív. Líquida" (CAMPOS_FUNDAMENTUS_OPCIONAIS) pode faltar como
+    # rótulo inteiro (não só valor "-") pra banco — não pode levantar
+    # EstruturaPaginaMudou como um campo obrigatório faltando levantaria.
+    rotulos_valores = _rotulos_valores_completos()
+    del rotulos_valores["Dív. Líquida"]
+
+    indicadores = fundamentus._montar_indicadores("ITUB4", rotulos_valores)
+
+    assert indicadores["divida_liquida"] is None
+    assert indicadores["patrimonio_liquido"] == 480950000000.0
+
+
+def test_obter_indicadores_banco_real_nao_levanta_erro_e_divida_liquida_fica_none(
+    tmp_path, monkeypatch
+):
+    # Fim a fim contra a página real de um banco (ITUB4): confirma que a
+    # ausência de "Dív. Líquida" como rótulo não derruba obter_indicadores
+    # inteiro (EstruturaPaginaMudou) — só aquele indicador específico
+    # fica None, mesmo padrão já usado pra outros campos ausentes em banco.
+    conteudo = _bytes_fixture("fundamentus_itub4.html")
+    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    indicadores = fundamentus.obter_indicadores("ITUB4", diretorio_cache=tmp_path)
+
+    assert indicadores["divida_liquida"] is None
+    assert indicadores["patrimonio_liquido"] == 207648000000.0
+    assert indicadores["divida_liquida_sobre_patrimonio"] is None  # "-" na página
 
 
 def test_obter_indicadores_caminho_feliz_corrige_encoding_e_grava_cache(tmp_path, monkeypatch):

@@ -307,6 +307,8 @@ def _indicadores_falsos_aplicavel_pra_graham() -> dict:
         "margem_liquida_percentual": 10.0,
         "liquidez_corrente": 1.2,
         "crescimento_receita_5a_percentual": 8.0,
+        "patrimonio_liquido": 20_000_000.0,
+        "divida_liquida": 10_000_000.0,
     }
 
 
