@@ -11,8 +11,11 @@ snapshot passado específico pelo timestamp (o nome de arquivo do GDELT
 segue um padrão previsível, ver `INTERVALO_SNAPSHOT_GDELT_MINUTOS` em
 config.py), usadas por `conflitos.obter_eventos_relevantes_ultimas_24h`
 pra montar uma janela maior processando um snapshot de cada vez. Filtra
-pelas categorias CAMEO de conflito (17=COERCE, 18=ASSAULT, 19=FIGHT) e
-extrai localização geográfica e Goldstein Score.
+pelas categorias CAMEO de conflito (17=COERCE, 18=ASSAULT, 19=FIGHT),
+exclui o subconjunto de EventCode confirmado como ruído dentro de COERCE
+(ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), deduplica eventos do mesmo
+artigo de origem (`deduplicar_por_fonte`) e extrai localização geográfica
+e Goldstein Score.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ import requests
 
 from avaliador_b3.config import (
     CATEGORIAS_CONFLITO_CAMEO,
+    CODIGOS_EVENTO_COERCE_RUIDO,
     COLUNAS_EVENTO_GDELT,
     DATA_RAW_DIR,
     DELAY_GDELT_SEGUNDOS,
@@ -189,10 +193,36 @@ def _analisar_arquivo_eventos(conteudo_csv: str) -> pd.DataFrame:
 
 def filtrar_eventos_conflito(df: pd.DataFrame) -> pd.DataFrame:
     """Filtra o DataFrame completo de eventos pelas categorias CAMEO de
-    conflito (COERCE/ASSAULT/FIGHT) e seleciona as colunas de localização
-    geográfica e Goldstein Score relevantes para o projeto."""
-    filtrado = df[df["EventRootCode"].isin(CATEGORIAS_CONFLITO_CAMEO)]
-    return filtrado[COLUNAS_RESULTADO].sort_values("data").reset_index(drop=True)
+    conflito (COERCE/ASSAULT/FIGHT), exclui o subconjunto de EventCode que a
+    investigação de 2026-09-17 confirmou ser majoritariamente ruído dentro
+    de COERCE (ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), deduplica por
+    artigo de origem (`deduplicar_por_fonte`) e seleciona as colunas de
+    localização geográfica e Goldstein Score relevantes para o projeto."""
+    filtrado = df[
+        df["EventRootCode"].isin(CATEGORIAS_CONFLITO_CAMEO)
+        & ~df["EventCode"].isin(CODIGOS_EVENTO_COERCE_RUIDO)
+    ]
+    filtrado = filtrado[COLUNAS_RESULTADO].sort_values("data").reset_index(drop=True)
+    return deduplicar_por_fonte(filtrado)
+
+
+def deduplicar_por_fonte(df: pd.DataFrame) -> pd.DataFrame:
+    """Colapsa múltiplos eventos do mesmo artigo de origem (mesma
+    SOURCEURL) numa única linha — comum quando uma notícia menciona vários
+    locais e o GDELT gera um evento por local citado (ex: uma matéria local
+    sobre bares que cita "Flórida" gera um evento de conflito em Flórida,
+    outro no Maine, etc., todos da mesma SOURCEURL). Mantém a primeira
+    ocorrência na ordem em que `df` chega — chamada depois do sort por
+    `data`, então "primeira" é a cronologicamente mais antiga.
+
+    Linhas com SOURCEURL vazia nunca são tratadas como duplicatas entre si
+    (mesmo que várias estejam vazias) — evita colapsar eventos distintos só
+    porque nenhum tinha URL de origem registrada; na prática o GDELT 2.0
+    sempre populou esse campo nos dados reais investigados, mas o código
+    não assume isso."""
+    com_url = df["SOURCEURL"].astype(str).str.strip() != ""
+    deduplicado = df[com_url].drop_duplicates(subset="SOURCEURL", keep="first")
+    return pd.concat([deduplicado, df[~com_url]]).sort_index()
 
 
 def _caminho_cache(timestamp: str, diretorio_cache: Path) -> Path:

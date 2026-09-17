@@ -142,6 +142,126 @@ def test_filtrar_eventos_conflito_mantem_so_categorias_de_conflito_e_ordena():
     assert list(resultado.columns) == gdelt.COLUNAS_RESULTADO
 
 
+def test_filtrar_eventos_conflito_exclui_codigos_coerce_ruido():
+    # 172 (sanção administrativa) e 173 (prisão/ação legal) são os dois
+    # códigos confirmados como majoritariamente ruído dentro de COERCE (ver
+    # investigação em config.py) — devem sumir do resultado. 175 (repressão
+    # violenta) é um código de COERCE fora da lista de ruído — permanece.
+    linhas = "\n".join(
+        [
+            _linha_evento(
+                GLOBALEVENTID="1",
+                EventRootCode="17",
+                EventCode="172",
+                DATEADDED="20260914073000",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="2",
+                EventRootCode="17",
+                EventCode="173",
+                DATEADDED="20260914073000",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="3",
+                EventRootCode="17",
+                EventCode="175",
+                DATEADDED="20260914073000",
+                SOURCEURL="https://example.com/repressao",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="4",
+                EventRootCode="19",
+                EventCode="193",
+                DATEADDED="20260914073000",
+                SOURCEURL="https://example.com/combate",
+            ),
+        ]
+    )
+
+    df = gdelt._analisar_arquivo_eventos(linhas)
+    resultado = gdelt.filtrar_eventos_conflito(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [3, 4]
+
+
+def test_filtrar_eventos_conflito_deduplica_eventos_do_mesmo_artigo():
+    # Mesma SOURCEURL, locais (e IDs de evento) diferentes — caso real
+    # confirmado: uma notícia local sobre bares em Portland virou um evento
+    # de "conflito" por cidade mencionada no texto. Só a primeira ocorrência
+    # (cronologicamente) deve sobreviver.
+    linhas = "\n".join(
+        [
+            _linha_evento(
+                GLOBALEVENTID="10",
+                EventRootCode="17",
+                EventCode="171",
+                DATEADDED="20260914073000",
+                SOURCEURL="https://example.com/artigo-unico",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="11",
+                EventRootCode="17",
+                EventCode="171",
+                DATEADDED="20260914074500",
+                SOURCEURL="https://example.com/artigo-unico",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="12",
+                EventRootCode="19",
+                EventCode="193",
+                DATEADDED="20260914073000",
+                SOURCEURL="https://example.com/outro-artigo",
+            ),
+        ]
+    )
+
+    df = gdelt._analisar_arquivo_eventos(linhas)
+    resultado = gdelt.filtrar_eventos_conflito(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [10, 12]
+
+
+def test_deduplicar_por_fonte_mantem_primeira_ocorrencia():
+    df = pd.DataFrame(
+        {
+            "GLOBALEVENTID": [1, 2, 3],
+            "SOURCEURL": ["https://a.com", "https://a.com", "https://b.com"],
+        }
+    )
+
+    resultado = gdelt.deduplicar_por_fonte(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [1, 3]
+
+
+def test_deduplicar_por_fonte_nao_colapsa_urls_vazias_entre_si():
+    # Duas linhas sem SOURCEURL não são "o mesmo artigo" só por estarem
+    # ambas vazias — evita perder eventos legítimos sem URL registrada.
+    df = pd.DataFrame(
+        {
+            "GLOBALEVENTID": [1, 2],
+            "SOURCEURL": ["", ""],
+        }
+    )
+
+    resultado = gdelt.deduplicar_por_fonte(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [1, 2]
+
+
+def test_deduplicar_por_fonte_sem_duplicatas_preserva_tudo():
+    df = pd.DataFrame(
+        {
+            "GLOBALEVENTID": [1, 2, 3],
+            "SOURCEURL": ["https://a.com", "https://b.com", "https://c.com"],
+        }
+    )
+
+    resultado = gdelt.deduplicar_por_fonte(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [1, 2, 3]
+
+
 def test_obter_eventos_conflito_usa_cache_e_nao_baixa_zip_de_novo(tmp_path, monkeypatch):
     chamadas = {"lastupdate": 0, "zip": 0}
     linha = _linha_evento(

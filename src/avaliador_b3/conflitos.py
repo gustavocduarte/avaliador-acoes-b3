@@ -47,6 +47,7 @@ from avaliador_b3.ingest.gdelt import COLUNAS_NUMERICAS as COLUNAS_NUMERICAS_GDE
 from avaliador_b3.ingest.gdelt import COLUNAS_RESULTADO as COLUNAS_RESULTADO_GDELT
 from avaliador_b3.ingest.gdelt import DTYPES_LEITURA_CACHE as DTYPES_LEITURA_CACHE_GDELT
 from avaliador_b3.ingest.gdelt import (
+    deduplicar_por_fonte,
     gerar_timestamps_janela,
     obter_eventos_conflito_do_snapshot,
     obter_timestamp_mais_recente,
@@ -191,7 +192,14 @@ def _buscar_eventos_por_paises(
     Um horário específico faltando (gap raro do GDELT) ou qualquer outra
     falha isolada nesse snapshot é pulado — não interrompe a busca da
     janela inteira, mesmo padrão de isolamento de erro já usado no
-    screener pra uma ação isolada falhando."""
+    screener pra uma ação isolada falhando.
+
+    `filtrar_eventos_conflito` já deduplica por SOURCEURL dentro de CADA
+    snapshot (`ingest.gdelt.deduplicar_por_fonte`) — mas o mesmo artigo
+    pode aparecer em mais de um snapshot de 15 min (ex: reprocessado pelo
+    GDELT, ou republicado), então este loop deduplica de novo depois de
+    concatenar a janela inteira, pra pegar também esse caso entre
+    snapshots diferentes."""
     timestamp_mais_recente = obter_timestamp_mais_recente()
     timestamps = gerar_timestamps_janela(timestamp_mais_recente, horas=horas)
 
@@ -211,9 +219,10 @@ def _buscar_eventos_por_paises(
     if not partes_filtradas:
         return pd.DataFrame(columns=COLUNAS_RESULTADO_GDELT)
 
-    return (
+    concatenado = (
         pd.concat(partes_filtradas, ignore_index=True).sort_values("data").reset_index(drop=True)
     )
+    return deduplicar_por_fonte(concatenado)
 
 
 def obter_eventos_relevantes_ultimas_24h(

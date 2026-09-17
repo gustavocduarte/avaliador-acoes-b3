@@ -15,6 +15,10 @@ def _evento(codigo_pais: str, evento_id: int = 1) -> dict:
         "ActionGeo_FullName": f"Local em {codigo_pais}",
         "ActionGeo_CountryCode": codigo_pais,
         "GoldsteinScale": -5.0,
+        # URL distinta por evento — sem isso, `deduplicar_por_fonte`
+        # colapsaria eventos de teste diferentes por terem SOURCEURL vazia
+        # em comum (ver ingest.gdelt.deduplicar_por_fonte).
+        "SOURCEURL": f"https://example.com/evento-{evento_id}",
     }
 
 
@@ -151,6 +155,8 @@ def _evento_com_data(codigo_pais: str, data: str, evento_id: int) -> dict:
         "ActionGeo_FullName": f"Local em {codigo_pais}",
         "ActionGeo_CountryCode": codigo_pais,
         "GoldsteinScale": -5.0,
+        # Ver comentário equivalente em `_evento` acima.
+        "SOURCEURL": f"https://example.com/evento-{evento_id}",
     }
 
 
@@ -188,7 +194,11 @@ def test_pula_snapshot_que_falha_sem_quebrar_a_janela_inteira(monkeypatch, _quat
     def buscar_falso(timestamp, **kwargs):
         if timestamp == "20260916073000":
             raise RuntimeError("gap simulado — horário sem arquivo publicado")
-        return pd.DataFrame([_evento_com_data("BR", "2026-09-16 07:00:00", 1)])
+        # evento_id (e portanto SOURCEURL) varia por timestamp — sem isso,
+        # os 3 snapshots que têm sucesso devolveriam o "mesmo" artigo e
+        # `deduplicar_por_fonte` colapsaria os 3 numa linha só, mascarando
+        # o que este teste quer provar (nenhum é de fato perdido).
+        return pd.DataFrame([_evento_com_data("BR", "2026-09-16 07:00:00", int(timestamp))])
 
     monkeypatch.setattr(conflitos, "obter_eventos_conflito_do_snapshot", buscar_falso)
 
@@ -267,7 +277,9 @@ def test_universal_pula_snapshot_que_falha_sem_quebrar_a_janela_inteira(
     def buscar_falso(timestamp, **kwargs):
         if timestamp == "20260916073000":
             raise RuntimeError("gap simulado — horário sem arquivo publicado")
-        return pd.DataFrame([_evento_com_data("BR", "2026-09-16 07:00:00", 1)])
+        # Ver comentário equivalente na versão não-universal deste teste
+        # acima (evento_id por timestamp, pra não colidir no dedup por URL).
+        return pd.DataFrame([_evento_com_data("BR", "2026-09-16 07:00:00", int(timestamp))])
 
     monkeypatch.setattr(conflitos, "obter_eventos_conflito_do_snapshot", buscar_falso)
 

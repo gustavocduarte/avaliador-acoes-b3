@@ -89,6 +89,55 @@ CATEGORIAS_CONFLITO_CAMEO = {
     "19": "FIGHT",
 }
 
+# --- Refinamento de ruído no Monitor de conflitos (2026-09-17) ---
+#
+# Investigação rodada contra os ~8.456 eventos já capturados pelo Monitor
+# (data/processed/conflitos_24h.csv, janela real de 24h) mais ~1.782 eventos
+# buscados ao vivo preservando NumSources (não fica salvo no pipeline normal
+# — ver COLUNAS_RESULTADO em ingest/gdelt.py), cobrindo os 3 sinais abaixo.
+# Só o primeiro (EventCode) se mostrou útil; os outros dois foram
+# investigados e descartados — documentados aqui pra não serem
+# re-investigados do zero no futuro.
+#
+# 1) EventCode (granularidade maior que EventRootCode) — SINAL ÚTIL,
+#    aplicado via CODIGOS_EVENTO_COERCE_RUIDO abaixo. Dentro da categoria
+#    "17" (COERCE), dois códigos específicos dominam o volume e, amostrando
+#    as SOURCEURL reais, são quase inteiramente ruído:
+#    - "172" (Impose administrative sanctions/restrições administrativas) —
+#      707 de 3.447 eventos de COERCE (20,5%); inclui literalmente o
+#      exemplo do bar que motivou essa investigação (notícia local sobre
+#      bares abrindo em Portland, Maine, virou 9 "eventos de conflito" —
+#      um por local mencionado no texto).
+#    - "173" (Arrest, detain, or charge with legal action) — 2.319 de 3.447
+#      (67,3%); quase todo crime/julgamento local dos EUA (sentenças,
+#      prisões por tráfico, etc.) sem relação com risco geopolítico.
+#    Juntos, 172+173 = 87,8% do volume de COERCE. Checagem de palavra-chave
+#    de conflito ("war/attack/military/killed/...") nas 1.412 SOURCEURL
+#    únicas desses dois códigos: só 7,2% continham algum termo, e a leitura
+#    manual mostrou que a maioria mesmo assim era falso positivo (op-ed,
+#    "bomb bomb bar" — nome de restaurante, política doméstica de
+#    impeachment) — perda real de sinal genuíno é bem menor que isso. Os
+#    demais códigos de COERCE (170, 171x, 174, 175, 172x/1724) somam só
+#    12,2% do volume e são mais mistos (ex: choques na RD Congo, apreensão
+#    de barco iranês, estado de emergência) — mantidos sem filtro adicional.
+#    ASSAULT (18) e FIGHT (19) não mostraram esse padrão de concentração —
+#    amostrados e já majoritariamente violência física real (força militar,
+#    confronto armado, assassinato) — sem refinamento adicional por ora.
+# 2) NumSources — INVESTIGADO, NÃO aplicado como filtro. Vale 1 em 98,3%
+#    dos eventos de ruído (172/173) E em 98,0% dos eventos de conflito real
+#    (raiz 19) — sem poder de separação nos dados do GDELT 2.0 gratuito
+#    (campo pouco populado mesmo pra notícias com múltiplas fontes reais).
+#    Um corte tipo NumSources >= 2 descartaria ~98% de TUDO, ruído e sinal
+#    genuíno juntos — pior que não filtrar nada.
+# 3) AvgTone — INVESTIGADO, NÃO aplicado como filtro. Direção OPOSTA à
+#    esperada: o grupo de ruído (172/173) teve tom mediano MAIS negativo
+#    (-5,0) que o grupo de conflito real da raiz 19 (-3,9) — crime local
+#    (sentença de homicídio, tráfico) carrega tom tão ou mais negativo que
+#    conflito geopolítico genuíno, sem ser o risco que o projeto monitora.
+#    Um corte por tom mais negativo pegaria preferencialmente RUÍDO, não
+#    conflito real — na direção contrária do que se buscava.
+CODIGOS_EVENTO_COERCE_RUIDO = {"172", "173"}
+
 # Preço de ação via yfinance (ticker B3 + sufixo ".SA", ex: PETR4.SA).
 # Confirmado em 2026-09-14 com yfinance 1.7.0 contra PETR4.SA/VALE3.SA reais.
 # Diferente dos outros adapters, o cache de preço usa TTL curto: o dado já
