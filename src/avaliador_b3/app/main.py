@@ -571,6 +571,7 @@ with aba_analisar:
             }
 
         st.divider()
+        st.subheader("Valor Justo")
         resultado_combinado = calcular_valor_combinado(
             resultado_graham, resultado_bazin, resultado_fcd
         )
