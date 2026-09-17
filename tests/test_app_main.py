@@ -23,6 +23,7 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+from avaliador_b3.config import ANOS_JANELA_CORRELACAO
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 
@@ -291,3 +292,69 @@ def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monke
     assert any(
         subheader.value == "Correlação com fatores externos" for subheader in at.subheader
     )
+
+
+# --- Delta (%) de upside nos cards de valor justo -----------------------------
+
+
+def _indicadores_falsos_aplicavel_pra_graham() -> dict:
+    return {
+        "lpa": 5.0,
+        "vpa": 20.0,
+        "numero_acoes": 1_000_000.0,
+        "divida_liquida_sobre_patrimonio": 0.5,
+        "roe_percentual": 15.0,
+        "margem_liquida_percentual": 10.0,
+        "liquidez_corrente": 1.2,
+        "crescimento_receita_5a_percentual": 8.0,
+    }
+
+
+def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
+    # Graham aplicável (LPA/VPA válidos) mostra o delta % de upside contra
+    # o preço atual; Bazin não aplicável (sem dividendo) não mostra delta
+    # nenhum — mesmo espírito do caso real ABEV3 (um método não aplicável)
+    # conferido manualmente no navegador.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    metricas_graham = [metrica for metrica in at.metric if metrica.label == "Graham"]
+    assert len(metricas_graham) == 1
+    # Graham = raiz(22,5 × 5 × 20) ≈ 47,43; preço 50 -> delta ≈ -5,1%.
+    assert metricas_graham[0].delta == "-5.1%"
+
+    metricas_bazin = [metrica for metrica in at.metric if metrica.label == "Bazin (preço teto)"]
+    assert len(metricas_bazin) == 1
+    assert not metricas_bazin[0].delta

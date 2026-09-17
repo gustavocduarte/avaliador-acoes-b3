@@ -288,11 +288,32 @@ def _widget_avancado_tradingview(ticker: str) -> str:
     """
 
 
-def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str):
-    st.metric(nome, f"R$ {resultado[rotulo_valor]:.2f}" if resultado["aplicavel"] else "—")
+def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | None:
+    """Diferença percentual entre `valor` (valor justo de um método) e o
+    preço atual — (valor - preco_atual) / preco_atual × 100, pro
+    parâmetro `delta` do st.metric. Cor padrão do Streamlit, SEM inverter
+    (`delta_color="normal"`, o default): aqui valor justo maior que o
+    preço é upside, sinal bom = verde — diferente de outros deltas do
+    projeto onde "maior é pior" e por isso usam `delta_color="inverse"`.
+
+    `None` (sem delta nenhum, não um "0%" inventado) quando `preco_atual`
+    não está disponível — st.metric já trata `delta=None` como "não
+    mostrar o indicador"."""
+    if preco_atual is None:
+        return None
+    return f"{(valor - preco_atual) / preco_atual * 100:.1f}%"
+
+
+def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str, preco_atual: float | None):
     if resultado["aplicavel"]:
+        st.metric(
+            nome,
+            f"R$ {resultado[rotulo_valor]:.2f}",
+            delta=_delta_percentual_upside(resultado[rotulo_valor], preco_atual),
+        )
         st.caption("Aplicável")
     else:
+        st.metric(nome, "—")
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
 
 
@@ -493,8 +514,10 @@ with aba_analisar:
 
         if erro_preco_atual:
             st.error(f"Preço: {erro_preco_atual}")
+            preco_atual = None
         else:
-            st.metric("Preço atual", f"R$ {historico_preco_atual['Close'].iloc[-1]:.2f}")
+            preco_atual = float(historico_preco_atual["Close"].iloc[-1])
+            st.metric("Preço atual", f"R$ {preco_atual:.2f}")
 
         if erro_indicadores:
             st.warning(f"Fundamentus: {erro_indicadores}")
@@ -553,22 +576,35 @@ with aba_analisar:
         )
         coluna_graham, coluna_bazin, coluna_fcd, coluna_combinado = st.columns(4)
         with coluna_graham:
-            _cartao_metodo("Graham", resultado_graham, "valor_justo")
+            _cartao_metodo("Graham", resultado_graham, "valor_justo", preco_atual)
         with coluna_bazin:
-            _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto")
+            _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto", preco_atual)
         with coluna_fcd:
-            _cartao_metodo("FCD", resultado_fcd, "valor_justo")
+            _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
             if resultado_fcd["aplicavel"]:
                 origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
                 st.caption(f"Beta no WACC: {resultado_fcd['beta_utilizado']:.2f} ({origem_beta})")
         with coluna_combinado:
             if resultado_combinado["aplicavel"]:
-                st.metric("Valor combinado", f"R$ {resultado_combinado['valor_combinado']:.2f}")
+                st.metric(
+                    "Valor combinado",
+                    f"R$ {resultado_combinado['valor_combinado']:.2f}",
+                    delta=_delta_percentual_upside(
+                        resultado_combinado["valor_combinado"], preco_atual
+                    ),
+                )
                 st.caption(
                     "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
                 )
             else:
                 st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
+
+        st.caption(
+            "Os valores acima são calculados a partir de fórmulas de valuation "
+            "públicas e conhecidas (Graham, Bazin, FCD) aplicadas aos dados "
+            "reais da empresa — isto não é uma recomendação de compra ou "
+            "venda, apenas uma referência de estudo."
+        )
 
         with st.expander("Como funciona esse cálculo?"):
             st.markdown(
@@ -586,7 +622,18 @@ with aba_analisar:
                 "não resultado contábil passado.\n\n"
                 "**Valor combinado** — média simples apenas dos métodos que se aplicam "
                 "à empresa específica analisada, nunca uma média forçada dos três. Se "
-                "só um método for aplicável, o combinado é igual a esse método sozinho."
+                "só um método for aplicável, o combinado é igual a esse método sozinho.\n\n"
+                "**Limitações conhecidas de cada método**: Graham usa o valor "
+                "patrimonial (VPA) na fórmula, então tende a ficar menos "
+                "representativo para empresas com poucos ativos físicos mas alto "
+                "valor de marca ou tecnologia — e não é calculável se VPA for "
+                "negativo. Bazin depende de histórico consistente de dividendo, "
+                "então fica indisponível para empresas de crescimento que "
+                "reinvestem o lucro em vez de distribuir. FCD é o mais sensível a "
+                "premissas (taxa de desconto e crescimento futuro) — pequenas "
+                "mudanças nessas variáveis podem alterar bastante o resultado, "
+                "especialmente quando a taxa de crescimento é estimada a partir de "
+                "poucos anos de histórico."
             )
 
         st.divider()
