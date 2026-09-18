@@ -1,3 +1,6 @@
+import json
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -223,6 +226,114 @@ def test_obter_indicadores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, monkey
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_indicadores_grava_cache_com_envelope_de_versao_de_schema(tmp_path, monkeypatch):
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    bruto = json.loads((tmp_path / "fundamentus" / "PETR4.json").read_text(encoding="utf-8"))
+    assert bruto["versao_schema"] == fundamentus.VERSAO_SCHEMA_FUNDAMENTUS
+    assert bruto["indicadores"]["ticker"] == "PETR4"
+
+
+def test_obter_indicadores_cache_com_schema_desatualizado_busca_de_novo(tmp_path, monkeypatch):
+    # Regressão do bug real desta sessão: um cache no formato ANTIGO (dict
+    # plano, sem envelope de versão nenhum — como todo JSON já gravado em
+    # disco antes dessa mudança) precisa ser tratado como inválido, não
+    # servido incompleto pra quem espera os campos do schema atual.
+    caminho = tmp_path / "fundamentus" / "PETR4.json"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(json.dumps({"ticker": "PETR4", "roe_percentual": 1.0}), encoding="utf-8")
+
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1  # não serviu o cache antigo, buscou de novo
+    assert indicadores["divida_liquida"] == 312769000000.0  # campo que só existe no schema atual
+
+
+def test_obter_indicadores_cache_com_versao_de_schema_antiga_busca_de_novo(tmp_path, monkeypatch):
+    # Mesmo caso do teste acima, mas pro cenário em que um envelope de
+    # versão JÁ existe, só que de uma versão anterior à atual (em vez de
+    # ausente por completo, caso do cache "formato antigo pré-versionamento").
+    caminho = tmp_path / "fundamentus" / "PETR4.json"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "versao_schema": fundamentus.VERSAO_SCHEMA_FUNDAMENTUS - 1,
+                "indicadores": {"ticker": "PETR4"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_indicadores_cache_mais_velho_que_ttl_busca_de_novo(tmp_path, monkeypatch):
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=100)
+    caminho = tmp_path / "fundamentus" / "PETR4.json"
+    # Envelhece o arquivo artificialmente pra além do TTL de 100s, sem
+    # precisar esperar de verdade.
+    mtime_antigo = time.time() - 200
+    os.utime(caminho, (mtime_antigo, mtime_antigo))
+
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=100)
+
+    assert chamadas["contador"] == 2
+
+
+def test_obter_indicadores_cache_dentro_do_ttl_nao_busca_de_novo(tmp_path, monkeypatch):
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
+    fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
 
     assert chamadas["contador"] == 1
 

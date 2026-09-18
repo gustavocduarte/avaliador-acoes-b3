@@ -15,6 +15,12 @@ Dois caminhos de falha são tratados separadamente:
     falta algum dos rótulos que esperamos — sinal de que o site mudou o
     HTML, não que o ticker é inválido. Levanta erro específico em vez de
     devolver um indicador ausente/errado silenciosamente.
+
+Cache em disco protegido por dois mecanismos independentes (ver
+`VERSAO_SCHEMA_FUNDAMENTUS`/`TTL_CACHE_FUNDAMENTUS_SEGUNDOS` em config.py,
+e `_cache_valido`/`_ler_cache_com_schema_atual` abaixo): versionamento de
+schema e TTL — um não substitui o outro, ver docstring de
+`obter_indicadores`.
 """
 
 from __future__ import annotations
@@ -32,7 +38,9 @@ from avaliador_b3.config import (
     CAMPOS_FUNDAMENTUS_OPCIONAIS,
     DATA_RAW_DIR,
     DELAY_FUNDAMENTUS_SEGUNDOS,
+    TTL_CACHE_FUNDAMENTUS_SEGUNDOS,
     URL_FUNDAMENTUS_DETALHES,
+    VERSAO_SCHEMA_FUNDAMENTUS,
 )
 
 TIMEOUT_SEGUNDOS = 30
@@ -110,12 +118,42 @@ def _caminho_cache(ticker: str, diretorio_cache: Path) -> Path:
     return diretorio_cache / "fundamentus" / f"{ticker}.json"
 
 
+def _cache_valido(caminho: Path, ttl_segundos: int) -> bool:
+    """TTL do cache (mesmo padrão de `ingest.precos._cache_valido`) — rede
+    de segurança geral, independente do versionamento de schema abaixo
+    (ver `_ler_cache_com_schema_atual` e `VERSAO_SCHEMA_FUNDAMENTUS` em
+    config.py): protege contra dado desatualizado mesmo quando o schema
+    não mudou (indicador fundamentalista muda no máximo por trimestre de
+    resultado)."""
+    if not caminho.exists():
+        return False
+    idade_segundos = time.time() - caminho.stat().st_mtime
+    return idade_segundos < ttl_segundos
+
+
+def _ler_cache_com_schema_atual(caminho: Path) -> dict | None:
+    """Lê o cache só se a versão de schema gravada bater com
+    `VERSAO_SCHEMA_FUNDAMENTUS` atual — devolve `None` (tratado como cache
+    miss por `obter_indicadores`, força busca nova) se a versão não bater
+    ou o envelope estiver em formato inesperado. Existe pra evitar repetir
+    o bug real já acontecido nesta sessão: quando `CAMPOS_FUNDAMENTUS`/
+    `CAMPOS_FUNDAMENTUS_OPCIONAIS` ganharam um campo novo, um JSON já
+    cacheado (no formato antigo, sem envelope de versão nenhum) continuava
+    sendo servido sem esse campo, e o primeiro código que tentasse ler a
+    chave nova quebrava com KeyError."""
+    bruto = json.loads(caminho.read_text(encoding="utf-8"))
+    if bruto.get("versao_schema") != VERSAO_SCHEMA_FUNDAMENTUS:
+        return None
+    return bruto.get("indicadores")
+
+
 def obter_indicadores(
     ticker: str,
     usar_cache: bool = True,
     forcar_atualizacao: bool = False,
     diretorio_cache: Path = DATA_RAW_DIR,
     delay_segundos: float = DELAY_FUNDAMENTUS_SEGUNDOS,
+    ttl_segundos: int = TTL_CACHE_FUNDAMENTUS_SEGUNDOS,
 ) -> dict:
     """Busca os indicadores fundamentalistas de uma ação no Fundamentus:
     ROE, margem líquida, LPA, VPA, liquidez corrente, dívida líquida/
@@ -131,12 +169,25 @@ def obter_indicadores(
     `delay_segundos` é aplicado antes de cada requisição real (não em
     leituras de cache) — existe para não bater rápido demais no site
     quando o screener passar por várias dezenas de tickers em sequência.
+
+    O cache em disco (`data/raw/fundamentus/{ticker}.json`) é protegido
+    por DOIS mecanismos independentes (ver comentário completo em
+    config.py, junto de `VERSAO_SCHEMA_FUNDAMENTUS`/
+    `TTL_CACHE_FUNDAMENTUS_SEGUNDOS`): versionamento de schema (invalida o
+    cache se `CAMPOS_FUNDAMENTUS`/`CAMPOS_FUNDAMENTUS_OPCIONAIS` mudou
+    desde que foi gravado) e TTL de `ttl_segundos` (invalida por idade,
+    mesmo sem mudança de schema). Os dois precisam passar pra um cache
+    contar como válido.
     """
     ticker = ticker.strip().upper()
     caminho = _caminho_cache(ticker, diretorio_cache)
 
-    if usar_cache and not forcar_atualizacao and caminho.exists():
-        return json.loads(caminho.read_text(encoding="utf-8"))
+    if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
+        indicadores_cache = _ler_cache_com_schema_atual(caminho)
+        if indicadores_cache is not None:
+            return indicadores_cache
+        # Schema mudou desde que esse arquivo foi gravado — ignora o cache
+        # e cai pro fetch novo abaixo, como se fosse cache miss.
 
     if delay_segundos > 0:
         time.sleep(delay_segundos)
@@ -158,6 +209,7 @@ def obter_indicadores(
 
     if usar_cache:
         caminho.parent.mkdir(parents=True, exist_ok=True)
-        caminho.write_text(json.dumps(indicadores, ensure_ascii=False), encoding="utf-8")
+        envelope = {"versao_schema": VERSAO_SCHEMA_FUNDAMENTUS, "indicadores": indicadores}
+        caminho.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
 
     return indicadores

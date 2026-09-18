@@ -105,6 +105,28 @@ def test_valor_conta_levanta_erro_para_escala_desconhecida():
         cvm._valor_conta(_linha("3.11", "Lucro/Prejuízo do Período", escala="BILHOES"))
 
 
+def test_valor_conta_aceita_classe_de_erro_explicita():
+    # Regressão: _valor_conta é compartilhada entre o caminho de Lucro
+    # Líquido e o de Fluxo de Caixa (_fcf_do_periodo) — antes de aceitar
+    # classe_erro, uma escala desconhecida numa conta CFO/CFI levantava
+    # ContaLucroNaoEncontrada (mensagem enganosa, citando "Lucro Líquido"
+    # num contexto de Fluxo de Caixa).
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="Escala monetária"):
+        cvm._valor_conta(
+            _linha("6.01", "Caixa Líquido Atividades Operacionais", escala="BILHOES"),
+            cvm.ContaFluxoCaixaNaoEncontrada,
+        )
+
+
+def test_fcf_do_periodo_escala_desconhecida_levanta_erro_de_fluxo_de_caixa_nao_erro_de_lucro():
+    linhas = [
+        _linha("6.01", "Caixa Líquido Atividades Operacionais", escala="BILHOES"),
+        _linha("6.02", "Caixa Líquido Atividades de Investimento", valor="-20"),
+    ]
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="Escala monetária"):
+        cvm._fcf_do_periodo(linhas)
+
+
 def test_linhas_da_empresa_contra_fixture_real_consolidado():
     cnpj_petrobras = cvm._normalizar_cnpj(CNPJ_PETROBRAS)
     linhas_petrobras = cvm._linhas_da_empresa(ZIP_AMOSTRA, 2024, "con", cnpj_petrobras)

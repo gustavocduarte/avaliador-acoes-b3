@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3.ingest import crosswalk_cnpj
+from avaliador_b3.ingest import _paginacao, crosswalk_cnpj
 
 
 class _RespostaFalsa:
@@ -95,6 +95,17 @@ def test_registro_para_linha_caminho_feliz():
     }
 
 
+def test_registro_para_linha_forca_codigo_cvm_pra_string_mesmo_vindo_como_numero():
+    # Regressão: o JSON bruto da API devolve "codeCVM" como número — sem
+    # forçar str() aqui, resolver_cnpj() devolvia um "codigo_cvm" com tipo
+    # diferente (int) do que vem do cache lido em disco (que já usa
+    # dtype=str explicitamente, ver obter_catalogo_emissores), uma
+    # inconsistência de tipo latente entre execução fresca e com cache.
+    linha = crosswalk_cnpj._registro_para_linha(_registro(code_cvm=9512))
+    assert linha["codigo_cvm"] == "9512"
+    assert isinstance(linha["codigo_cvm"], str)
+
+
 def test_registro_para_linha_levanta_erro_quando_campo_falta():
     with pytest.raises(ValueError, match="Formato do catálogo"):
         crosswalk_cnpj._registro_para_linha({"issuingCompany": "PETR"})
@@ -108,7 +119,7 @@ def test_obter_catalogo_emissores_uma_pagina(tmp_path, monkeypatch):
             _registro(),
         ],
     }
-    monkeypatch.setattr(crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
+    monkeypatch.setattr(_paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
 
     df = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
 
@@ -131,17 +142,52 @@ def test_obter_catalogo_emissores_pagina_quando_ha_mais_de_uma_pagina(tmp_path, 
         chamadas["contador"] += 1
         return _RespostaFalsa(pagina1 if chamadas["contador"] == 1 else pagina2)
 
-    monkeypatch.setattr(crosswalk_cnpj.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
 
-    df = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path, tamanho_pagina=1)
+    # delay_segundos=0 explícito — sem isso, o padrão viria de
+    # DELAY_PAGINACAO_B3_SEGUNDOS (1.5s) e o teste dormiria de verdade
+    # entre as 2 páginas.
+    df = crosswalk_cnpj.obter_catalogo_emissores(
+        diretorio_cache=tmp_path, tamanho_pagina=1, delay_segundos=0
+    )
 
     assert chamadas["contador"] == 2
     assert sorted(df["codigo_emissor"]) == ["PETR", "VALE"]
 
 
+def test_obter_catalogo_emissores_aplica_delay_entre_paginas(tmp_path, monkeypatch):
+    # crosswalk_cnpj.py é o call site que mais importa pro delay entre
+    # páginas: pagina até ~36 vezes pro catálogo completo (ver
+    # TAMANHO_PAGINA_API_B3_CATALOGO em config.py), diferente de
+    # b3_universo.py (tudo cabe numa página hoje).
+    pagina1 = {
+        "page": {"pageNumber": 1, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro(issuing="VALE", code_cvm="4170", cnpj="33592510000154")],
+    }
+    pagina2 = {
+        "page": {"pageNumber": 2, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(pagina1 if chamadas["contador"] == 1 else pagina2)
+
+    esperas = []
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.time, "sleep", lambda segundos: esperas.append(segundos))
+
+    crosswalk_cnpj.obter_catalogo_emissores(
+        diretorio_cache=tmp_path, tamanho_pagina=1, delay_segundos=2.0
+    )
+
+    assert esperas == [2.0]  # 2 páginas -> 1 espera, entre elas
+
+
 def test_obter_catalogo_emissores_levanta_erro_quando_json_invalido(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(json_invalido=True)
+        _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(json_invalido=True)
     )
     with pytest.raises(ValueError, match="não é JSON válido"):
         crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
@@ -158,7 +204,7 @@ def test_obter_catalogo_emissores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path,
         chamadas["contador"] += 1
         return _RespostaFalsa(dados)
 
-    monkeypatch.setattr(crosswalk_cnpj.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
 
     crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
     crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
@@ -168,7 +214,7 @@ def test_obter_catalogo_emissores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path,
 
 def test_obter_catalogo_emissores_propaga_erro_http(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        crosswalk_cnpj.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
+        _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
     )
     with pytest.raises(requests.HTTPError):
         crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)

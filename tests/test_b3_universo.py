@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3.ingest import b3_universo
+from avaliador_b3.ingest import _paginacao, b3_universo
 
 
 class _RespostaFalsa:
@@ -85,12 +85,10 @@ def test_registro_para_linha_levanta_erro_quando_campo_falta():
         b3_universo._registro_para_linha(registro_quebrado)
 
 
-def test_baixar_pagina_levanta_erro_claro_quando_json_invalido(monkeypatch):
-    monkeypatch.setattr(
-        b3_universo.requests, "get", lambda url, timeout: _RespostaFalsa(json_invalido=True)
-    )
-    with pytest.raises(ValueError, match="não é JSON válido"):
-        b3_universo._baixar_pagina(1, 120)
+# Busca de fato (requests.get) acontece dentro de ingest._paginacao agora —
+# ver tests/test_paginacao.py pro comportamento genérico de paginação
+# (erro de JSON inválido, delay entre páginas, etc.). Os testes abaixo
+# monkeypatcham `_paginacao.requests`, não `b3_universo.requests`.
 
 
 def test_obter_universo_ibovespa_caminho_feliz_uma_pagina(tmp_path, monkeypatch):
@@ -101,7 +99,7 @@ def test_obter_universo_ibovespa_caminho_feliz_uma_pagina(tmp_path, monkeypatch)
             _registro(cod="PETR4", asset="PETROBRAS", tipo="PN      N2", part="5,000"),
         ],
     }
-    monkeypatch.setattr(b3_universo.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
+    monkeypatch.setattr(_paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
 
     df = b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
 
@@ -131,17 +129,48 @@ def test_obter_universo_ibovespa_pagina_quando_ha_mais_de_uma_pagina(tmp_path, m
         chamadas["contador"] += 1
         return _RespostaFalsa(pagina1 if chamadas["contador"] == 1 else pagina2)
 
-    monkeypatch.setattr(b3_universo.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
 
-    df = b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path, tamanho_pagina=1)
+    # delay_segundos=0 explícito — sem isso, o padrão viria de
+    # DELAY_PAGINACAO_B3_SEGUNDOS (1.5s) e o teste dormiria de verdade
+    # entre as 2 páginas.
+    df = b3_universo.obter_universo_ibovespa(
+        diretorio_cache=tmp_path, tamanho_pagina=1, delay_segundos=0
+    )
 
     assert chamadas["contador"] == 2
     assert sorted(df["ticker"]) == ["PETR4", "VALE3"]
 
 
+def test_obter_universo_ibovespa_aplica_delay_entre_paginas(tmp_path, monkeypatch):
+    pagina1 = {
+        "page": {"pageNumber": 1, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro(cod="VALE3")],
+    }
+    pagina2 = {
+        "page": {"pageNumber": 2, "pageSize": 1, "totalRecords": 2, "totalPages": 2},
+        "results": [_registro(cod="PETR4")],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(pagina1 if chamadas["contador"] == 1 else pagina2)
+
+    esperas = []
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.time, "sleep", lambda segundos: esperas.append(segundos))
+
+    b3_universo.obter_universo_ibovespa(
+        diretorio_cache=tmp_path, tamanho_pagina=1, delay_segundos=3.0
+    )
+
+    assert esperas == [3.0]  # 2 páginas -> 1 espera, entre elas
+
+
 def test_obter_universo_ibovespa_levanta_erro_quando_formato_do_topo_muda(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        b3_universo.requests, "get", lambda url, timeout: _RespostaFalsa({"algo": "diferente"})
+        _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa({"algo": "diferente"})
     )
     with pytest.raises(ValueError, match="Formato da resposta"):
         b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
@@ -158,7 +187,7 @@ def test_obter_universo_ibovespa_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, 
         chamadas["contador"] += 1
         return _RespostaFalsa(dados)
 
-    monkeypatch.setattr(b3_universo.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
 
     df1 = b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
     df2 = b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
@@ -178,7 +207,7 @@ def test_obter_universo_ibovespa_forcar_atualizacao_ignora_cache(tmp_path, monke
         chamadas["contador"] += 1
         return _RespostaFalsa(dados)
 
-    monkeypatch.setattr(b3_universo.requests, "get", get_falso)
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
 
     b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
     b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path, forcar_atualizacao=True)
@@ -188,7 +217,7 @@ def test_obter_universo_ibovespa_forcar_atualizacao_ignora_cache(tmp_path, monke
 
 def test_obter_universo_ibovespa_propaga_erro_quando_api_fora_do_ar(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        b3_universo.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
+        _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
     )
     with pytest.raises(requests.HTTPError):
         b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)

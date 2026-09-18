@@ -35,18 +35,20 @@ dois grupos acima, como esperado).
 
 from __future__ import annotations
 
-import base64
-import json
 import re
 from pathlib import Path
 
 import pandas as pd
-import requests
 
-from avaliador_b3.config import DATA_RAW_DIR, URL_B3_CATALOGO_EMISSORES
+from avaliador_b3.config import (
+    DATA_RAW_DIR,
+    DELAY_PAGINACAO_B3_SEGUNDOS,
+    TAMANHO_PAGINA_API_B3_CATALOGO,
+    URL_B3_CATALOGO_EMISSORES,
+)
+from avaliador_b3.ingest._paginacao import buscar_registros_paginados, parametros_base64
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 
-TIMEOUT_SEGUNDOS = 30
 CAMPOS_OBRIGATORIOS_REGISTRO = {"issuingCompany", "codeCVM", "cnpj", "companyName", "segment"}
 PADRAO_SUFIXO_CLASSE = re.compile(r"\d+$")
 
@@ -68,21 +70,7 @@ def _codigo_emissor(ticker: str) -> str:
 
 def _montar_url(pagina: int, tamanho_pagina: int) -> str:
     parametros = {"language": "pt-br", "pageNumber": pagina, "pageSize": tamanho_pagina}
-    parametros_base64 = base64.b64encode(json.dumps(parametros).encode()).decode()
-    return URL_B3_CATALOGO_EMISSORES.format(parametros_base64=parametros_base64)
-
-
-def _baixar_pagina(pagina: int, tamanho_pagina: int) -> dict:
-    url = _montar_url(pagina, tamanho_pagina)
-    resposta = requests.get(url, timeout=TIMEOUT_SEGUNDOS)
-    resposta.raise_for_status()
-    try:
-        return resposta.json()
-    except ValueError as erro:  # requests.exceptions.JSONDecodeError é subclasse de ValueError
-        raise ValueError(
-            "Resposta do catálogo de emissores da B3 não é JSON válido — "
-            "a API não-documentada pode ter mudado."
-        ) from erro
+    return URL_B3_CATALOGO_EMISSORES.format(parametros_base64=parametros_base64(parametros))
 
 
 def _registro_para_linha(registro: dict) -> dict:
@@ -94,7 +82,14 @@ def _registro_para_linha(registro: dict) -> dict:
         )
     return {
         "codigo_emissor": registro["issuingCompany"],
-        "codigo_cvm": registro["codeCVM"],
+        # str() explícito: a leitura do cache já força dtype=str (linha
+        # abaixo em obter_catalogo_emissores), mas o JSON bruto da API
+        # devolve "codeCVM" como número — sem essa conversão aqui,
+        # resolver_cnpj() devolvia um "codigo_cvm" com tipo diferente
+        # (int vs. str) dependendo de a busca ter vindo de cache ou de
+        # requisição nova, uma inconsistência latente sem consumidor
+        # afetado hoje, mas frágil a mudanças futuras.
+        "codigo_cvm": str(registro["codeCVM"]),
         "cnpj": registro["cnpj"],
         "nome_empresa": registro["companyName"],
         "segmento_setorial": registro["segment"],
@@ -109,7 +104,8 @@ def obter_catalogo_emissores(
     usar_cache: bool = True,
     forcar_atualizacao: bool = False,
     diretorio_cache: Path = DATA_RAW_DIR,
-    tamanho_pagina: int = 100,
+    tamanho_pagina: int = TAMANHO_PAGINA_API_B3_CATALOGO,
+    delay_segundos: float = DELAY_PAGINACAO_B3_SEGUNDOS,
 ) -> pd.DataFrame:
     """Busca o catálogo completo de emissores da B3 (todos os tipos de
     ativo — ações, BDRs, ETFs, etc., não só o Ibovespa) e devolve um
@@ -117,24 +113,22 @@ def obter_catalogo_emissores(
 
     É um catálogo de referência que muda pouco, então o cache (em
     `data/raw/b3/catalogo_emissores.csv`) não tem TTL.
+
+    `delay_segundos` é aplicado entre uma página e a próxima (~36 páginas
+    pro catálogo completo de ~3523 registros, ver
+    TAMANHO_PAGINA_API_B3_CATALOGO em config.py) — ver
+    `ingest._paginacao.buscar_registros_paginados`.
     """
     caminho = _caminho_cache_catalogo(diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho.exists():
         return pd.read_csv(caminho, dtype=str)
 
-    primeira_pagina = _baixar_pagina(1, tamanho_pagina)
-    if "results" not in primeira_pagina or "page" not in primeira_pagina:
-        raise ValueError(
-            "Formato da resposta do catálogo de emissores da B3 mudou: "
-            "campos 'results'/'page' não encontrados. Chaves presentes: "
-            f"{list(primeira_pagina.keys())}"
-        )
-
-    registros = list(primeira_pagina["results"])
-    total_paginas = primeira_pagina["page"]["totalPages"]
-    for pagina in range(2, total_paginas + 1):
-        registros.extend(_baixar_pagina(pagina, tamanho_pagina)["results"])
+    registros = buscar_registros_paginados(
+        montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),
+        contexto="catálogo de emissores da B3",
+        delay_segundos=delay_segundos,
+    )
 
     linhas = [_registro_para_linha(registro) for registro in registros]
     df = pd.DataFrame(linhas).sort_values("codigo_emissor").reset_index(drop=True)
@@ -207,6 +201,20 @@ def obter_crosswalk_ibovespa(
     para um emissor conhecido — tratado como um problema a investigar, não
     como uma linha a pular silenciosamente (na validação contra os 76
     tickers reais em 2026-09-14, isso nunca aconteceu).
+
+    Testada e pública, mas **não é usada por nenhum código de produção do
+    projeto hoje** (nem `app/main.py`, nem `screener.py`) — de propósito,
+    não por esquecimento. `screener.py` resolve CNPJ ticker a ticker,
+    dentro de um loop, chamando `resolver_cnpj` diretamente pra cada ação:
+    isso isola erro por ticker (uma falha de resolução derruba só a linha
+    daquele ticker na tabela final, não as outras ~75). Resolver em lote
+    aqui, de uma vez, perderia essa granularidade — `EmissorNaoEncontrado`
+    de um único ticker derruba a função inteira, sem sinalizar qual dos
+    ~76 falhou, a menos que quem chamasse tratasse cada falha
+    individualmente por fora, o que essa função hoje não faz. Fica como
+    candidata a uso futuro (ex: uma ferramenta de linha de comando
+    separada, fora do fluxo interativo do dashboard, onde "tudo ou nada"
+    é aceitável) — não uma sobra esquecida do desenvolvimento.
     """
     caminho = _caminho_cache_crosswalk(diretorio_cache)
 

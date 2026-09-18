@@ -112,6 +112,21 @@ URL_B3_PORTFOLIO_DIA = (
     "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{parametros_base64}"
 )
 
+# 120 foi o tamanho de página que trouxe os 76 ativos do Ibovespa numa
+# única página (ver comentário acima) — não é um limite confirmado da API
+# (diferente de TAMANHO_PAGINA_API_B3_CATALOGO abaixo, onde >100 quebra a
+# resposta): só o suficiente pro volume de dados desse endpoint específico,
+# sem teste do teto real.
+TAMANHO_PAGINA_API_B3_UNIVERSO = 120
+
+# Delay entre páginas ao paginar contra as APIs não-documentadas da B3
+# (ingest/_paginacao.py, compartilhado entre b3_universo.py — raramente
+# pagina de verdade, tudo cabe numa página — e crosswalk_cnpj.py, que pagina
+# até ~36 vezes pro catálogo completo de emissores). Mesmo raciocínio do
+# DELAY_FUNDAMENTUS_SEGUNDOS/DELAY_PRECOS_SEGUNDOS: valor conservador por
+# analogia, não uma cifra pesquisada especificamente pra esse endpoint.
+DELAY_PAGINACAO_B3_SEGUNDOS = 1.5
+
 SEGMENTOS_LISTAGEM_B3 = {
     "NM": "Novo Mercado",
     "N2": "Nível 2",
@@ -144,6 +159,32 @@ CABECALHOS_FUNDAMENTUS = {
     )
 }
 DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
+
+# Cache em disco (data/raw/fundamentus/*.json) protegido por DOIS
+# mecanismos independentes, que resolvem problemas diferentes — um não
+# substitui o outro:
+#
+# 1. Versionamento de schema (VERSAO_SCHEMA_FUNDAMENTUS): o cache guarda
+#    essa versão dentro do próprio JSON; se o código atual espera uma
+#    versão diferente da gravada, o cache é tratado como inválido e uma
+#    busca nova é feita. Ataca a causa raiz de um bug real já acontecido
+#    nesta sessão: quando CAMPOS_FUNDAMENTUS/CAMPOS_FUNDAMENTUS_OPCIONAIS
+#    ganharam um campo novo (Patrim. Líq/Dív. Líquida), o cache antigo
+#    continuou sendo servido sem esse campo, e o primeiro código que tentou
+#    ler a chave nova quebrou com KeyError — só resolvido apagando o cache
+#    manualmente. Começa em 2 (não 1) porque o schema já mudou pelo menos
+#    uma vez nesta sessão antes de esse mecanismo existir; nunca houve uma
+#    "versão 1" com controle de versão de verdade.
+# 2. TTL (TTL_CACHE_FUNDAMENTUS_SEGUNDOS): rede de segurança geral pra
+#    dado que fica desatualizado mesmo SEM mudança de schema — indicador
+#    fundamentalista (ROE, margem, LPA/VPA, etc.) muda no máximo por
+#    trimestre de resultado, mas nada garantia isso até agora (o cache não
+#    tinha limite temporal nenhum, só existia/não existia). 24h é
+#    suficiente pra nunca segurar um resultado por mais de um dia, sem
+#    tornar o cache inútil (o adapter é batido dezenas de vezes em
+#    sequência pelo screener).
+VERSAO_SCHEMA_FUNDAMENTUS = 2
+TTL_CACHE_FUNDAMENTUS_SEGUNDOS = 24 * 60 * 60
 
 CAMPOS_FUNDAMENTUS = {
     "ROE": "roe_percentual",
@@ -203,6 +244,14 @@ URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_c
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
+# Códigos de conta da DFC (Demonstração de Fluxo de Caixa) usados pro Fluxo
+# de Caixa Livre (FCF) do FCD — ver a justificativa completa (por que
+# CFO+CFI, e a checagem de estabilidade desses dois códigos entre
+# Petrobras/Itaú/uma empresa de método direto) na seção "Fluxo de Caixa
+# Descontado (FCD)" mais abaixo neste arquivo.
+CODIGO_CFO_CVM = "6.01"  # Caixa Líquido Atividades Operacionais
+CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
+
 # Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
 # ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).
 # Confirmado em 2026-09-14 chamando diretamente:
@@ -210,7 +259,9 @@ CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 # API não-documentada da B3 (mesma família da usada em b3_universo.py, mas
 # endpoint diferente: "listedCompaniesProxy", não "indexProxy"). pageSize
 # acima de 100 quebra a resposta (a API devolve totalRecords/totalPages
-# nulos) — usar 100 (36 páginas para os ~3523 registros atuais).
+# nulos) — usar 100 (36 páginas para os ~3523 registros atuais). Diferente
+# de TAMANHO_PAGINA_API_B3_UNIVERSO acima: este é um limite real, testado
+# e confirmado, não só "o que coube".
 #
 # O campo "cnpj" da resposta vem sem pontuação (ex: "33000167000101") e
 # bate, conferido manualmente, com o CNPJ_CIA usado nos arquivos da CVM
@@ -231,6 +282,7 @@ URL_B3_CATALOGO_EMISSORES = (
     "https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/"
     "CompanyCall/GetInitialCompanies/{parametros_base64}"
 )
+TAMANHO_PAGINA_API_B3_CATALOGO = 100
 
 # Fórmula de Benjamin Graham ("Graham Number"): VI = sqrt(22,5 × LPA × VPA).
 # 22,5 = 15 (P/L máximo considerado razoável por Graham) × 1,5 (P/VP máximo

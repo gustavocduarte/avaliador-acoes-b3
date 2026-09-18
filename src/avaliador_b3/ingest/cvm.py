@@ -38,6 +38,8 @@ from pathlib import Path
 import requests
 
 from avaliador_b3.config import (
+    CODIGO_CFI_CVM,
+    CODIGO_CFO_CVM,
     CONTA_LUCRO_POR_ACAO_CVM,
     DATA_RAW_DIR,
     FATOR_ESCALA_MOEDA_CVM,
@@ -45,6 +47,15 @@ from avaliador_b3.config import (
 )
 
 TIMEOUT_SEGUNDOS = 60
+# Baixado em pedaços (streaming, nunca o zip inteiro de uma vez em memória)
+# porque a máquina onde o projeto roda tem RAM limitada — o zip anual do
+# DFP tem ~13 MB, pequeno perto do limite de RAM de qualquer máquina atual,
+# mas o princípio (nunca materializar um arquivo grande inteiro em memória
+# só porque "hoje" ele é pequeno) é o mesmo aplicado ao resto do adapter:
+# os CSVs de dentro do zip também são lidos linha a linha, nunca com todas
+# as ~700+ empresas do Brasil num DataFrame só. 256 KiB é um tamanho de
+# pedaço comum/razoável pra streaming HTTP, não um valor medido/otimizado
+# especificamente pra esse download.
 TAMANHO_PEDACO_DOWNLOAD = 256 * 1024
 CODIFICACAO_CVM = "iso-8859-1"
 PADRAO_CONTA_NIVEL_2 = re.compile(r"^3\.\d{2}$")
@@ -104,16 +115,22 @@ def _baixar_zip_ano(ano: int, diretorio_cache: Path, forcar_atualizacao: bool) -
     return caminho
 
 
-def _linhas_da_empresa(
-    caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str
+def _linhas_do_membro(
+    caminho_zip: Path,
+    nome_membro: str,
+    ano: int,
+    cnpj_normalizado: str,
+    classe_erro: type[Exception],
 ) -> list[dict]:
-    """Lê o CSV de DRE ("con" ou "ind") de dentro do zip linha a linha,
-    devolvendo só as linhas do CNPJ pedido — nunca materializa o arquivo
-    inteiro (que cobre todas as companhias abertas do Brasil) em memória."""
-    nome_membro = f"dfp_cia_aberta_DRE_{tipo}_{ano}.csv"
+    """Lê um CSV de dentro do zip (DRE ou DFC) linha a linha, devolvendo só
+    as linhas do CNPJ pedido — nunca materializa o arquivo inteiro (que
+    cobre todas as companhias abertas do Brasil) em memória. Compartilhada
+    entre `_linhas_da_empresa` (DRE) e `_linhas_da_empresa_dfc` (DFC), que
+    só diferem no padrão do nome do membro e na exceção a levantar se ele
+    não existir no zip."""
     with zipfile.ZipFile(caminho_zip) as arquivo_zip:
         if nome_membro not in arquivo_zip.namelist():
-            raise ContaLucroNaoEncontrada(
+            raise classe_erro(
                 f"Membro {nome_membro!r} não existe no zip da CVM para {ano} — "
                 "o layout do pacote de dados pode ter mudado."
             )
@@ -125,6 +142,17 @@ def _linhas_da_empresa(
                 for linha in leitor
                 if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
             ]
+
+
+def _linhas_da_empresa(
+    caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str
+) -> list[dict]:
+    """Lê o CSV de DRE ("con" ou "ind") de dentro do zip — ver
+    `_linhas_do_membro`."""
+    nome_membro = f"dfp_cia_aberta_DRE_{tipo}_{ano}.csv"
+    return _linhas_do_membro(
+        caminho_zip, nome_membro, ano, cnpj_normalizado, ContaLucroNaoEncontrada
+    )
 
 
 def _linha_lucro_liquido(linhas_periodo: list[dict]) -> dict:
@@ -155,43 +183,71 @@ def _linha_lucro_liquido(linhas_periodo: list[dict]) -> dict:
     return linha
 
 
-def _valor_conta(linha: dict) -> float:
+def _valor_conta(linha: dict, classe_erro: type[Exception] = ContaLucroNaoEncontrada) -> float:
+    """Converte VL_CONTA pra float na escala monetária correta.
+    `classe_erro` decide qual exceção levantar se a escala for desconhecida
+    — compartilhada entre o caminho de Lucro Líquido (padrão,
+    `ContaLucroNaoEncontrada`) e o de Fluxo de Caixa (`_fcf_do_periodo`
+    passa `ContaFluxoCaixaNaoEncontrada` explicitamente), pra que a
+    mensagem de erro corresponda ao caminho que realmente falhou em vez de
+    sempre citar "Lucro Líquido" mesmo quando o problema é numa conta da
+    DFC."""
     escala = linha["ESCALA_MOEDA"]
     if escala not in FATOR_ESCALA_MOEDA_CVM:
-        raise ContaLucroNaoEncontrada(f"Escala monetária desconhecida: {escala!r}.")
+        raise classe_erro(f"Escala monetária desconhecida: {escala!r}.")
     return float(linha["VL_CONTA"]) * FATOR_ESCALA_MOEDA_CVM[escala]
 
 
-def _montar_resultado(ano: int, tipo: str, linhas: list[dict]) -> dict:
+def _linhas_por_periodo(
+    linhas: list[dict], ano: int, classe_erro: type[Exception]
+) -> tuple[list[dict], list[dict]]:
+    """Separa as linhas de uma consulta em ÚLTIMO/PENÚLTIMO — cada arquivo
+    anual da CVM já traz os dois períodos por conta (ver docstring do
+    módulo). Compartilhada entre `_montar_resultado` (DRE) e
+    `_montar_resultado_fcf` (DFC); `classe_erro` mantém a exceção
+    correspondente ao caminho que chamou quando falta 'ÚLTIMO'."""
     linhas_atual = [linha for linha in linhas if linha["ORDEM_EXERC"] == "ÚLTIMO"]
     linhas_anterior = [linha for linha in linhas if linha["ORDEM_EXERC"] == "PENÚLTIMO"]
-
     if not linhas_atual:
-        raise ContaLucroNaoEncontrada(
+        raise classe_erro(
             f"Nenhuma linha com ORDEM_EXERC='ÚLTIMO' para o ano {ano} — "
             "formato do arquivo pode ter mudado."
         )
+    return linhas_atual, linhas_anterior
+
+
+def _metadados_empresa(primeira_linha: dict, tipo: str) -> dict:
+    """Metadados comuns extraídos da primeira linha de qualquer consulta
+    (DRE ou DFC) — cnpj/código CVM/denominação e se é a demonstração
+    consolidada ou individual. Compartilhado entre `_montar_resultado` e
+    `_montar_resultado_fcf`."""
+    return {
+        "cnpj": primeira_linha["CNPJ_CIA"],
+        "cd_cvm": primeira_linha["CD_CVM"],
+        "denominacao": primeira_linha["DENOM_CIA"],
+        "tipo_demonstracao": "consolidado" if tipo == "con" else "individual",
+    }
+
+
+def _montar_resultado(ano: int, tipo: str, linhas: list[dict]) -> dict:
+    linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaLucroNaoEncontrada)
 
     linha_lucro_atual = _linha_lucro_liquido(linhas_atual)
-    lucro_atual = _valor_conta(linha_lucro_atual)
+    lucro_atual = _valor_conta(linha_lucro_atual, ContaLucroNaoEncontrada)
 
     lucro_anterior = None
     periodo_anterior_fim = None
     if linhas_anterior:
         linha_lucro_anterior = _linha_lucro_liquido(linhas_anterior)
-        lucro_anterior = _valor_conta(linha_lucro_anterior)
+        lucro_anterior = _valor_conta(linha_lucro_anterior, ContaLucroNaoEncontrada)
         periodo_anterior_fim = linha_lucro_anterior["DT_FIM_EXERC"]
 
     crescimento_percentual = None
     if lucro_anterior not in (None, 0):
         crescimento_percentual = (lucro_atual - lucro_anterior) / abs(lucro_anterior) * 100
 
-    primeira_linha = linhas[0]
     return {
-        "cnpj": primeira_linha["CNPJ_CIA"],
-        "cd_cvm": primeira_linha["CD_CVM"],
-        "denominacao": primeira_linha["DENOM_CIA"],
-        "tipo_demonstracao": "consolidado" if tipo == "con" else "individual",
+        **_metadados_empresa(linhas[0], tipo),
         "conta_lucro_liquido": linha_lucro_atual["CD_CONTA"],
         "ano_referencia": ano,
         "periodo_atual_fim": linha_lucro_atual["DT_FIM_EXERC"],
@@ -202,31 +258,16 @@ def _montar_resultado(ano: int, tipo: str, linhas: list[dict]) -> dict:
     }
 
 
-CODIGO_CFO_CVM = "6.01"  # Caixa Líquido Atividades Operacionais
-CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
-
-
 def _linhas_da_empresa_dfc(
     caminho_zip: Path, ano: int, metodo: str, tipo: str, cnpj_normalizado: str
 ) -> list[dict]:
-    """Igual a `_linhas_da_empresa`, mas pro par de arquivos da DFC
-    (Demonstração de Fluxo de Caixa). `metodo` é "MI" (indireto, a grande
-    maioria das empresas) ou "MD" (direto, minoria)."""
+    """Lê o CSV da DFC (Demonstração de Fluxo de Caixa) de dentro do zip —
+    ver `_linhas_do_membro`. `metodo` é "MI" (indireto, a grande maioria
+    das empresas) ou "MD" (direto, minoria)."""
     nome_membro = f"dfp_cia_aberta_DFC_{metodo}_{tipo}_{ano}.csv"
-    with zipfile.ZipFile(caminho_zip) as arquivo_zip:
-        if nome_membro not in arquivo_zip.namelist():
-            raise ContaFluxoCaixaNaoEncontrada(
-                f"Membro {nome_membro!r} não existe no zip da CVM para {ano} — "
-                "o layout do pacote de dados pode ter mudado."
-            )
-        with arquivo_zip.open(nome_membro) as bruto:
-            texto = io.TextIOWrapper(bruto, encoding=CODIFICACAO_CVM, newline="")
-            leitor = csv.DictReader(texto, delimiter=";")
-            return [
-                linha
-                for linha in leitor
-                if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
-            ]
+    return _linhas_do_membro(
+        caminho_zip, nome_membro, ano, cnpj_normalizado, ContaFluxoCaixaNaoEncontrada
+    )
 
 
 def _linha_por_codigo(linhas_periodo: list[dict], codigo: str) -> dict:
@@ -242,31 +283,29 @@ def _fcf_do_periodo(linhas_periodo: list[dict]) -> float:
     """FCF = Caixa Líquido Atividades Operacionais + Caixa Líquido
     Atividades de Investimento (ver justificativa em config.py). Como o
     de Investimento normalmente vem negativo, somar os dois já desconta
-    capex e outros investimentos do caixa operacional."""
-    cfo = _valor_conta(_linha_por_codigo(linhas_periodo, CODIGO_CFO_CVM))
-    cfi = _valor_conta(_linha_por_codigo(linhas_periodo, CODIGO_CFI_CVM))
+    capex e outros investimentos do caixa operacional.
+
+    `_valor_conta` recebe `ContaFluxoCaixaNaoEncontrada` explicitamente —
+    sem isso, uma escala monetária desconhecida numa conta CFO/CFI
+    levantaria o erro padrão de `_valor_conta` (`ContaLucroNaoEncontrada`),
+    citando "Lucro Líquido" num contexto que é de Fluxo de Caixa."""
+    cfo = _valor_conta(
+        _linha_por_codigo(linhas_periodo, CODIGO_CFO_CVM), ContaFluxoCaixaNaoEncontrada
+    )
+    cfi = _valor_conta(
+        _linha_por_codigo(linhas_periodo, CODIGO_CFI_CVM), ContaFluxoCaixaNaoEncontrada
+    )
     return cfo + cfi
 
 
 def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
-    linhas_atual = [linha for linha in linhas if linha["ORDEM_EXERC"] == "ÚLTIMO"]
-    linhas_anterior = [linha for linha in linhas if linha["ORDEM_EXERC"] == "PENÚLTIMO"]
-
-    if not linhas_atual:
-        raise ContaFluxoCaixaNaoEncontrada(
-            f"Nenhuma linha com ORDEM_EXERC='ÚLTIMO' para o ano {ano} — "
-            "formato do arquivo pode ter mudado."
-        )
+    linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaFluxoCaixaNaoEncontrada)
 
     fcf_atual = _fcf_do_periodo(linhas_atual)
     fcf_anterior = _fcf_do_periodo(linhas_anterior) if linhas_anterior else None
 
-    primeira_linha = linhas[0]
     return {
-        "cnpj": primeira_linha["CNPJ_CIA"],
-        "cd_cvm": primeira_linha["CD_CVM"],
-        "denominacao": primeira_linha["DENOM_CIA"],
-        "tipo_demonstracao": "consolidado" if tipo == "con" else "individual",
+        **_metadados_empresa(linhas[0], tipo),
         "metodo_dfc": metodo,
         "ano_referencia": ano,
         "fcf_atual": fcf_atual,

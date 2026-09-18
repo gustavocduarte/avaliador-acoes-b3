@@ -69,7 +69,11 @@ def obter_gpr(
     (GPR, GPRT, GPRA, ... para "mensal"; GPRD, GPRD_ACT, ... para "diaria").
 
     `serie` é "mensal" (histórico completo, desde 1900/1985 conforme a
-    coluna) ou "diaria" (janela recente, atualizada diariamente).
+    coluna) ou "diaria" (janela recente, atualizada diariamente pela
+    fonte). O cache em disco não tem TTL pra nenhuma das duas — mesmo a
+    "diaria" muda pouco de um dia pro outro na prática (decisão usada pelo
+    chamador em app/main.py, ver `_buscar_gpr_diaria`); decisão do adapter
+    em si, não só do call site.
     """
     if serie not in URLS_GPR:
         raise ValueError(f"Série GPR desconhecida: {serie!r}. Use 'mensal' ou 'diaria'.")

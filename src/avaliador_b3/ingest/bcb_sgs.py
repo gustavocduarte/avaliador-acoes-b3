@@ -60,8 +60,27 @@ def _registros_para_dataframe(registros: list[dict]) -> pd.DataFrame:
     return df.sort_values("data").reset_index(drop=True)
 
 
-def _caminho_cache(codigo: int, diretorio_cache: Path) -> Path:
-    return diretorio_cache / "bcb" / f"serie_{codigo}.csv"
+def _caminho_cache(
+    codigo: int, data_inicial: str | None, data_final: str | None, diretorio_cache: Path
+) -> Path:
+    # data_inicial/data_final precisam fazer parte da chave de cache — sem
+    # isso, um chamador com janela ROLANTE (ex: app/main.py recalcula
+    # "hoje - N dias" a "hoje" a cada execução) fica preso pra sempre na
+    # janela do primeiro fetch, porque a única checagem de validade era
+    # `caminho.exists()`: qualquer chamada seguinte, em qualquer dia
+    # futuro, lia esse mesmo arquivo desatualizado, silenciosamente. Mesmo
+    # bug já corrigido em ingest/precos.py pro parâmetro `periodo` (ver
+    # comentário lá) — datas trocam "/" por "-" pra virarem nome de
+    # arquivo válido. Sem sufixo quando as duas datas são None (== série
+    # inteira), pra não invalidar cache já gravado em disco antes dessa
+    # mudança nesse caso específico (só usado em teste hoje — todo
+    # chamador real sempre passa datas explícitas).
+    sufixo_janela = ""
+    if data_inicial or data_final:
+        inicio = (data_inicial or "inicio").replace("/", "-")
+        fim = (data_final or "fim").replace("/", "-")
+        sufixo_janela = f"_{inicio}_{fim}"
+    return diretorio_cache / "bcb" / f"serie_{codigo}{sufixo_janela}.csv"
 
 
 def obter_serie(
@@ -75,12 +94,14 @@ def obter_serie(
     """Busca uma série do SGS do Banco Central e devolve um DataFrame com
     colunas `data` (datetime64) e `valor` (float), ordenado por data.
 
-    Por padrão usa um cache local em disco (`data/raw/bcb/serie_{codigo}.csv`)
-    para evitar bater na API repetidamente — séries históricas do SGS raramente
-    mudam, só o valor mais recente pode ser revisado. Use `forcar_atualizacao=True`
-    para ignorar o cache e buscar de novo.
+    Por padrão usa um cache local em disco (`data/raw/bcb/serie_{codigo}
+    [_{data_inicial}_{data_final}].csv` — a janela faz parte do nome do
+    arquivo, ver `_caminho_cache`) para evitar bater na API repetidamente —
+    séries históricas do SGS raramente mudam, só o valor mais recente pode
+    ser revisado. Use `forcar_atualizacao=True` para ignorar o cache e
+    buscar de novo.
     """
-    caminho = _caminho_cache(codigo, diretorio_cache)
+    caminho = _caminho_cache(codigo, data_inicial, data_final, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho.exists():
         return pd.read_csv(caminho, parse_dates=["data"])
