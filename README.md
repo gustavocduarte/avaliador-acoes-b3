@@ -6,8 +6,8 @@ brasileira), com projeções apresentadas sempre como cenários
 
 Combina três métodos de valuation (Fluxo de Caixa Descontado, Fórmula de
 Graham, Método Bazin), contexto macroeconômico (Banco Central), risco
-geopolítico e de commodities (GPR, GDELT), e indicadores de saúde
-financeira, governança e comportamento da ação por empresa.
+geopolítico (GPR), e indicadores de saúde financeira, governança e
+comportamento da ação por empresa.
 
 Ver `docs/especificacao.md` para a especificação completa do projeto.
 

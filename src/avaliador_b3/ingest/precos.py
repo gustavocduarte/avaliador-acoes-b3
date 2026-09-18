@@ -10,7 +10,7 @@ adapter trata dois caminhos de falha bem diferentes:
   em formato inesperado) — vale tentar de novo mais tarde.
 
 Cache local em `data/raw/precos/` com TTL curto (minutos, não "para
-sempre"): diferente das séries do BCB/GPR/GDELT, preço de ação fica velho
+sempre"): diferente das séries do BCB/GPR, preço de ação fica velho
 rápido, e o próprio Yahoo já entrega com delay de ~15 min.
 
 Delay configurável antes de cada requisição real (não em cache hit) — o

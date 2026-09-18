@@ -30,18 +30,11 @@ from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
-    JANELA_MONITOR_CONFLITOS_HORAS,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
-)
-from avaliador_b3.conflitos import CAMINHO_SAIDA_PADRAO as CAMINHO_SAIDA_CONFLITOS_PADRAO
-from avaliador_b3.conflitos import (
-    carregar_eventos_conflito_salvos,
-    descrever_paises_monitorados,
-    rodar_monitor_conflitos,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
@@ -53,7 +46,6 @@ from avaliador_b3.empresa.valor_mercado import calcular_valor_mercado_e_firma
 from avaliador_b3.graficos import (
     agregar_dividendos_por_ano,
     calcular_dividend_yield_por_ano,
-    montar_mapa_conflitos,
     normalizar_base_100,
     projetar_curva_composta,
     projetar_curva_inflacao,
@@ -377,10 +369,10 @@ def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
 
 def _aviso_screener_vazio(instrucao: str) -> None:
     """Mensagem de "sem resultado salvo ainda" compartilhada entre as abas
-    de Screener, Simulador de carteira e Monitor de conflitos — cada uma
-    só varia a instrução de como gerar o arquivo (cada uma tem seu
-    próprio botão hoje: "Rodar screener agora" ou "Buscar eventos
-    agora")."""
+    que dependem do resultado do screener (Analisar uma ação, Screener,
+    Simulador de carteira) — cada chamada só varia a instrução de como
+    gerá-lo (rodar na própria aba Screener, via botão "Rodar screener
+    agora", ou apontar pra lá)."""
     st.info(
         "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
         f"{instrucao} — vai demorar alguns minutos."
@@ -390,7 +382,6 @@ def _aviso_screener_vazio(instrucao: str) -> None:
 ABA_ANALISAR = "Analisar uma ação"
 ABA_SCREENER = "Screener (todas as ações)"
 ABA_CARTEIRA = "Simulador de carteira"
-ABA_CONFLITOS = "Monitor de conflitos"
 
 # Ticker pré-selecionado e buscado automaticamente só na primeira abertura da
 # sessão (ver `busca_inicial_automatica_feita` em session_state, mais abaixo)
@@ -417,8 +408,8 @@ def _ativar_aba(aba: str) -> None:
 # mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
 # session_state, atualizada via on_click nos botões que disparam rerun.
 st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener, aba_carteira, aba_conflitos = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA, ABA_CONFLITOS],
+aba_analisar, aba_screener, aba_carteira = st.tabs(
+    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA],
     default=st.session_state["aba_ativa"],
 )
 
@@ -1441,88 +1432,3 @@ with aba_carteira:
                         use_container_width=True,
                     )
 
-with aba_conflitos:
-    st.caption(
-        "Eventos de conflito (GDELT, categorias COERCE/ASSAULT/FIGHT) — "
-        f"janela de {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, ~96 snapshots de 15 "
-        "min processados um de cada vez."
-    )
-    # Escopo fixo e universal (não depende de nenhuma ação/setor escolhido
-    # em outra aba) — ver conflitos.PAISES_MONITORADOS.
-    st.caption(f"Monitorando: {descrever_paises_monitorados()}.")
-
-    if st.button(
-        "Buscar eventos agora",
-        on_click=_ativar_aba,
-        args=(ABA_CONFLITOS,),
-    ):
-        st.warning(
-            f"Isso busca ~96 snapshots do GDELT (janela de "
-            f"{JANELA_MONITOR_CONFLITOS_HORAS:.0f}h, 15 em 15 min) — na primeira "
-            "vez, sem nada em cache ainda, leva minutos. Não feche esta aba "
-            "enquanto roda."
-        )
-        with st.spinner(
-            f"Buscando eventos das últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h no "
-            "GDELT — isso demora mais que um snapshot único, é esperado..."
-        ):
-            rodar_monitor_conflitos()
-        st.success("Busca concluída — resultado salvo em disco.")
-        st.rerun()
-
-    eventos_conflito_salvos = carregar_eventos_conflito_salvos(CAMINHO_SAIDA_CONFLITOS_PADRAO)
-
-    if eventos_conflito_salvos is None:
-        _aviso_screener_vazio(
-            'Clique em "Buscar eventos agora" acima pra gerar '
-            f"{CAMINHO_SAIDA_CONFLITOS_PADRAO.name}"
-        )
-    else:
-        atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_CONFLITOS_PADRAO.stat().st_mtime)
-        st.caption(
-            f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
-            "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
-        )
-
-        # Visão geral (mapa) primeiro, detalhe linha a linha (tabela) logo
-        # abaixo. Globo com projeção ortográfica — arraste pra girar
-        # (nativo do Plotly, sem rotação automática programada: instável
-        # na comunidade do Plotly, e o arraste manual já entrega o efeito
-        # pedido de forma confiável).
-        st.plotly_chart(
-            montar_mapa_conflitos(eventos_conflito_salvos), use_container_width=True
-        )
-
-        if eventos_conflito_salvos.empty:
-            st.info(
-                f"Nenhum evento relevante nas últimas {JANELA_MONITOR_CONFLITOS_HORAS:.0f}h "
-                "— pode acontecer, mas é bem menos provável que no caso do snapshot "
-                "único; não é sinal de erro. O mapa acima mostra só os pontos "
-                "estratégicos fixos nesse caso."
-            )
-        else:
-            st.dataframe(
-                eventos_conflito_salvos,
-                column_order=[
-                    "data",
-                    "ActionGeo_FullName",
-                    "ActionGeo_CountryCode",
-                    "categoria_cameo",
-                    "GoldsteinScale",
-                    "SOURCEURL",
-                ],
-                column_config={
-                    "data": st.column_config.DatetimeColumn(
-                        "Data", format="DD/MM/YYYY HH:mm"
-                    ),
-                    "ActionGeo_FullName": "Local",
-                    "ActionGeo_CountryCode": "País (código)",
-                    "categoria_cameo": "Tipo",
-                    "GoldsteinScale": st.column_config.NumberColumn(
-                        "Goldstein Score", format="%.1f"
-                    ),
-                    "SOURCEURL": st.column_config.LinkColumn("Fonte"),
-                },
-                hide_index=True,
-                use_container_width=True,
-            )

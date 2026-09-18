@@ -59,13 +59,6 @@ Além disso, separadamente:
 - **Geopolitical Risk Index (GPR)**, Caldara & Iacoviello, Federal Reserve —
   índice histórico mensal/diário, baixável em matteoiacoviello.com/gpr.htm —
   alimenta o risco/desconto de ações sensíveis a conflito geopolítico.
-- **GDELT Project** (monitoramento de eventos de conflito quase em tempo
-  real, atualizado a cada 15 min, com pontuação de severidade "Goldstein
-  Score") — usar de duas formas:
-  - (a) sobreposto no gráfico de preço da commodity, marcando dias de
-    eventos graves (mesmo padrão da linha de vacinação do projeto de covid
-    anterior);
-  - (b) painel dedicado separado, só de eventos recentes.
 - **Preço de petróleo e metais** como variável de ajuste para as ações
   desses setores.
 
@@ -146,14 +139,13 @@ citar a fonte real usada, conforme a restrição de rigor acima.
 | Segmento de listagem (Novo Mercado/N1/N2/Tradicional) | **Em aberto** | Não há um CSV único e limpo confirmado nesta pesquisa. Candidatos: página de classificação setorial da B3, API não-documentada `listedCompaniesProxy/CompanyCall/GetInitialCompanies`, ou scraping por ação em sites como StatusInvest. Investigar a fundo ao implementar `src/avaliador_b3/ingest/b3_universo.py`. |
 | Selic, M2, IPCA, Câmbio | BCB API SGS — `api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados` | Oficial e estável. Códigos confirmados: Selic diária = `11`, Meta Selic = `432`, IPCA mensal = `433`, Câmbio USD (venda, PTAX) = `1`, M2 (saldo fim de período) = `27810`. |
 | GPR (risco geopolítico) | matteoiacoviello.com/gpr.htm | Download direto (Excel/CSV), gratuito, sem cadastro, atualizado mensalmente. |
-| GDELT (eventos de conflito) | GDELT Event Database — `data.gdeltproject.org/events/` | **Não** usar o GKG completo (2,5 TB/ano) — inviável com pouca RAM. A Event Database tem arquivos diários/15-min de ~4-10 MB em CSV, sem cadastro, já com Goldstein Score. Baixar só a janela recente, nunca o histórico inteiro. |
 
 ## Primeiro passo (este documento antecede)
 
 Antes de escrever qualquer código de implementação: pesquisar e validar
 quais fontes de dado gratuitas realmente existem e funcionam para cada peça
 acima (preço de ação B3, dado fundamentalista de empresa, lista oficial de
-ações principais/segmentos de listagem da B3, séries do Banco Central, GPR,
-GDELT). Depois de validar o que é viável de graça, propor a estrutura de
+ações principais/segmentos de listagem da B3, séries do Banco Central,
+GPR). Depois de validar o que é viável de graça, propor a estrutura de
 pastas do projeto (no mesmo espírito do projeto de covid: `data/`, `src/`,
 `tests/`, `docs/`) antes de começar a escrever qualquer função.
