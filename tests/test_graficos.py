@@ -99,6 +99,25 @@ def test_curva_linear_funciona_com_destino_negativo():
     assert curva["valor"].is_monotonic_decreasing
 
 
+def test_curva_linear_com_zero_anos_devolve_so_o_ponto_inicial():
+    # Regressão defensiva: incremento * t / anos levantaria ZeroDivisionError
+    # com anos=0 (mesmo com t=0, numerador zero) — não alcançável hoje (único
+    # chamador usa HORIZONTE_PROJECAO_FCD_ANOS=5), mas carteira.py já guarda
+    # o mesmo tipo de entrada em calcular_cagr_implicito.
+    curva = graficos.projetar_curva_linear(1000.0, 2000.0, 0)
+
+    assert list(curva["ano"]) == [0]
+    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
+
+
+def test_curva_linear_e_composta_zero_anos_produzem_o_mesmo_ponto():
+    # Mesma simetria de "mesmo início/fim" que as duas já têm pra anos>0.
+    composta = graficos.projetar_curva_composta(1000.0, 0.10, 0)
+    linear = graficos.projetar_curva_linear(1000.0, 2000.0, 0)
+
+    pd.testing.assert_frame_equal(composta, linear)
+
+
 def test_curva_inflacao_e_composta_com_a_taxa_do_ipca():
     curva_inflacao = graficos.projetar_curva_inflacao(1000.0, 0.05, 5)
     curva_composta_equivalente = graficos.projetar_curva_composta(1000.0, 0.05, 5)

@@ -158,7 +158,18 @@ def calcular_ganho_nominal_vs_real(
     acumulada no período — o quanto aquele valor futuro vale em poder de
     compra de hoje. `ganho_real` pode ser menor que `ganho_nominal` (ou
     até negativo, mesmo com `ganho_nominal` positivo) quando o retorno
-    projetado não acompanha a inflação."""
+    projetado não acompanha a inflação.
+
+    Levanta `ValueError` se `ipca_anual == -1` (IPCA de -100% a.a.) — guard
+    defensivo, não um caso observado com o IPCA real do BCB: deflação
+    total de preços não tem correspondência econômica real, e zeraria o
+    denominador da deflação."""
+    if ipca_anual == -1:
+        raise ValueError(
+            "IPCA de -100% a.a. não tem correspondência econômica real "
+            "(deflação total de preços) — não é possível deflacionar o "
+            "valor de destino nesse cenário."
+        )
     valor_destino_real = valor_destino / (1 + ipca_anual) ** anos
     return {
         "ganho_nominal": valor_destino - valor_investido,

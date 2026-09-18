@@ -283,3 +283,11 @@ def test_ganho_nominal_vs_real_ganho_nominal_positivo_mas_real_negativo():
 
     assert resultado["ganho_nominal"] == pytest.approx(100.0)
     assert resultado["ganho_real"] < 0
+
+
+def test_ganho_nominal_vs_real_ipca_de_menos_100_por_cento_levanta_erro_claro():
+    # Guard defensivo, não um caso observado com o IPCA real do BCB: IPCA
+    # de -100% a.a. (deflação total de preços) zeraria o denominador da
+    # deflação (1 + (-1)) ** anos == 0 — sem correspondência econômica real.
+    with pytest.raises(ValueError, match="-100%"):
+        carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, -1.0, 5)

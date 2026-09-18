@@ -42,7 +42,18 @@ def projetar_curva_linear(valor_investido: float, valor_destino: float, anos: in
     Mesmo ponto inicial (`valor_investido`, ano 0) e final (`valor_destino`,
     ano `anos`) da curva composta pro mesmo cenário — só a trajetória
     intermediária difere, útil pra visualizar o efeito dos juros
-    compostos por contraste direto no mesmo gráfico."""
+    compostos por contraste direto no mesmo gráfico.
+
+    Com `anos=0`, devolve só o ponto inicial (sem trajetória nenhuma pra
+    desenhar) em vez de dividir por zero — não alcançável hoje (o único
+    chamador usa HORIZONTE_PROJECAO_FCD_ANOS, fixo em 5), guardado por
+    consistência com `carteira.calcular_cagr_implicito`, que já trata
+    `anos<=0` explicitamente pro mesmo tipo de entrada. Mesmo valor que
+    `projetar_curva_composta` já produz naturalmente pra `anos=0`
+    (`(1 + cagr) ** 0 == 1`), preservando a simetria entre as duas
+    curvas."""
+    if anos == 0:
+        return pd.DataFrame({"ano": [0], "valor": [valor_investido]})
     anos_lista = list(range(anos + 1))
     incremento = valor_destino - valor_investido
     return pd.DataFrame(

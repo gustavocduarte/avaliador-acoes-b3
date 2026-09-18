@@ -126,6 +126,19 @@ def classificar_magnitude_correlacao(correlacao: float) -> str:
     return "fraca"
 
 
+# (chave do resultado, coluna do fator, mensagem quando a fonte vem `None`)
+# — estático; as séries em si (histórico_petroleo/serie_cambio/serie_gpr)
+# são passadas em runtime pra `calcular_correlacoes_fatores` e pareadas na
+# MESMA ORDEM abaixo (petróleo, câmbio, GPR). Mesmo padrão de
+# `carteira.CENARIOS`: uma tupla de configuração iterada num loop, em vez
+# de repetir o mesmo bloco if/else uma vez por fator.
+FATORES_CORRELACAO = (
+    ("petroleo", "Close", "Histórico do petróleo (Brent) indisponível."),
+    ("cambio", "valor", "Série de câmbio USD/BRL do Banco Central indisponível."),
+    ("gpr", "GPRD", "Série diária do índice GPR indisponível."),
+)
+
+
 def calcular_correlacoes_fatores(
     historico_acao: pd.DataFrame,
     historico_petroleo: pd.DataFrame | None,
@@ -138,38 +151,22 @@ def calcular_correlacoes_fatores(
     não trava as outras duas, cada resultado carrega seu próprio
     `aplicavel`/`motivo_nao_aplicavel`.
     """
+    series_por_fator = (historico_petroleo, serie_cambio, serie_gpr)
+
     resultados = {}
-
-    if historico_petroleo is None:
-        resultados["petroleo"] = {
-            "aplicavel": False,
-            "correlacao": None,
-            "observacoes": 0,
-            "motivo_nao_aplicavel": "Histórico do petróleo (Brent) indisponível.",
-        }
-    else:
-        resultados["petroleo"] = calcular_correlacao(
-            historico_acao, "Close", historico_petroleo, "Close"
-        )
-
-    if serie_cambio is None:
-        resultados["cambio"] = {
-            "aplicavel": False,
-            "correlacao": None,
-            "observacoes": 0,
-            "motivo_nao_aplicavel": "Série de câmbio USD/BRL do Banco Central indisponível.",
-        }
-    else:
-        resultados["cambio"] = calcular_correlacao(historico_acao, "Close", serie_cambio, "valor")
-
-    if serie_gpr is None:
-        resultados["gpr"] = {
-            "aplicavel": False,
-            "correlacao": None,
-            "observacoes": 0,
-            "motivo_nao_aplicavel": "Série diária do índice GPR indisponível.",
-        }
-    else:
-        resultados["gpr"] = calcular_correlacao(historico_acao, "Close", serie_gpr, "GPRD")
+    for (chave, coluna_fator, mensagem_indisponivel), serie_fator in zip(
+        FATORES_CORRELACAO, series_por_fator, strict=True
+    ):
+        if serie_fator is None:
+            resultados[chave] = {
+                "aplicavel": False,
+                "correlacao": None,
+                "observacoes": 0,
+                "motivo_nao_aplicavel": mensagem_indisponivel,
+            }
+        else:
+            resultados[chave] = calcular_correlacao(
+                historico_acao, "Close", serie_fator, coluna_fator
+            )
 
     return resultados
