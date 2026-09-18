@@ -532,3 +532,27 @@ MINIMO_OBSERVACOES_CORRELACAO = 30
 # outros limiares do projeto, em vez de escondido no código.
 LIMIAR_CORRELACAO_FRACA = 0.3
 LIMIAR_CORRELACAO_FORTE = 0.6
+
+# --- Aba "Analisar uma ação" (app/main.py) — 2026-09-18 ---
+#
+# Meses de acumulação do IPCA: "IPCA acumulado em 12 meses" é o indicador
+# padrão de inflação anual usado no Brasil (mesma convenção do IBGE/BCB)
+# — usado pra converter a série mensal do IPCA numa taxa anualizada, tanto
+# pro WACC do FCD quanto pro ganho real da carteira.
+MESES_IPCA_ACUMULADO = 12
+
+# Janelas de busca (em dias) pras séries do BCB usadas no card "Selic/
+# IPCA" — margem de segurança pra garantir pelo menos uma leitura recente
+# de cada série, não uma medição exata do intervalo entre publicações:
+# - Selic: a meta é definida pelo Copom a cada ~45 dias (não diariamente)
+#   — 90 dias garante pelo menos uma reunião coberta mesmo com atraso.
+# - IPCA: precisa de pelo menos MESES_IPCA_ACUMULADO (12) leituras
+#   mensais pra acumular a taxa anual — 730 dias (~2 anos) dá folga
+#   generosa mesmo com atraso de publicação do BCB.
+JANELA_BUSCA_SELIC_DIAS = 90
+JANELA_BUSCA_IPCA_DIAS = 730
+
+# Opções do seletor de janela da seção "Comparando com Petróleo (Brent)"
+# — mesmas strings de período aceitas por `ingest.precos.obter_historico`
+# (convenção do yfinance: "2y"/"5y"/"10y").
+JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}

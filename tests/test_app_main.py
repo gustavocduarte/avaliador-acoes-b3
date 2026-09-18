@@ -201,6 +201,57 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
     assert any(subheader.value == "VALE3" for subheader in at.subheader)
 
 
+# --- Histórico "vazio mas sem exceção" vira erro tratado (_buscar_historico) -
+
+
+def test_historico_vazio_sem_excecao_vira_erro_tratado_nao_crash(monkeypatch):
+    # Regressão: obter_historico devolvendo um DataFrame vazio SEM
+    # levantar exceção (teoricamente só possível com um cache em disco
+    # corrompido/truncado — o caminho de busca nova já levanta
+    # TickerInvalido nesse caso, ver ingest/precos.py) chegava até
+    # `preco_atual = float(historico_preco_atual["Close"].iloc[-1])` sem
+    # nenhum guard — IndexError cru, não tratado. _buscar_historico/
+    # _buscar_historico_ibovespa agora tratam DataFrame vazio como erro,
+    # mesmo par (None, motivo) de uma exceção real.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+
+    def _historico_vazio(*args, **kwargs):
+        return pd.DataFrame(columns=["data", "Close", "Volume"])
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _historico_vazio)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _historico_vazio)
+
+    def _falha_fundamentus(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    def _falha_dividendos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_macro(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_dividendos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_macro)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # "Preço atual" não é mostrado (mesmo caminho de erro_preco_atual real)...
+    assert not any(metrica.label == "Preço atual" for metrica in at.metric)
+    # ... e o motivo aparece como erro tratado, não um traceback cru.
+    assert any("veio vazio" in erro.value for erro in at.error)
+
+
 # --- "Preço atual" usa período separado do histórico de comportamento -------
 
 

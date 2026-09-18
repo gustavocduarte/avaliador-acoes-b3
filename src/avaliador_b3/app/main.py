@@ -30,11 +30,16 @@ from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
+    JANELA_BUSCA_IPCA_DIAS,
+    JANELA_BUSCA_SELIC_DIAS,
+    JANELAS_COMPARACAO_PETROLEO,
+    MESES_IPCA_ACUMULADO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
+    YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
 from avaliador_b3.empresa.comportamento import (
@@ -120,18 +125,35 @@ def _buscar_historico(
     volatilidade, "Preço vs. Ibovespa"). O Dividend Yield histórico é a
     única exceção — precisa do preço NOMINAL da época, não ajustado
     retroativamente por dividendos futuros — ver o docstring de
-    `ingest.precos.obter_historico`."""
+    `ingest.precos.obter_historico`.
+
+    Um histórico vazio SEM exceção (teoricamente possível só com um cache
+    em disco corrompido/truncado — `ingest.precos.obter_historico` já
+    levanta `TickerInvalido` se vier vazio no caminho de busca nova, antes
+    de gravar cache) é tratado aqui como erro, igual a uma exceção — os
+    ~7 pontos que consomem esse retorno neste arquivo confiam que "sem
+    erro" implica "tem pelo menos uma linha", sem precisar checar
+    `.empty` em cada um deles separadamente."""
     try:
-        return obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust), None
+        historico = obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust)
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
+    if historico.empty:
+        return None, f"Histórico de {ticker!r} veio vazio — tente de novo mais tarde."
+    return historico, None
 
 
 def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str | None]:
+    """Histórico do Ibovespa — mesmo tratamento de "vazio sem exceção
+    vira erro" que `_buscar_historico` (ver docstring lá), pelo mesmo
+    motivo defensivo."""
     try:
-        return obter_historico_ibovespa(periodo=periodo), None
+        historico = obter_historico_ibovespa(periodo=periodo)
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
+    if historico.empty:
+        return None, "Histórico do Ibovespa veio vazio — tente de novo mais tarde."
+    return historico, None
 
 
 @st.cache_data(ttl=3600)
@@ -189,13 +211,25 @@ def _buscar_universo_ibovespa() -> tuple[pd.DataFrame | None, str | None]:
 
 
 def _buscar_indicadores_fundamentus(ticker: str) -> tuple[dict | None, str | None]:
+    """Indicadores fundamentalistas (ROE, margem, LPA/VPA, dívida,
+    patrimônio, número de ações — ver `CAMPOS_FUNDAMENTUS`/
+    `CAMPOS_FUNDAMENTUS_OPCIONAIS` em config.py) via scraping do
+    Fundamentus. `TickerNaoEncontrado`/`EstruturaPaginaMudou` viram erro
+    tratado aqui; qualquer outra exceção propaga (sinal de algo não
+    previsto, não um "papel sem indicador")."""
     try:
         return obter_indicadores(ticker), None
     except (TickerNaoEncontrado, EstruturaPaginaMudou) as erro:
         return None, str(erro)
 
 
-def _buscar_dividendos(ticker: str):
+def _buscar_dividendos(ticker: str) -> tuple[pd.DataFrame | None, str | None]:
+    """Histórico completo de dividendos pagos — usado pelo método Bazin e
+    pelo card de Dividend Yield por ano. Uma ação sem nenhum dividendo
+    pago devolve um DataFrame vazio (não erro, ver
+    `ingest.precos.obter_dividendos`) — só `TickerInvalido`/
+    `FalhaFontePreco` viram o par `(None, motivo)` que os call sites
+    checam."""
     try:
         return obter_dividendos(ticker), None
     except (TickerInvalido, FalhaFontePreco) as erro:
@@ -203,6 +237,10 @@ def _buscar_dividendos(ticker: str):
 
 
 def _buscar_cnpj(ticker: str) -> tuple[str | None, str | None]:
+    """CNPJ da empresa via crosswalk ticker -> catálogo de emissores da
+    B3 (`ingest.crosswalk_cnpj`) — usado pra buscar dados da CVM
+    (`_buscar_fcf` abaixo). `EmissorNaoEncontrado` (ticker sem emissor
+    correspondente no catálogo) vira o par `(None, motivo)`."""
     try:
         catalogo = obter_catalogo_emissores()
         return resolver_cnpj(ticker, catalogo)["cnpj"], None
@@ -223,6 +261,13 @@ def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
 
 
 def _buscar_fcf(cnpj: str, ano: int) -> tuple[float | None, str | None]:
+    """Fluxo de Caixa Livre (FCF) de um ano específico via CVM
+    (`ingest.cvm.obter_fluxo_caixa_livre`) — usado duas vezes por busca
+    (ano de referência e `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes) pra
+    calcular a CAGR de crescimento explícita do FCD. Erro aqui não é
+    mostrado à parte na tela — já aparece embutido no motivo de "não
+    aplicável" do próprio card do FCD (`calcular_valor_justo_fcd` trata
+    `fcf_atual=None` internamente)."""
     try:
         return obter_fluxo_caixa_livre(cnpj, ano)["fcf_atual"], None
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
@@ -239,17 +284,17 @@ def _buscar_macro() -> tuple[float | None, float | None, str | None]:
     try:
         selic_df = obter_serie(
             SERIES_BCB_SGS["selic_meta"],
-            data_inicial=(hoje - timedelta(days=90)).strftime("%d/%m/%Y"),
+            data_inicial=(hoje - timedelta(days=JANELA_BUSCA_SELIC_DIAS)).strftime("%d/%m/%Y"),
             data_final=hoje.strftime("%d/%m/%Y"),
         )
         selic_meta = float(selic_df.iloc[-1]["valor"]) / 100
 
         ipca_df = obter_serie(
             SERIES_BCB_SGS["ipca_mensal"],
-            data_inicial=(hoje - timedelta(days=730)).strftime("%d/%m/%Y"),
+            data_inicial=(hoje - timedelta(days=JANELA_BUSCA_IPCA_DIAS)).strftime("%d/%m/%Y"),
             data_final=hoje.strftime("%d/%m/%Y"),
         )
-        ipca_12m = (1 + ipca_df["valor"].tail(12) / 100).prod() - 1
+        ipca_12m = (1 + ipca_df["valor"].tail(MESES_IPCA_ACUMULADO) / 100).prod() - 1
         return selic_meta, ipca_12m, None
     except Exception as erro:
         return None, None, f"Falha ao buscar Selic/IPCA do Banco Central: {erro}"
@@ -287,6 +332,32 @@ def _widget_avancado_tradingview(ticker: str) -> str:
     """
 
 
+def _grafico_comparacao_normalizada(
+    serie_a: pd.DataFrame, nome_a: str, serie_b: pd.DataFrame, nome_b: str
+) -> go.Figure:
+    """Gráfico de linha com duas séries de preço normalizadas pra base 100
+    (`graficos.normalizar_base_100`) — necessário pra sobrepor séries de
+    escala bruta muito diferente (ação em R$ dezenas vs. Ibovespa em
+    ~130 mil pontos, ou vs. petróleo Brent em US$ dezenas) no mesmo eixo
+    sem uma delas virar uma linha reta ilegível. Compartilhado entre
+    "Preço vs. Ibovespa" e "Comparando com Petróleo (Brent)", que só
+    diferem nas séries/nomes passados."""
+    figura = go.Figure()
+    figura.add_trace(
+        go.Scatter(x=serie_a["data"], y=normalizar_base_100(serie_a["Close"]), name=nome_a)
+    )
+    figura.add_trace(
+        go.Scatter(x=serie_b["data"], y=normalizar_base_100(serie_b["Close"]), name=nome_b)
+    )
+    figura.update_layout(
+        yaxis_title="Desempenho (base 100 no início do período)",
+        xaxis_title="Data",
+        hovermode="x unified",
+        margin={"t": 20},
+    )
+    return figura
+
+
 def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | None:
     """Diferença percentual entre `valor` (valor justo de um método) e o
     preço atual — (valor - preco_atual) / preco_atual × 100, pro
@@ -303,7 +374,17 @@ def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | N
     return f"{(valor - preco_atual) / preco_atual * 100:.1f}%"
 
 
-def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str, preco_atual: float | None):
+def _cartao_metodo(
+    nome: str, resultado: dict, rotulo_valor: str, preco_atual: float | None
+) -> None:
+    """Renderiza um cartão de método de valor justo (Graham/Bazin/FCD):
+    `st.metric` com o valor e delta de upside contra `preco_atual` quando
+    `resultado["aplicavel"]`, ou "—" com o motivo em `st.caption` quando
+    não. `resultado` é o dict padrão `{"aplicavel", rotulo_valor,
+    "motivo_nao_aplicavel"}` que os três modelos já devolvem —
+    `rotulo_valor` é o nome da chave do valor em si (`"valor_justo"` pra
+    Graham/FCD, `"preco_teto"` pro Bazin, já que os métodos não usam o
+    mesmo nome de campo)."""
     if resultado["aplicavel"]:
         st.metric(
             nome,
@@ -316,7 +397,12 @@ def _cartao_metodo(nome: str, resultado: dict, rotulo_valor: str, preco_atual: f
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
 
 
-def _cartao_correlacao(nome: str, resultado: dict):
+def _cartao_correlacao(nome: str, resultado: dict) -> None:
+    """Renderiza um cartão de correlação (petróleo/câmbio/GPR):
+    `st.metric` com o coeficiente e a leitura de magnitude
+    (`correlacao.classificar_magnitude_correlacao`) quando
+    `resultado["aplicavel"]`, ou "—" com o motivo quando não — mesmo
+    formato de dict que `correlacao.calcular_correlacao` devolve."""
     if not resultado["aplicavel"]:
         st.metric(nome, "—")
         st.caption(f"Indisponível: {resultado['motivo_nao_aplicavel']}")
@@ -377,6 +463,18 @@ def _aviso_screener_vazio(instrucao: str) -> None:
         "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
         f"{instrucao} — vai demorar alguns minutos."
     )
+
+
+def _carregar_screener_ou_avisar(caminho: Path, instrucao: str) -> pd.DataFrame | None:
+    """Encapsula o par "carregar (`_carregar_screener_salvo`) + checar
+    None + avisar (`_aviso_screener_vazio`)" repetido nas 3 seções que
+    dependem do resultado salvo do screener (Analisar uma ação, Screener,
+    Simulador de carteira) — cada call site só precisa checar o retorno
+    uma vez; o aviso já é mostrado aqui dentro quando não há nada salvo."""
+    tabela = _carregar_screener_salvo(caminho)
+    if tabela is None:
+        _aviso_screener_vazio(instrucao)
+    return tabela
 
 
 ABA_ANALISAR = "Analisar uma ação"
@@ -533,6 +631,18 @@ with aba_analisar:
 
         st.subheader(ticker)
 
+        # st.error (preço) vs. st.warning (indicadores/dividendos/CNPJ/
+        # macro abaixo) não é inconsistência: investigado e confirmado que
+        # a distinção é funcional, não sobre "o resto da página trava"
+        # (não trava — Graham/Bazin/FCD continuam computáveis sem preço,
+        # só o delta de upside some; Saúde financeira só perde Valor de
+        # Mercado/Firma, o resto continua). É sobre o dado em si: "Preço
+        # atual" é o único número desta seção sem NENHUM fallback visual
+        # quando falta — some por completo, só o erro fica no lugar. Já
+        # indicadores/dividendos/CNPJ/macro alimentam seções que já têm
+        # "N/D"/"indisponível" dedicado (ver `_fmt`, "Saúde financeira",
+        # cartões de método) — a ausência delas já aparece refletida com
+        # um fallback claro mais abaixo, não como um vazio nu.
         if erro_preco_atual:
             st.error(f"Preço: {erro_preco_atual}")
             preco_atual = None
@@ -569,6 +679,21 @@ with aba_analisar:
         if not erro_historico_beta and not erro_historico_ibovespa_beta:
             beta = calcular_beta(historico_beta, historico_ibovespa_beta)
 
+        # Graham é chamado direto (calcular_valor_justo_graham aceita
+        # lpa/vpa como `float | None` e já trata ausência internamente).
+        # Bazin e FCD, abaixo, precisam desse pré-check aqui em main.py
+        # porque as duas funções EXIGEM tipo não-None nesses parâmetros
+        # específicos — calcular_preco_teto_bazin quer um `pd.DataFrame`
+        # de verdade (não `None`, mesmo vazio serve) pra `dividendos`, e
+        # calcular_valor_justo_fcd declara `selic_meta`/`ipca_12m` como
+        # `float`, não `float | None` — chamar qualquer uma direto com
+        # `None` nesses parâmetros quebraria com AttributeError/TypeError
+        # antes mesmo de chegar nos guards que elas já têm pra OUTROS
+        # parâmetros (ex: fcf_atual/numero_acoes no FCD, que já são
+        # `float | None` e tratados lá dentro). Não é duplicação evitável
+        # — é a mesma forma de guard que os dois modelos já fazem
+        # internamente pros parâmetros que aceitam None, só que aqui pros
+        # que não aceitam.
         resultado_graham = calcular_valor_justo_graham(lpa, vpa)
         resultado_bazin = (
             calcular_preco_teto_bazin(dividendos)
@@ -639,9 +764,10 @@ with aba_analisar:
                 "valor justo = raiz quadrada de (22,5 × LPA × VPA). Só se aplica a "
                 "empresas com lucro e patrimônio líquido positivos.\n\n"
                 "**Bazin (preço teto)** — método do investidor Décio Bazin, focado em "
-                "dividendos: calcula o preço máximo que garantiria um retorno de 6% ao "
-                "ano só em dividendos, baseado no histórico de pagamento da empresa. Só "
-                "se aplica a quem tem histórico consistente de dividendo.\n\n"
+                "dividendos: calcula o preço máximo que garantiria um retorno de "
+                f"{YIELD_MINIMO_BAZIN:.0%} ao ano só em dividendos, baseado no histórico "
+                "de pagamento da empresa. Só se aplica a quem tem histórico consistente "
+                "de dividendo.\n\n"
                 "**FCD (Fluxo de Caixa Descontado)** — projeta os fluxos de caixa "
                 "futuros da empresa e traz isso a valor presente, descontando pelo "
                 "custo de capital (WACC). É o único dos três que funciona mesmo para "
@@ -776,32 +902,13 @@ with aba_analisar:
                 # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
                 # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
                 # ação uma linha reta ilegível.
-                figura_preco = go.Figure()
-                figura_preco.add_trace(
-                    go.Scatter(
-                        x=historico_beta["data"],
-                        y=normalizar_base_100(historico_beta["Close"]),
-                        name=ticker,
-                    )
-                )
-                figura_preco.add_trace(
-                    go.Scatter(
-                        x=historico_ibovespa_beta["data"],
-                        y=normalizar_base_100(historico_ibovespa_beta["Close"]),
-                        name="Ibovespa",
-                    )
-                )
-                figura_preco.update_layout(
-                    yaxis_title="Desempenho (base 100 no início do período)",
-                    xaxis_title="Data",
-                    hovermode="x unified",
-                    margin={"t": 20},
+                figura_preco = _grafico_comparacao_normalizada(
+                    historico_beta, ticker, historico_ibovespa_beta, "Ibovespa"
                 )
                 st.plotly_chart(figura_preco, use_container_width=True)
 
         st.divider()
         st.subheader("Comparando com Petróleo (Brent)")
-        JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
         janela_petroleo_selecionada = st.pills(
             "Janela de comparação",
             options=list(JANELAS_COMPARACAO_PETROLEO.keys()),
@@ -828,30 +935,8 @@ with aba_analisar:
             elif erro_petroleo_janela:
                 st.error(f"Petróleo (Brent): {erro_petroleo_janela}")
             else:
-                # Mesma normalização base 100 do gráfico "Preço vs.
-                # Ibovespa" acima (graficos.normalizar_base_100) — escalas
-                # brutas bem diferentes (ação em R$ dezenas, Brent em
-                # US$ dezenas) ficariam ilegíveis lado a lado sem isso.
-                figura_petroleo = go.Figure()
-                figura_petroleo.add_trace(
-                    go.Scatter(
-                        x=historico_acao_petroleo["data"],
-                        y=normalizar_base_100(historico_acao_petroleo["Close"]),
-                        name=ticker,
-                    )
-                )
-                figura_petroleo.add_trace(
-                    go.Scatter(
-                        x=historico_petroleo_janela["data"],
-                        y=normalizar_base_100(historico_petroleo_janela["Close"]),
-                        name="Petróleo (Brent)",
-                    )
-                )
-                figura_petroleo.update_layout(
-                    yaxis_title="Desempenho (base 100 no início do período)",
-                    xaxis_title="Data",
-                    hovermode="x unified",
-                    margin={"t": 20},
+                figura_petroleo = _grafico_comparacao_normalizada(
+                    historico_acao_petroleo, ticker, historico_petroleo_janela, "Petróleo (Brent)"
                 )
                 st.plotly_chart(figura_petroleo, use_container_width=True)
 
@@ -983,63 +1068,63 @@ with aba_analisar:
         with coluna_comparacao_setorial:
             st.subheader("Comparação setorial")
             segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
-            tabela_screener_setor = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
             if erro_segmento_setorial:
                 st.warning(f"Classificação setorial: {erro_segmento_setorial}")
-            elif tabela_screener_setor is None:
-                _aviso_screener_vazio(
-                    'Rode o screener primeiro na aba "Screener (todas as ações)"'
-                )
             else:
-                try:
-                    catalogo_setorial = obter_catalogo_emissores()
-                except Exception as erro:
-                    st.warning(f"Catálogo de emissores da B3: {erro}")
-                else:
-                    # Resolve o segmento setorial de cada ticker do screener já
-                    # salvo (dado local, sem nova busca de rede além do catálogo
-                    # já cacheado) pra achar os pares do mesmo setor da ação
-                    # buscada. Os números da tabela (preço, valor combinado,
-                    # desconto) vêm direto do screener — não são recalculados.
-                    segmentos_screener = resolver_segmentos_setoriais(
-                        list(tabela_screener_setor["ticker"]), catalogo_setorial
-                    )
-                    tickers_do_setor = segmentos_screener[
-                        segmentos_screener["segmento_setorial"] == segmento_setorial
-                    ]["ticker"]
-                    tabela_pares = tabela_screener_setor[
-                        tabela_screener_setor["ticker"].isin(tickers_do_setor)
-                    ]
-                    if tabela_pares.empty:
-                        st.info(
-                            f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
-                            "encontrada no resultado salvo do screener."
-                        )
+                tabela_screener_setor = _carregar_screener_ou_avisar(
+                    CAMINHO_SAIDA_PADRAO,
+                    'Rode o screener primeiro na aba "Screener (todas as ações)"',
+                )
+                if tabela_screener_setor is not None:
+                    try:
+                        catalogo_setorial = obter_catalogo_emissores()
+                    except Exception as erro:
+                        st.warning(f"Catálogo de emissores da B3: {erro}")
                     else:
-                        st.caption(f"Segmento setorial (B3): {segmento_setorial}")
-                        st.dataframe(
-                            tabela_pares,
-                            column_order=[
-                                "ticker",
-                                "preco_atual",
-                                "valor_combinado",
-                                "desconto_percentual",
-                            ],
-                            column_config={
-                                "ticker": "Ticker",
-                                "preco_atual": st.column_config.NumberColumn(
-                                    "Preço atual", format="R$ %.2f"
-                                ),
-                                "valor_combinado": st.column_config.NumberColumn(
-                                    "Valor combinado", format="R$ %.2f"
-                                ),
-                                "desconto_percentual": st.column_config.NumberColumn(
-                                    "Desconto", format="%.1f%%"
-                                ),
-                            },
-                            hide_index=True,
-                            use_container_width=True,
+                        # Resolve o segmento setorial de cada ticker do screener já
+                        # salvo (dado local, sem nova busca de rede além do catálogo
+                        # já cacheado) pra achar os pares do mesmo setor da ação
+                        # buscada. Os números da tabela (preço, valor combinado,
+                        # desconto) vêm direto do screener — não são recalculados.
+                        segmentos_screener = resolver_segmentos_setoriais(
+                            list(tabela_screener_setor["ticker"]), catalogo_setorial
                         )
+                        tickers_do_setor = segmentos_screener[
+                            segmentos_screener["segmento_setorial"] == segmento_setorial
+                        ]["ticker"]
+                        tabela_pares = tabela_screener_setor[
+                            tabela_screener_setor["ticker"].isin(tickers_do_setor)
+                        ]
+                        if tabela_pares.empty:
+                            st.info(
+                                f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
+                                "encontrada no resultado salvo do screener."
+                            )
+                        else:
+                            st.caption(f"Segmento setorial (B3): {segmento_setorial}")
+                            st.dataframe(
+                                tabela_pares,
+                                column_order=[
+                                    "ticker",
+                                    "preco_atual",
+                                    "valor_combinado",
+                                    "desconto_percentual",
+                                ],
+                                column_config={
+                                    "ticker": "Ticker",
+                                    "preco_atual": st.column_config.NumberColumn(
+                                        "Preço atual", format="R$ %.2f"
+                                    ),
+                                    "valor_combinado": st.column_config.NumberColumn(
+                                        "Valor combinado", format="R$ %.2f"
+                                    ),
+                                    "desconto_percentual": st.column_config.NumberColumn(
+                                        "Desconto", format="%.1f%%"
+                                    ),
+                                },
+                                hide_index=True,
+                                use_container_width=True,
+                            )
 
         st.divider()
         st.subheader("Correlação com fatores externos")
@@ -1093,13 +1178,12 @@ with aba_screener:
         st.success("Screener concluído — resultado salvo em disco.")
         st.rerun()
 
-    tabela_screener = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
+    tabela_screener = _carregar_screener_ou_avisar(
+        CAMINHO_SAIDA_PADRAO,
+        f'Clique em "Rodar screener agora" acima pra gerar {CAMINHO_SAIDA_PADRAO.name}',
+    )
 
-    if tabela_screener is None:
-        _aviso_screener_vazio(
-            f'Clique em "Rodar screener agora" acima pra gerar {CAMINHO_SAIDA_PADRAO.name}'
-        )
-    else:
+    if tabela_screener is not None:
         atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
         st.caption(
             f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
@@ -1142,13 +1226,12 @@ with aba_carteira:
         "screener, sem recalcular nada ao vivo."
     )
 
-    tabela_screener_carteira = _carregar_screener_salvo(CAMINHO_SAIDA_PADRAO)
+    tabela_screener_carteira = _carregar_screener_ou_avisar(
+        CAMINHO_SAIDA_PADRAO,
+        'Rode o screener primeiro na aba "Screener (todas as ações)"',
+    )
 
-    if tabela_screener_carteira is None:
-        _aviso_screener_vazio(
-            'Rode o screener primeiro na aba "Screener (todas as ações)"'
-        )
-    else:
+    if tabela_screener_carteira is not None:
         tickers_disponiveis = sorted(tabela_screener_carteira["ticker"])
         tickers_selecionados = st.multiselect(
             "Ações da carteira (restrito às ações com dado no screener salvo)",
