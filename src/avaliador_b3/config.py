@@ -138,6 +138,77 @@ CATEGORIAS_CONFLITO_CAMEO = {
 #    conflito real — na direção contrária do que se buscava.
 CODIGOS_EVENTO_COERCE_RUIDO = {"172", "173"}
 
+# --- Filtro por seção da URL (2026-09-18) ---
+#
+# Achado real depois do filtro acima já em produção: a notícia
+# "couple bought Marilyn Monroe's former home... to tear it down" (disputa
+# imobiliária/preservação histórica, zero relação com conflito geopolítico)
+# passou pelo filtro de EventCode. Investigando: o GDELT deu a ela
+# EventCode "190" — dentro de FIGHT (19), não COERCE — o código "genérico"
+# de "Use conventional military force", pra quando o classificador não
+# consegue ser mais específico.
+#
+# Diferente de "172"/"173" (concentrados e majoritariamente ruído), "190"
+# é MISTO e enorme: 859 de 2.023 eventos já capturados (42,5% de TUDO, não
+# só de FIGHT) — amostrando as URLs reais, tem tanto sinal genuíno forte
+# ("Houthis seize Red Sea islands, oil supply risks", "Russian drone found
+# off Poland coast carried explosive warhead", "Russian intelligence plot
+# to commit murder-for-hire in the US foiled by FBI") quanto ruído puro
+# (a casa da Marilyn Monroe, batida de helicóptero em LA, briga de
+# clube náutico, fofoca de celebridade). Excluir "190" inteiro pelo
+# EventCode cortaria quase metade de TODO o sinal do Monitor, sinal
+# genuíno junto — abordagem errada aqui (diferente de CODIGOS_EVENTO_COERCE_RUIDO
+# acima, onde o corte por EventCode era limpo).
+#
+# Solução: filtrar pela SEÇÃO da URL de origem (primeiro segmento do path,
+# ex: "real-estate" em .../real-estate/news/...) em vez do EventCode —
+# ataca o ruído pela editoria do site (imóveis, entretenimento, esporte,
+# etc.), não pela classificação CAMEO do evento. Lista abaixo construída
+# investigando TODOS os ~520 segmentos distintos presentes nos 2.023
+# eventos já capturados: cada seção só entrou depois de amostrar as URLs
+# reais daquele segmento e confirmar que é inequivocamente não-geopolítico
+# (checagem final: aplicando a lista completa contra os 2.023 eventos,
+# as 34 linhas afetadas são 100% ruído do mesmo tipo, nenhum falso
+# positivo). Descartei candidatos ambíguos mesmo quando pareciam óbvios à
+# primeira vista — ex: "theaters" (seção do Stars & Stripes, jornal
+# militar — lá significa "teatro de operações militares", não cinema;
+# incluiria pra excluir e cortaria notícia real de tropas) e "shows"
+# (uma amostra era true crime irrelevante, outra era um clipe do PBS
+# Newshour sobre "war with Iran") — ambíguos demais pra generalizar sem
+# mais dados, diferente das seções abaixo, todas de tópico único e claro.
+# "astrology"/"horoscope"/"sports"/"sport"/"recipe" não apareceram nos
+# dados atuais (0 eventos) — mantidos mesmo assim por serem categorias
+# estruturalmente não-geopolíticas (mesmo raciocínio das que apareceram),
+# não uma extrapolação de amostra.
+SECOES_URL_RUIDO = {
+    "real-estate",
+    "entertainment",
+    "entertainment_life",
+    "life-style",
+    "lifestyle",
+    "sports",
+    "sport",
+    "mlb",
+    "horse-racing",
+    "astrology",
+    "horoscope",
+    "recipes",
+    "recipe",
+    "dining",
+    "celebrities",
+    "celebrity-news",
+    "gay-celebrities",
+    "showbiz",
+    "tvshowbiz",
+    "us-showbiz",
+    "movies",
+    "tv",
+    "music",
+    "comics",
+    "on-screen",
+    "vertical-galleries",
+}
+
 # Preço de ação via yfinance (ticker B3 + sufixo ".SA", ex: PETR4.SA).
 # Confirmado em 2026-09-14 com yfinance 1.7.0 contra PETR4.SA/VALE3.SA reais.
 # Diferente dos outros adapters, o cache de preço usa TTL curto: o dado já

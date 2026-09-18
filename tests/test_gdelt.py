@@ -221,6 +221,59 @@ def test_filtrar_eventos_conflito_deduplica_eventos_do_mesmo_artigo():
     assert list(resultado["GLOBALEVENTID"]) == [10, 12]
 
 
+def test_filtrar_eventos_conflito_exclui_secoes_de_url_ruidosas():
+    # Caso real de regressão: uma disputa imobiliária pela casa da Marilyn
+    # Monroe (seção "real-estate") recebeu EventCode "190" — o código
+    # genérico de FIGHT, grande e misto demais pra excluir pelo EventCode
+    # (ver investigação em config.py) — só o filtro por seção da URL pega
+    # esse caso. "entertainment" é outra seção confirmada como ruído; a
+    # notícia de conflito real (seção "world", fora de SECOES_URL_RUIDO)
+    # deve sobreviver.
+    linhas = "\n".join(
+        [
+            _linha_evento(
+                GLOBALEVENTID="20",
+                EventRootCode="19",
+                EventCode="190",
+                DATEADDED="20260916130000",
+                SOURCEURL=(
+                    "https://timesofindia.indiatimes.com/real-estate/news/"
+                    "couple-bought-marilyn-monroes-former-home-for-8-35m-to-tear-it-down"
+                ),
+            ),
+            _linha_evento(
+                GLOBALEVENTID="21",
+                EventRootCode="18",
+                EventCode="180",
+                DATEADDED="20260916130000",
+                SOURCEURL="https://example.com/entertainment/celebrity-gossip",
+            ),
+            _linha_evento(
+                GLOBALEVENTID="22",
+                EventRootCode="19",
+                EventCode="190",
+                DATEADDED="20260916130000",
+                SOURCEURL="https://example.com/world/houthis-seize-red-sea-islands",
+            ),
+        ]
+    )
+
+    df = gdelt._analisar_arquivo_eventos(linhas)
+    resultado = gdelt.filtrar_eventos_conflito(df)
+
+    assert list(resultado["GLOBALEVENTID"]) == [22]
+
+
+def test_secao_url_extrai_primeiro_segmento_do_path():
+    assert gdelt._secao_url("https://example.com/real-estate/news/artigo") == "real-estate"
+    assert gdelt._secao_url("https://example.com/ENTERTAINMENT/artigo") == "entertainment"
+
+
+def test_secao_url_sem_path_devolve_vazio_e_nunca_e_filtrada():
+    assert gdelt._secao_url("https://example.com") == ""
+    assert gdelt._secao_url("https://example.com/") == ""
+
+
 def test_deduplicar_por_fonte_mantem_primeira_ocorrencia():
     df = pd.DataFrame(
         {

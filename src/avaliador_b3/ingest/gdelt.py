@@ -13,9 +13,11 @@ config.py), usadas por `conflitos.obter_eventos_relevantes_ultimas_24h`
 pra montar uma janela maior processando um snapshot de cada vez. Filtra
 pelas categorias CAMEO de conflito (17=COERCE, 18=ASSAULT, 19=FIGHT),
 exclui o subconjunto de EventCode confirmado como ruído dentro de COERCE
-(ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), deduplica eventos do mesmo
-artigo de origem (`deduplicar_por_fonte`) e extrai localização geográfica
-e Goldstein Score.
+(ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), exclui eventos cuja
+SOURCEURL cai numa seção de site não-geopolítica (ver SECOES_URL_RUIDO em
+config.py), deduplica eventos do mesmo artigo de origem
+(`deduplicar_por_fonte`) e extrai localização geográfica e Goldstein
+Score.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -36,6 +39,7 @@ from avaliador_b3.config import (
     DATA_RAW_DIR,
     DELAY_GDELT_SEGUNDOS,
     INTERVALO_SNAPSHOT_GDELT_MINUTOS,
+    SECOES_URL_RUIDO,
     URL_GDELT_LASTUPDATE,
 )
 
@@ -191,16 +195,32 @@ def _analisar_arquivo_eventos(conteudo_csv: str) -> pd.DataFrame:
     return df
 
 
+def _secao_url(sourceurl: str) -> str:
+    """Primeiro segmento do path de uma SOURCEURL (ex: "real-estate" em
+    .../real-estate/news/...) — usado como proxy pra "editoria do site",
+    pra filtrar ruído não-geopolítico que passa pelo EventCode (ver
+    SECOES_URL_RUIDO em config.py — nasceu do caso da casa da Marilyn
+    Monroe, classificada como EventCode "190", um código grande demais e
+    misto demais pra excluir pelo EventCode). Devolve "" quando não há
+    path (ou é só "/"), valor que nunca casa com SECOES_URL_RUIDO — URL
+    sem seção identificável nunca é filtrada por omissão."""
+    caminho = urlparse(sourceurl).path.strip("/")
+    return caminho.split("/", 1)[0].lower() if caminho else ""
+
+
 def filtrar_eventos_conflito(df: pd.DataFrame) -> pd.DataFrame:
     """Filtra o DataFrame completo de eventos pelas categorias CAMEO de
     conflito (COERCE/ASSAULT/FIGHT), exclui o subconjunto de EventCode que a
     investigação de 2026-09-17 confirmou ser majoritariamente ruído dentro
-    de COERCE (ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), deduplica por
-    artigo de origem (`deduplicar_por_fonte`) e seleciona as colunas de
-    localização geográfica e Goldstein Score relevantes para o projeto."""
+    de COERCE (ver CODIGOS_EVENTO_COERCE_RUIDO em config.py), exclui
+    eventos cuja SOURCEURL cai numa seção de site não-geopolítica (ver
+    SECOES_URL_RUIDO em config.py), deduplica por artigo de origem
+    (`deduplicar_por_fonte`) e seleciona as colunas de localização
+    geográfica e Goldstein Score relevantes para o projeto."""
     filtrado = df[
         df["EventRootCode"].isin(CATEGORIAS_CONFLITO_CAMEO)
         & ~df["EventCode"].isin(CODIGOS_EVENTO_COERCE_RUIDO)
+        & ~df["SOURCEURL"].map(_secao_url).isin(SECOES_URL_RUIDO)
     ]
     filtrado = filtrado[COLUNAS_RESULTADO].sort_values("data").reset_index(drop=True)
     return deduplicar_por_fonte(filtrado)
