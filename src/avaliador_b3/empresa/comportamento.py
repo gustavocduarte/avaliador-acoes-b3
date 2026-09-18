@@ -15,11 +15,19 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-DIAS_UTEIS_POR_ANO = 252
+from avaliador_b3.config import DIAS_UTEIS_POR_ANO
 
 
-def calcular_volume_medio(historico: pd.DataFrame) -> float:
-    """Volume médio diário negociado no período coberto pelo histórico."""
+def calcular_volume_medio(historico: pd.DataFrame) -> float | None:
+    """Volume médio diário negociado no período coberto pelo histórico.
+    Devolve None se `historico` estiver vazio — sem esse guard,
+    `Series.mean()` sobre uma Series vazia devolve NaN silenciosamente (não
+    levanta erro), e um NaN se formataria como o texto literal "nan" na
+    tela em vez de "N/D", diferente de como o resto do módulo trata
+    histórico insuficiente (ver `calcular_volatilidade_anualizada`/
+    `calcular_beta`, que já devolvem None pro caso equivalente)."""
+    if historico.empty:
+        return None
     return float(historico["Volume"].mean())
 
 

@@ -59,8 +59,16 @@ def calcular_preco_teto_bazin(
     # yfinance); normaliza pra naive aqui, já que só a granularidade de dia
     # importa pra esse cálculo — comparar tz-aware com tz-naive levanta
     # TypeError no pandas.
+    #
+    # `not dividendos.empty and` é defensivo, não correção de um bug
+    # observado: o único produtor real (`ingest.precos.obter_dividendos`)
+    # sempre garante a coluna "data" mesmo com o DataFrame vazio (empresa
+    # sem nenhum dividendo pago) — mas sem esse guard, um chamador futuro
+    # que violasse esse contrato (DataFrame vazio SEM a coluna "data")
+    # quebraria aqui com KeyError antes mesmo de chegar no `.empty` já
+    # checado dentro de `_tem_historico_relevante`, logo abaixo.
     dividendos = dividendos.copy()
-    if isinstance(dividendos["data"].dtype, pd.DatetimeTZDtype):
+    if not dividendos.empty and isinstance(dividendos["data"].dtype, pd.DatetimeTZDtype):
         dividendos["data"] = dividendos["data"].dt.tz_localize(None)
 
     if data_referencia is None:

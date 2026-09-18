@@ -75,6 +75,15 @@ TICKER_IBOVESPA = "^BVSP"
 PERIODO_HISTORICO_COMPORTAMENTO = "3mo"
 PERIODO_BETA = "1y"
 
+# Dias úteis por ano de pregão — convenção padrão em finança quantitativa
+# pra anualizar volatilidade diária (fator √252), citada em praticamente
+# todo material introdutório de gestão de risco/precificação (ex:
+# Hull, "Options, Futures, and Other Derivatives") e consistente com o
+# calendário real da B3 (~250-253 pregões/ano, variando com feriados).
+# Não é uma medição específica da B3 pro ano corrente, é a convenção de
+# mercado padrão — usada em `empresa.comportamento.calcular_volatilidade_anualizada`.
+DIAS_UTEIS_POR_ANO = 252
+
 # Período separado só pro card "Preço atual" (2026-09-16): investigando uma
 # discrepância real (PETR4 mostrando R$ 48,92 no nosso card contra R$ 50,43
 # ao vivo no widget do TradingView, ~3% de diferença batendo com a alta

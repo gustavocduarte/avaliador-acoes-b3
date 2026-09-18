@@ -20,6 +20,13 @@ def test_calcular_volume_medio():
     assert comportamento.calcular_volume_medio(historico) == pytest.approx(200.0)
 
 
+def test_calcular_volume_medio_none_para_historico_vazio():
+    # Regressão: Series.mean() sobre uma Series vazia devolve NaN sem
+    # levantar erro — sem o guard, essa função devolvia NaN em vez de
+    # None, diferente do padrão das duas funções vizinhas neste módulo.
+    assert comportamento.calcular_volume_medio(_historico([])) is None
+
+
 def test_calcular_volatilidade_anualizada_bate_com_calculo_independente():
     closes = [100.0, 102.0, 99.0, 103.0, 101.0]
     historico = _historico(closes)

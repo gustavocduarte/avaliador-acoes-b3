@@ -741,7 +741,11 @@ with aba_analisar:
             else:
                 volume_medio = calcular_volume_medio(historico)
                 volatilidade = calcular_volatilidade_anualizada(historico)
-                st.metric("Volume médio (3m)", f"{volume_medio:,.0f}".replace(",", "."))
+                # calcular_volume_medio agora pode devolver None (histórico
+                # vazio) — _fmt já trata isso como "N/D" no resto do
+                # arquivo; sem essa troca, f"{None:,.0f}" levantaria
+                # TypeError.
+                st.metric("Volume médio (3m)", _fmt(volume_medio, "{:,.0f}").replace(",", "."))
                 st.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
 
             # Beta usa uma janela própria mais longa (PERIODO_BETA) que

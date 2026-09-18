@@ -76,6 +76,20 @@ def test_nao_aplicavel_sem_nenhum_dividendo():
     assert "5 anos" in resultado["motivo_nao_aplicavel"]
 
 
+def test_dataframe_vazio_sem_coluna_data_nao_quebra():
+    # Guard defensivo, não regressão de um bug observado: o produtor real
+    # (ingest.precos.obter_dividendos) sempre garante a coluna "data" mesmo
+    # vazio, mas a função não deve quebrar com KeyError se um chamador
+    # futuro violar esse contrato — deve cair no mesmo "não aplicável" de
+    # qualquer outro histórico vazio, não estourar antes de chegar lá.
+    dividendos = pd.DataFrame()
+
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=DATA_REFERENCIA)
+
+    assert resultado["aplicavel"] is False
+    assert resultado["preco_teto"] is None
+
+
 def test_aplicavel_com_datas_com_timezone_igual_ao_yfinance():
     # ingest.precos.obter_dividendos devolve datas tz-aware (vêm do
     # yfinance) — regressão pro TypeError de comparar tz-aware com
