@@ -5,7 +5,6 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_RAW_DIR = ROOT_DIR / "data" / "raw"
 DATA_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
-DATA_CACHE_DIR = ROOT_DIR / "data" / "cache"
 
 # Códigos de série do SGS (Sistema Gerenciador de Séries Temporais) do Banco
 # Central do Brasil. Confirmados em 2026-09-14 consultando diretamente

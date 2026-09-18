@@ -4,8 +4,6 @@
 data/raw/
 data/processed/*
 !data/processed/.gitkeep
-data/cache/*
-!data/cache/.gitkeep
 
 # Python
 __pycache__/
