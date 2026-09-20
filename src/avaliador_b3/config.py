@@ -555,3 +555,41 @@ JANELA_BUSCA_IPCA_DIAS = 730
 # — mesmas strings de período aceitas por `ingest.precos.obter_historico`
 # (convenção do yfinance: "2y"/"5y"/"10y").
 JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
+
+# --- Paleta de tema (2026-09-19) ---
+#
+# Tema dark navy + dourado, espelhando `.streamlit/config.toml`
+# (backgroundColor/secondaryBackgroundColor/primaryColor/textColor) —
+# aplicado manualmente aqui porque os gráficos Plotly não herdam o tema
+# do Streamlit automaticamente, só os componentes nativos (st.metric,
+# st.dataframe, etc.) herdam. Usado em `app/main.py` nos `go.Figure()`.
+#
+# COR_GRAFICO_FUNDO = secondaryBackgroundColor do tema (fundo do gráfico,
+# não o fundo da página, pra manter um leve contraste de "cartão").
+# COR_GRAFICO_PROTAGONISTA (dourado) marca a série principal (a ação
+# sendo analisada); COR_GRAFICO_CONTEXTO (cinza-azulado neutro) marca a
+# série de comparação (benchmark: Ibovespa ou petróleo) — não deve
+# competir visualmente com o protagonista. COR_GRAFICO_GRADE é um tom só
+# um pouco mais claro que COR_GRAFICO_FUNDO, pras linhas de grade ficarem
+# discretas.
+COR_GRAFICO_FUNDO = "#16212F"
+COR_GRAFICO_TEXTO = "#E9E4D8"
+COR_GRAFICO_PROTAGONISTA = "#C9982F"
+COR_GRAFICO_CONTEXTO = "#5B6B7C"
+COR_GRAFICO_GRADE = "#233040"
+
+# Verde/vermelho de ganho/perda em tom mais discreto que o padrão do
+# Plotly (que tende a um neon que destoa da paleta escura acima) —
+# mesma leitura semântica de mercado (verde=alta, vermelho=baixa),
+# só ajustada de tom. Usado nas curvas de cenário da projeção de
+# carteira (`aba_carteira`), que não passam pelo tema do Streamlit por
+# serem Plotly.
+COR_GANHO = "#3FA34D"
+COR_PERDA = "#C6483E"
+
+# Cor neutra pra estados "não aplicável"/indisponível (ex: correlação
+# sem observações suficientes) — distinta tanto do dourado de destaque
+# quanto do vermelho de erro/perda, pra "indisponível" não parecer nem
+# erro nem destaque. Mesmo tom de COR_GRAFICO_CONTEXTO (mesma função:
+# neutro, não deve chamar atenção).
+COR_NEUTRA = "#5B6B7C"

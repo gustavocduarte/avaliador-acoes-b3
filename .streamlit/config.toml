@@ -1,0 +1,9 @@
+[theme]
+base = "dark"
+backgroundColor = "#0E1621"
+secondaryBackgroundColor = "#16212F"
+primaryColor = "#C9982F"
+textColor = "#E9E4D8"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans&display=swap"
+headingFont = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans&display=swap"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap"

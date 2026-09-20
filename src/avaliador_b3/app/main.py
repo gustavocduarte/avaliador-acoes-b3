@@ -29,6 +29,14 @@ from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    COR_GANHO,
+    COR_GRAFICO_CONTEXTO,
+    COR_GRAFICO_FUNDO,
+    COR_GRAFICO_GRADE,
+    COR_GRAFICO_PROTAGONISTA,
+    COR_GRAFICO_TEXTO,
+    COR_NEUTRA,
+    COR_PERDA,
     HORIZONTE_PROJECAO_FCD_ANOS,
     JANELA_BUSCA_IPCA_DIAS,
     JANELA_BUSCA_SELIC_DIAS,
@@ -344,17 +352,32 @@ def _grafico_comparacao_normalizada(
     diferem nas séries/nomes passados."""
     figura = go.Figure()
     figura.add_trace(
-        go.Scatter(x=serie_a["data"], y=normalizar_base_100(serie_a["Close"]), name=nome_a)
+        go.Scatter(
+            x=serie_a["data"],
+            y=normalizar_base_100(serie_a["Close"]),
+            name=nome_a,
+            line={"color": COR_GRAFICO_PROTAGONISTA},
+        )
     )
     figura.add_trace(
-        go.Scatter(x=serie_b["data"], y=normalizar_base_100(serie_b["Close"]), name=nome_b)
+        go.Scatter(
+            x=serie_b["data"],
+            y=normalizar_base_100(serie_b["Close"]),
+            name=nome_b,
+            line={"color": COR_GRAFICO_CONTEXTO},
+        )
     )
     figura.update_layout(
         yaxis_title="Desempenho (base 100 no início do período)",
         xaxis_title="Data",
         hovermode="x unified",
         margin={"t": 20},
+        paper_bgcolor=COR_GRAFICO_FUNDO,
+        plot_bgcolor=COR_GRAFICO_FUNDO,
+        font={"color": COR_GRAFICO_TEXTO},
     )
+    figura.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
+    figura.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
     return figura
 
 
@@ -991,6 +1014,7 @@ with aba_analisar:
                             texttemplate="R$ %{text:.2f}",
                             textposition="outside",
                             hovertemplate="R$ %{y:.2f}<extra></extra>",
+                            marker={"color": COR_GRAFICO_PROTAGONISTA},
                         )
                     )
                     if not dividend_yield_por_ano.empty:
@@ -1005,6 +1029,8 @@ with aba_analisar:
                                 textposition="top center",
                                 yaxis="y2",
                                 hovertemplate="%{y:.1f}%<extra></extra>",
+                                line={"color": COR_GRAFICO_CONTEXTO},
+                                marker_color=COR_GRAFICO_CONTEXTO,
                             )
                         )
                     figura_dividendos.update_layout(
@@ -1026,7 +1052,12 @@ with aba_analisar:
                             "x": 0,
                         },
                         margin={"t": 40},
+                        paper_bgcolor=COR_GRAFICO_FUNDO,
+                        plot_bgcolor=COR_GRAFICO_FUNDO,
+                        font={"color": COR_GRAFICO_TEXTO},
                     )
+                    figura_dividendos.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
+                    figura_dividendos.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
                     st.plotly_chart(figura_dividendos, use_container_width=True)
 
                     # Degradação transparente: yield ausente ou parcial não é
@@ -1397,10 +1428,14 @@ with aba_carteira:
                 SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
                 SELECAO_LINEAR = "Sem juros compostos (linear)"
                 SELECAO_INFLACAO = "Inflação (IPCA)"
+                # pessimista/otimista usam a mesma semântica de mercado dos
+                # deltas (vermelho=perda, verde=ganho — ver config.py); "base"
+                # (nem ganho nem perda) usa o tom neutro da paleta, não o azul
+                # padrão do Plotly.
                 CORES_CENARIO = {
-                    "pessimista": "#EF553B",
-                    "base": "#636EFA",
-                    "otimista": "#00CC96",
+                    "pessimista": COR_PERDA,
+                    "base": COR_NEUTRA,
+                    "otimista": COR_GANHO,
                 }
 
                 opcoes_selecionadas = (
@@ -1464,7 +1499,7 @@ with aba_carteira:
                                     y=curva_ipca["valor"],
                                     mode="lines",
                                     name="Inflação (IPCA, suposição constante)",
-                                    line={"color": "#00d4ff", "dash": "dot"},
+                                    line={"color": COR_GRAFICO_CONTEXTO, "dash": "dot"},
                                     hovertemplate="R$ %{y:.2f}<extra></extra>",
                                 )
                             )
@@ -1475,7 +1510,12 @@ with aba_carteira:
                             yaxis_title="Valor projetado (R$)",
                             hovermode="x unified",
                             margin={"t": 20},
+                            paper_bgcolor=COR_GRAFICO_FUNDO,
+                            plot_bgcolor=COR_GRAFICO_FUNDO,
+                            font={"color": COR_GRAFICO_TEXTO},
                         )
+                        fig_projecao.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
+                        fig_projecao.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
                         st.plotly_chart(fig_projecao, use_container_width=True)
                     else:
                         st.info(
