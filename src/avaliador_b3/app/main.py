@@ -29,14 +29,12 @@ from avaliador_b3.config import (
     ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
-    COR_GANHO,
     COR_GRAFICO_CONTEXTO,
     COR_GRAFICO_FUNDO,
     COR_GRAFICO_GRADE,
     COR_GRAFICO_PROTAGONISTA,
     COR_GRAFICO_TEXTO,
-    COR_NEUTRA,
-    COR_PERDA,
+    CORES_CENARIO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     JANELA_BUSCA_IPCA_DIAS,
     JANELA_BUSCA_SELIC_DIAS,
@@ -1428,15 +1426,6 @@ with aba_carteira:
                 SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
                 SELECAO_LINEAR = "Sem juros compostos (linear)"
                 SELECAO_INFLACAO = "Inflação (IPCA)"
-                # pessimista/otimista usam a mesma semântica de mercado dos
-                # deltas (vermelho=perda, verde=ganho — ver config.py); "base"
-                # (nem ganho nem perda) usa o tom neutro da paleta, não o azul
-                # padrão do Plotly.
-                CORES_CENARIO = {
-                    "pessimista": COR_PERDA,
-                    "base": COR_NEUTRA,
-                    "otimista": COR_GANHO,
-                }
 
                 opcoes_selecionadas = (
                     st.pills(

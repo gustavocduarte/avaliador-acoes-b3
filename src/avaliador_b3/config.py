@@ -587,9 +587,24 @@ COR_GRAFICO_GRADE = "#233040"
 COR_GANHO = "#3FA34D"
 COR_PERDA = "#C6483E"
 
-# Cor neutra pra estados "não aplicável"/indisponível (ex: correlação
-# sem observações suficientes) — distinta tanto do dourado de destaque
-# quanto do vermelho de erro/perda, pra "indisponível" não parecer nem
-# erro nem destaque. Mesmo tom de COR_GRAFICO_CONTEXTO (mesma função:
-# neutro, não deve chamar atenção).
+# Cor neutra — mesmo tom de COR_GRAFICO_CONTEXTO (mesma função: neutro,
+# não deve chamar atenção). Usada em CORES_CENARIO["base"] (curva "base"
+# do gráfico de projeção de carteira, nem ganho nem perda). Cogitada
+# originalmente também pros cartões de método/correlação "não aplicável"
+# (app/main.py, `_cartao_metodo`/`_cartao_correlacao`), mas esses já usam
+# a opacidade nativa do st.caption/st.metric do Streamlit pra ficar
+# visualmente neutros — não há como injetar essa cor ali sem HTML bruto
+# (nenhum dos dois componentes aceita parâmetro de cor), então não são
+# consumidores reais desse token.
 COR_NEUTRA = "#5B6B7C"
+
+# Cores das curvas de cenário do gráfico de "Projeção de crescimento"
+# (aba Simulador de carteira, `aba_carteira` em app/main.py) — combinação
+# dos tokens acima, não uma cor nova: pessimista/otimista usam a mesma
+# semântica de mercado dos deltas (vermelho=perda, verde=ganho); "base"
+# (nem ganho nem perda) usa o tom neutro, não o azul padrão do Plotly.
+CORES_CENARIO = {
+    "pessimista": COR_PERDA,
+    "base": COR_NEUTRA,
+    "otimista": COR_GANHO,
+}

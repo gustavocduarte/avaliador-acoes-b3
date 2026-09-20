@@ -6,10 +6,15 @@ numpy
 requests
 yfinance
 beautifulsoup4
-lxml
 xlrd
-openpyxl
 streamlit
 plotly
 pytest
 ruff
+
+# openpyxl: sem uso em produção (o único adapter que lê Excel,
+# ingest/gpr.py, baixa .xls e usa xlrd) — mas tests/test_gpr.py precisa
+# dele pra fabricar bytes de Excel falsos via df.to_excel (motor padrão
+# do pandas pra escrita de .xlsx). Confirmado removendo e rodando a suíte
+# numa venv limpa: sem ele, 2 testes de gpr quebram com ModuleNotFoundError.
+openpyxl
