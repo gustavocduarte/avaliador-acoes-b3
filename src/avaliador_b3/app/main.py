@@ -442,26 +442,28 @@ def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
 
 
 def _fmt_bilhoes(valor: float | None) -> str:
-    """Formata um valor grande (Valor de Mercado, Valor de Firma, Dívida
-    Líquida — ordem de grandeza de milhões a bilhões pras ações da B3) de
-    forma abreviada, 1 casa decimal: "X,X bi" a partir de R$ 1 bilhão (em
-    módulo — dívida líquida negativa, posição de caixa líquido, também vira
-    "bi" se for grande o bastante, com o sinal preservado), "X,X mi" abaixo
-    disso. Mesma convenção da imprensa financeira brasileira — ou "N/D" se
+    """Formata um valor monetário — Valor de Mercado/Firma, Dívida Líquida
+    ("Saúde financeira"), e os totais da carteira ("Total da carteira") —
+    abreviando a partir de R$ 1 milhão (em módulo, então um valor negativo
+    grande — ex: dívida líquida em posição de caixa líquido — também abrevia
+    com o sinal preservado): "X,X bi" a partir de R$ 1 bilhão, "X,X mi" de
+    R$ 1 milhão até ali. Abaixo de R$ 1 milhão mostra o valor completo,
+    formatado por extenso ("R$ X.XXX,XX", convenção brasileira de milhar/
+    decimal) — não faz sentido abreviar R$ 1.000 pra "R$ 0,0 mi". "N/D" se
     ausente.
 
-    Sem essa abreviação, valores reais de empresas da B3 (centenas de
-    bilhões de reais) formatados por extenso ficavam truncados com
-    reticências pelo st.metric dentro da coluna estreita da seção "Saúde
-    financeira" (ex: "R$ 625,1..." em vez do valor completo) — bug real,
-    não hipotético, achado em produção."""
+    Sem essa abreviação (ou com o piso baixo demais), valores grandes
+    ficavam truncados com reticências pelo st.metric dentro das colunas
+    estreitas de 4 do projeto (ex: "R$ 625,1..." em "Saúde financeira") —
+    bug real, não hipotético, achado em produção."""
     if valor is None:
         return "N/D"
     if abs(valor) >= 1e9:
-        texto = f"R$ {valor / 1e9:.1f} bi"
-    else:
-        texto = f"R$ {valor / 1e6:.1f} mi"
-    return texto.replace(".", ",")
+        return f"R$ {valor / 1e9:.1f} bi".replace(".", ",")
+    if abs(valor) >= 1e6:
+        return f"R$ {valor / 1e6:.1f} mi".replace(".", ",")
+    texto = f"R$ {valor:,.2f}"
+    return texto.replace(",", "_").replace(".", ",").replace("_", ".")
 
 
 def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
@@ -1357,12 +1359,12 @@ with aba_carteira:
                 )
             else:
                 col_investido, col_pessimista, col_base, col_otimista = st.columns(4)
-                col_investido.metric("Investido", f"R$ {totais_carteira['soma_investida']:.2f}")
+                col_investido.metric("Investido", _fmt_bilhoes(totais_carteira["soma_investida"]))
                 col_pessimista.metric(
-                    "Pessimista", f"R$ {totais_carteira['total_pessimista']:.2f}"
+                    "Pessimista", _fmt_bilhoes(totais_carteira["total_pessimista"])
                 )
-                col_base.metric("Base", f"R$ {totais_carteira['total_base']:.2f}")
-                col_otimista.metric("Otimista", f"R$ {totais_carteira['total_otimista']:.2f}")
+                col_base.metric("Base", _fmt_bilhoes(totais_carteira["total_base"]))
+                col_otimista.metric("Otimista", _fmt_bilhoes(totais_carteira["total_otimista"]))
                 if totais_carteira["quantidade_sem_cenario"]:
                     st.caption(
                         f"{totais_carteira['quantidade_sem_cenario']} ação(ões) sem cenário "
@@ -1564,13 +1566,16 @@ with aba_carteira:
                     )
 
 # Nota de rodapé, fora de qualquer aba (aparece nas três) — Streamlit
-# Community Cloud "adormece" apps sem acesso recente e o primeiro visitante
-# depois disso paga o custo de acordar o container, sem indicação nenhuma
-# nativa da plataforma de que isso está acontecendo (a tela só fica em
-# branco/carregando). Sem esse aviso, pareceria que o link está quebrado.
+# Community Cloud "adormece" apps sem acesso recente. Diferente do que se
+# poderia supor, não é uma tela em branco automática: a plataforma mostra
+# sua própria página de "app dormindo", com um botão que o visitante
+# precisa clicar pra acordar o container (confirmado contra a documentação
+# oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
+# Sem esse aviso, o clique extra pareceria um link quebrado.
 st.divider()
 st.caption(
     "Hospedado no Streamlit Community Cloud — se o app estiver \"dormindo\", "
-    "o primeiro acesso pode levar cerca de 1 minuto pra carregar."
+    "vai aparecer uma tela pedindo um clique pra acordar; depois disso, "
+    "leva cerca de 1 minuto pra carregar."
 )
 

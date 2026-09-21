@@ -556,7 +556,7 @@ JANELA_BUSCA_IPCA_DIAS = 730
 # (convenção do yfinance: "2y"/"5y"/"10y").
 JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
 
-# --- Paleta de tema (2026-09-19) ---
+# --- Paleta de tema (2026-09-19 e 2026-09-20) ---
 #
 # Tema dark navy + dourado, espelhando `.streamlit/config.toml`
 # (backgroundColor/secondaryBackgroundColor/primaryColor/textColor) —
@@ -567,11 +567,14 @@ JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
 # COR_GRAFICO_FUNDO = secondaryBackgroundColor do tema (fundo do gráfico,
 # não o fundo da página, pra manter um leve contraste de "cartão").
 # COR_GRAFICO_PROTAGONISTA (dourado) marca a série principal (a ação
-# sendo analisada); COR_GRAFICO_CONTEXTO (cinza-azulado neutro) marca a
-# série de comparação (benchmark: Ibovespa ou petróleo) — não deve
-# competir visualmente com o protagonista. COR_GRAFICO_GRADE é um tom só
-# um pouco mais claro que COR_GRAFICO_FUNDO, pras linhas de grade ficarem
-# discretas.
+# sendo analisada). COR_GRAFICO_CONTEXTO (cinza-azulado neutro) marca
+# qualquer série de "pano de fundo" que não deve competir visualmente com
+# o protagonista — usado em três lugares: a série de comparação real
+# (benchmark: Ibovespa ou petróleo), a linha de Dividend Yield no gráfico
+# de histórico de dividendos (uma segunda métrica da mesma ação, não um
+# benchmark externo), e a linha de inflação (IPCA) no gráfico de projeção
+# de carteira. COR_GRAFICO_GRADE é um tom só um pouco mais claro que
+# COR_GRAFICO_FUNDO, pras linhas de grade ficarem discretas.
 COR_GRAFICO_FUNDO = "#16212F"
 COR_GRAFICO_TEXTO = "#E9E4D8"
 COR_GRAFICO_PROTAGONISTA = "#C9982F"

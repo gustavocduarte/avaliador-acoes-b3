@@ -463,6 +463,27 @@ CASOS_FORMATACAO_VALOR_GRANDE = {
         "R$ 1,0 bi",
         "R$ 1,1 bi",
     ),
+    # Abaixo do piso de R$ 1 milhão: mostra o valor completo por extenso,
+    # não abrevia ("R$ 0,5 mi" seria menos claro que "R$ 500.000,00" pra
+    # valores nessa faixa).
+    "abaixo_do_piso": (
+        1.0,
+        500_000.0,
+        100_000.0,
+        "R$ 500.000,00",
+        "R$ 100.000,00",
+        "R$ 600.000,00",
+    ),
+    # No próprio piso (exatamente R$ 1 milhão): já abrevia, não fica em
+    # "R$ 1.000.000,00" — fronteira é ">=", não ">".
+    "no_piso": (
+        1.0,
+        1_000_000.0,
+        1_000_000.0,
+        "R$ 1,0 mi",
+        "R$ 1,0 mi",
+        "R$ 2,0 mi",
+    ),
 }
 
 
