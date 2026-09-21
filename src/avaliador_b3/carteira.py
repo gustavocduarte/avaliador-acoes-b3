@@ -183,9 +183,21 @@ def calcular_totais_carteira(tabela_carteira: pd.DataFrame) -> dict:
     mesmo os sem cenário — o dinheiro foi alocado do mesmo jeito) e o
     total projetado em cada cenário (soma simples das projeções
     individuais; `pandas.Series.sum` já ignora os `None`/NaN dos tickers
-    sem cenário aplicável, então eles não entram na soma projetada)."""
+    sem cenário aplicável, então eles não entram na soma projetada).
+
+    `soma_investida_com_cenario` (bug real corrigido em 2026-09-21): soma
+    só o capital dos tickers `aplicavel` — o mesmo subconjunto que já
+    alimenta `total_otimista`/`total_base`/`total_pessimista`. Existe
+    porque `soma_investida` (o total, incluindo tickers sem cenário) NÃO
+    deve ser usada como base de CAGR/crescimento contra os totais
+    projetados: misturaria capital que nunca entrou na projeção com
+    capital que entrou, subestimando o crescimento real da parte
+    projetável. `soma_investida` continua existindo, separada, pra exibir
+    o total de fato alocado — as duas respondem perguntas diferentes."""
+    tabela_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
     return {
         "soma_investida": float(tabela_carteira["valor_investido"].sum()),
+        "soma_investida_com_cenario": float(tabela_aplicavel["valor_investido"].sum()),
         "total_otimista": float(tabela_carteira["projecao_otimista"].sum()),
         "total_base": float(tabela_carteira["projecao_base"].sum()),
         "total_pessimista": float(tabela_carteira["projecao_pessimista"].sum()),

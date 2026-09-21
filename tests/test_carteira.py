@@ -221,6 +221,62 @@ def test_calcular_totais_soma_projecoes_de_multiplas_acoes_aplicaveis():
     assert totais["quantidade_sem_cenario"] == 0
 
 
+def test_calcular_totais_soma_investida_com_cenario_exclui_acao_sem_cenario():
+    # Regressão (bug real, corrigido em 2026-09-21): soma_investida_com_cenario
+    # precisa somar só o capital dos tickers com cenário aplicável — o mesmo
+    # universo que já alimenta total_otimista/total_base/total_pessimista.
+    # Misturar soma_investida (total, inclui CCCC4) com os totais projetados
+    # (só AAAA4) como base de CAGR/crescimento subestimava o crescimento real
+    # da parte projetável.
+    tabela_screener = _tabela_screener_exemplo()
+    investimentos = {"AAAA4": 1000.0, "CCCC4": 500.0}
+    tabela_carteira = carteira.montar_tabela_carteira(tabela_screener, investimentos)
+
+    totais = carteira.calcular_totais_carteira(tabela_carteira)
+
+    assert totais["soma_investida"] == pytest.approx(1500.0)  # total, inclui CCCC4
+    assert totais["soma_investida_com_cenario"] == pytest.approx(1000.0)  # só AAAA4
+
+
+def test_cagr_da_carteira_usa_base_com_cenario_nao_a_base_total():
+    # Cenário próximo do exemplo já validado na investigação: uma ação com
+    # cenário que DOBRA (base = 2x o preço atual) + uma ação sem cenário
+    # nenhum, com valores investidos claramente diferentes (1000 vs. 300).
+    tabela_screener = pd.DataFrame(
+        [
+            # DOBR4: base = 2x o preço atual -> projeção base dobra o investido.
+            _linha_screener(
+                ticker="DOBR4", preco_atual=40.0, valor_combinado=80.0, graham=80.0
+            ),
+            # SEMC3: nenhum método aplicável.
+            _linha_screener(ticker="SEMC3", preco_atual=10.0, valor_combinado=None),
+        ]
+    )
+    investimentos = {"DOBR4": 1000.0, "SEMC3": 300.0}
+    tabela_carteira = carteira.montar_tabela_carteira(tabela_screener, investimentos)
+    totais = carteira.calcular_totais_carteira(tabela_carteira)
+
+    assert totais["soma_investida"] == pytest.approx(1300.0)
+    assert totais["soma_investida_com_cenario"] == pytest.approx(1000.0)
+    assert totais["total_base"] == pytest.approx(2000.0)  # só DOBR4, que dobrou
+
+    n_anos = 5
+    cagr_correto = carteira.calcular_cagr_implicito(
+        totais["soma_investida_com_cenario"], totais["total_base"], n_anos
+    )
+    cagr_com_bug_antigo = carteira.calcular_cagr_implicito(
+        totais["soma_investida"], totais["total_base"], n_anos
+    )
+
+    # DOBR4 sozinha dobrou -> CAGR correto = 2^(1/5) - 1, o mesmo que
+    # test_cagr_implicito_dobra_o_valor_em_5_anos já valida isoladamente.
+    assert cagr_correto == pytest.approx(2.0 ** (1 / 5) - 1)
+    # A base antiga (soma_investida total, incluindo os 300 da SEMC3 sem
+    # cenário) sub-representaria esse crescimento — CAGR bem menor, prova
+    # de que as duas bases não são intercambiáveis.
+    assert cagr_correto > cagr_com_bug_antigo
+
+
 # --- calcular_cagr_implicito --------------------------------------------------
 
 

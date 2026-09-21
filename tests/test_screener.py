@@ -163,6 +163,31 @@ def test_rodar_screener_ordena_por_desconto_percentual_decrescente(ambiente_feli
     assert resultado.iloc[0]["desconto_percentual"] > resultado.iloc[1]["desconto_percentual"]
 
 
+def test_rodar_screener_arquivo_em_disco_fica_ordenado_por_desconto(ambiente_feliz, tmp_path):
+    # Regressão: a escrita incremental (uma linha por ação, durante o
+    # processamento) grava na ordem de `tickers` — proposital aqui, ao
+    # contrário da ordem por desconto — não na ordem final por desconto.
+    # Só o retorno em memória era ordenado; o arquivo em disco nunca era
+    # reescrito depois do sort, então ficava preso na ordem de
+    # processamento. Este teste lê o ARQUIVO, não `resultado`.
+    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 30.0
+    ambiente_feliz["precos_por_ticker"]["BBBB4"] = 45.0
+    caminho_saida = tmp_path / "screener.csv"
+
+    screener.rodar_screener(
+        tickers=["BBBB4", "AAAA4"],  # ordem de entrada proposital ao contrário
+        diretorio_cache=tmp_path,
+        caminho_saida=caminho_saida,
+    )
+
+    tabela_em_disco = pd.read_csv(caminho_saida)
+    assert list(tabela_em_disco["ticker"]) == ["AAAA4", "BBBB4"]
+    assert (
+        tabela_em_disco.iloc[0]["desconto_percentual"]
+        > tabela_em_disco.iloc[1]["desconto_percentual"]
+    )
+
+
 def test_rodar_screener_erros_ficam_no_fim_da_ordenacao(ambiente_feliz, tmp_path, monkeypatch):
     def historico_com_falha(ticker, periodo, diretorio_cache=None):
         if ticker == "BBBB4":

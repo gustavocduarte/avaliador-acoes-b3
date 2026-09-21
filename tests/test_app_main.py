@@ -535,3 +535,199 @@ def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso)
     assert _valor_metrica("Valor de mercado") == esperado_mercado
     assert _valor_metrica("Dívida líquida") == esperado_divida
     assert _valor_metrica("Valor de firma") == esperado_firma
+
+
+# --- Base consistente na "Projeção de crescimento" da carteira --------------
+#
+# Regressão (bug real, corrigido em 2026-09-21): as curvas "Com juros
+# compostos"/"Sem juros compostos" e a tabela "Ganho nominal vs. real"
+# recebiam soma_investida (total, inclui tickers sem cenário) como ponto de
+# partida/valor investido, enquanto o ponto final vinha de valor_por_cenario
+# (só tickers com cenário aplicável) — mesma causa raiz já corrigida no CAGR.
+# A linha de "Inflação (IPCA)" não tinha esse bug (não é pareada com
+# valor_por_cenario), mas foi ajustada pra mesma base por consistência
+# VISUAL do gráfico — com soma_investida total, ela partia de um ponto
+# diferente das outras 6 curvas no mesmo gráfico, sem nenhuma indicação de
+# que era proposital (confirmado com screenshot antes de mudar). st.
+# plotly_chart não é inspecionável via AppTest, então o teste abaixo
+# espiona projetar_curva_composta/projetar_curva_linear/
+# calcular_ganho_nominal_vs_real/projetar_curva_inflacao (delegando pro
+# real, só capturando os argumentos) pra confirmar que app/main.py agora
+# passa soma_investida_com_cenario nas quatro, não soma_investida total.
+#
+# `_carregar_screener_salvo` é uma função PRIVADA de app/main.py (não
+# importada de outro módulo) — AppTest executa o script inteiro num módulo
+# novo a cada `.run()` (`_new_module`, não reaproveita `sys.modules`), então
+# monkeypatchar essa função pelo caminho `avaliador_b3.app.main.X` não tem
+# efeito nenhum na execução real (confirmado empiricamente). Em vez disso,
+# escreve um CSV de verdade em `tmp_path` e aponta
+# `avaliador_b3.screener.CAMINHO_SAIDA_PADRAO` (constante importada de um
+# módulo de verdade, isso sim visível pro `from ... import` que roda de novo
+# a cada execução) pra esse arquivo.
+
+
+def _escrever_screener_falso_dobra_e_sem_cenario(caminho) -> None:
+    from avaliador_b3.screener import COLUNAS_RESULTADO
+
+    linhas = [
+        # DOBR4: valor_combinado = 2x o preço atual -> cenário "base" dobra o
+        # investido. Graham = 80 também (mesmo valor, só pra garantir
+        # "aplicavel").
+        {c: None for c in COLUNAS_RESULTADO}
+        | {
+            "ticker": "DOBR4",
+            "sucesso": True,
+            "erro": "",
+            "preco_atual": 40.0,
+            "valor_combinado": 80.0,
+            "desconto_percentual": 100.0,
+            "metodos_utilizados": "graham",
+            "graham_valor_justo": 80.0,
+            "aviso_desconto_extremo": "",
+        },
+        # SEMC3: nenhum método aplicável.
+        {c: None for c in COLUNAS_RESULTADO}
+        | {
+            "ticker": "SEMC3",
+            "sucesso": True,
+            "erro": "",
+            "preco_atual": 10.0,
+            "metodos_utilizados": "",
+            "aviso_desconto_extremo": "",
+        },
+    ]
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+
+
+def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs):
+    from avaliador_b3.config import SERIES_BCB_SGS
+
+    if codigo == SERIES_BCB_SGS["selic_meta"]:
+        return pd.DataFrame({"data": pd.to_datetime(["2026-01-01"]), "valor": [10.5]})
+    if codigo == SERIES_BCB_SGS["ipca_mensal"]:
+        datas = pd.date_range("2025-01-01", periods=12, freq="MS")
+        return pd.DataFrame({"data": datas, "valor": [0.3] * 12})
+    raise RuntimeError(f"série {codigo} não mockada neste teste")
+
+
+def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tmp_path):
+    import avaliador_b3.carteira as carteira_mod
+    import avaliador_b3.graficos as graficos_mod
+    import avaliador_b3.screener as screener_mod
+
+    # Bloqueia as buscas de rede da busca automática de PETR4 na aba
+    # "Analisar uma ação" (dispara sempre, independente da aba visitada) —
+    # mesmo padrão de _bloquear_buscas_de_rede_por_ticker, mas SEM mockar
+    # bcb_sgs.obter_serie, que este teste precisa que funcione de verdade
+    # (IPCA/Selic da carteira).
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+
+    def _falha_fundamentus(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+
+    def _falha_gpr(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_gpr)
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
+
+    caminho_screener_falso = tmp_path / "screener.csv"
+    _escrever_screener_falso_dobra_e_sem_cenario(caminho_screener_falso)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
+
+    # Espiona as três funções que recebiam a base errada — delega pro real,
+    # só captura os argumentos recebidos.
+    chamadas_composta: list[float] = []
+    original_composta = graficos_mod.projetar_curva_composta
+
+    def _espiao_composta(valor_investido, cagr, anos):
+        chamadas_composta.append(valor_investido)
+        return original_composta(valor_investido, cagr, anos)
+
+    chamadas_linear: list[float] = []
+    original_linear = graficos_mod.projetar_curva_linear
+
+    def _espiao_linear(valor_investido, valor_destino, anos):
+        chamadas_linear.append(valor_investido)
+        return original_linear(valor_investido, valor_destino, anos)
+
+    chamadas_ganho: list[float] = []
+    original_ganho = carteira_mod.calcular_ganho_nominal_vs_real
+
+    def _espiao_ganho(valor_investido, valor_destino, ipca_anual, anos):
+        chamadas_ganho.append(valor_investido)
+        return original_ganho(valor_investido, valor_destino, ipca_anual, anos)
+
+    chamadas_inflacao: list[float] = []
+    original_inflacao = graficos_mod.projetar_curva_inflacao
+
+    def _espiao_inflacao(valor_investido, ipca_anual, anos):
+        chamadas_inflacao.append(valor_investido)
+        return original_inflacao(valor_investido, ipca_anual, anos)
+
+    monkeypatch.setattr(graficos_mod, "projetar_curva_composta", _espiao_composta)
+    monkeypatch.setattr(graficos_mod, "projetar_curva_linear", _espiao_linear)
+    monkeypatch.setattr(carteira_mod, "calcular_ganho_nominal_vs_real", _espiao_ganho)
+    monkeypatch.setattr(graficos_mod, "projetar_curva_inflacao", _espiao_inflacao)
+
+    def _aba_carteira(at):
+        return [tab for tab in at.tabs if tab.label == "Simulador de carteira"][0]
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    assert not at.exception
+
+    _aba_carteira(at).multiselect[0].set_value(["DOBR4", "SEMC3"])
+    at.run(timeout=60)
+    assert not at.exception
+
+    at.number_input(key="investimento_DOBR4").set_value(1000.0)
+    at.number_input(key="investimento_SEMC3").set_value(300.0)
+    at.run(timeout=60)
+    assert not at.exception
+
+    # "Sem juros compostos (linear)" e "Inflação (IPCA)" não vêm
+    # selecionados por padrão — liga os dois, pra exercitar
+    # projetar_curva_linear/projetar_curva_inflacao (composta já é
+    # default). Referência a `_aba_carteira(at)` de novo (não a mesma
+    # variável de antes): cada `.run()` reconstrói a árvore de elementos,
+    # uma referência antiga fica vazia (`len(...) == 0`) depois de um rerun.
+    _aba_carteira(at).pills[0].set_value(
+        ["Com juros compostos", "Sem juros compostos (linear)", "Inflação (IPCA)"]
+    )
+    at.run(timeout=60)
+    assert not at.exception
+
+    # soma_investida total = 1300 (1000 + 300); soma_investida_com_cenario =
+    # 1000 (só DOBR4, que tem cenário). As quatro funções espionadas
+    # precisam ter recebido 1000, nunca 1300 — inclusive
+    # projetar_curva_inflacao, ajustada por consistência visual do gráfico
+    # em 2026-09-21 (todas as curvas passam a compartilhar o mesmo ponto de
+    # partida no ano 0, ver comentário em app/main.py).
+    assert chamadas_composta, "projetar_curva_composta não foi chamada"
+    assert all(valor == pytest.approx(1000.0) for valor in chamadas_composta)
+
+    assert chamadas_linear, "projetar_curva_linear não foi chamada"
+    assert all(valor == pytest.approx(1000.0) for valor in chamadas_linear)
+
+    assert chamadas_ganho, "calcular_ganho_nominal_vs_real não foi chamada"
+    assert all(valor == pytest.approx(1000.0) for valor in chamadas_ganho)
+
+    assert chamadas_inflacao, "projetar_curva_inflacao não foi chamada"
+    assert all(valor == pytest.approx(1000.0) for valor in chamadas_inflacao)

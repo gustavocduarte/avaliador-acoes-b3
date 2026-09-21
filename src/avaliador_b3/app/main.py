@@ -1381,13 +1381,20 @@ with aba_carteira:
 
                 n_anos = HORIZONTE_PROJECAO_FCD_ANOS
                 soma_investida = totais_carteira["soma_investida"]
+                soma_investida_com_cenario = totais_carteira["soma_investida_com_cenario"]
                 valor_por_cenario = {
                     "pessimista": totais_carteira["total_pessimista"],
                     "base": totais_carteira["total_base"],
                     "otimista": totais_carteira["total_otimista"],
                 }
+                # Base = soma_investida_com_cenario (não soma_investida total)
+                # — bug real corrigido em 2026-09-21: valor_por_cenario já soma
+                # só os tickers com cenário aplicável, então a base do CAGR
+                # precisa vir do mesmo subconjunto, senão o capital sem
+                # cenário infla a base sem nunca entrar na projeção, subestimando
+                # o crescimento real da parte projetável.
                 cagr_por_cenario = {
-                    cenario: calcular_cagr_implicito(soma_investida, valor, n_anos)
+                    cenario: calcular_cagr_implicito(soma_investida_com_cenario, valor, n_anos)
                     for cenario, valor in valor_por_cenario.items()
                 }
                 ROTULO_CENARIO = {
@@ -1401,11 +1408,29 @@ with aba_carteira:
                 # formam um par e o Streamlit tenta renderizar o trecho entre
                 # eles como fórmula matemática. Bug real encontrado testando
                 # essa frase no navegador.
+                #
+                # Base = soma_investida_com_cenario, não soma_investida total
+                # (bug real corrigido em 2026-09-21, mesmo motivo do CAGR
+                # acima) — os valores pessimista/otimista já são a soma só
+                # dos tickers com cenário, então a frase preserva os dois
+                # lados do "podem valer entre X e Y" no mesmo universo.
+                # Quando há capital de fora, uma legenda explica o total
+                # real logo abaixo — sem essa nota, o total sumiria da tela
+                # sem explicação nessa frase específica.
                 st.write(
-                    f"R\\$ {soma_investida:.2f} investidos hoje podem valer entre "
-                    f"R\\$ {valor_por_cenario['pessimista']:.2f} (pessimista) e "
-                    f"R\\$ {valor_por_cenario['otimista']:.2f} (otimista) em {n_anos} anos."
+                    f"R\\$ {soma_investida_com_cenario:.2f} com projeção disponível hoje "
+                    f"podem valer entre R\\$ {valor_por_cenario['pessimista']:.2f} "
+                    f"(pessimista) e R\\$ {valor_por_cenario['otimista']:.2f} (otimista) "
+                    f"em {n_anos} anos."
                 )
+                if totais_carteira["quantidade_sem_cenario"]:
+                    valor_fora_da_projecao = soma_investida - soma_investida_com_cenario
+                    st.caption(
+                        f"De um total de R\\$ {soma_investida:.2f} investidos, "
+                        f"R\\$ {valor_fora_da_projecao:.2f} "
+                        f"({totais_carteira['quantidade_sem_cenario']} ação(ões)) "
+                        "ficaram de fora dessa projeção — ver avisos acima."
+                    )
                 for cenario, rotulo in ROTULO_CENARIO.items():
                     cagr = cagr_por_cenario[cenario]
                     if cagr is not None:
@@ -1464,7 +1489,15 @@ with aba_carteira:
                             cagr = cagr_por_cenario[cenario]
                             if cagr is None:
                                 continue
-                            curva = projetar_curva_composta(soma_investida, cagr, n_anos)
+                            # Ponto de partida = soma_investida_com_cenario, não
+                            # soma_investida total (bug real corrigido em
+                            # 2026-09-21, mesmo motivo do CAGR): `cagr` já foi
+                            # calculado a partir da base com-cenário — crescer a
+                            # base TOTAL a essa taxa projetaria crescimento pro
+                            # capital sem cenário, que nunca entrou na conta.
+                            curva = projetar_curva_composta(
+                                soma_investida_com_cenario, cagr, n_anos
+                            )
                             fig_projecao.add_trace(
                                 go.Scatter(
                                     x=curva["ano"],
@@ -1478,8 +1511,14 @@ with aba_carteira:
 
                     if SELECAO_LINEAR in opcoes_selecionadas:
                         for cenario, rotulo in ROTULO_CENARIO.items():
+                            # Mesma base que a curva composta acima
+                            # (soma_investida_com_cenario) — projetar_curva_linear
+                            # é documentada pra ter o mesmo ponto inicial que
+                            # projetar_curva_composta no mesmo cenário
+                            # (graficos.py), então as duas precisam vir da
+                            # mesma base pra essa garantia continuar valendo.
                             curva = projetar_curva_linear(
-                                soma_investida, valor_por_cenario[cenario], n_anos
+                                soma_investida_com_cenario, valor_por_cenario[cenario], n_anos
                             )
                             fig_projecao.add_trace(
                                 go.Scatter(
@@ -1496,8 +1535,23 @@ with aba_carteira:
                         if ipca_12m_carteira is None:
                             st.caption(f"Inflação (IPCA) indisponível: {erro_macro_carteira}")
                         else:
+                            # soma_investida_com_cenario, não soma_investida
+                            # total (ajustado em 2026-09-21) — decisão por
+                            # CONSISTÊNCIA VISUAL do gráfico, não porque o
+                            # argumento conceitual original (inflação corrói o
+                            # poder de compra de QUALQUER dinheiro investido,
+                            # com ou sem cenário calculável) estivesse errado:
+                            # esse argumento continua válido isoladamente. Mas
+                            # com soma_investida total, a linha de inflação
+                            # partia de um ponto (R$2000, ex.) diferente das
+                            # outras 6 curvas no mesmo gráfico (R$1000) — sem
+                            # nenhuma indicação visual do motivo, isso lia como
+                            # inconsistência/bug pra quem olhasse o gráfico, não
+                            # como uma escolha deliberada (confirmado com
+                            # screenshot antes de mudar). Todas as curvas agora
+                            # compartilham o mesmo ponto de partida no ano 0.
                             curva_ipca = projetar_curva_inflacao(
-                                soma_investida, ipca_12m_carteira, n_anos
+                                soma_investida_com_cenario, ipca_12m_carteira, n_anos
                             )
                             fig_projecao.add_trace(
                                 go.Scatter(
@@ -1539,8 +1593,15 @@ with aba_carteira:
                         [
                             {
                                 "cenario": rotulo,
+                                # valor_investido = soma_investida_com_cenario,
+                                # não soma_investida total (bug real corrigido
+                                # em 2026-09-21, mesmo motivo do CAGR): ganho =
+                                # valor_destino - valor_investido, e
+                                # valor_por_cenario[cenario] já é só a soma dos
+                                # tickers com cenário — subtrair da base total
+                                # subestimaria o ganho real da parte projetável.
                                 **calcular_ganho_nominal_vs_real(
-                                    soma_investida,
+                                    soma_investida_com_cenario,
                                     valor_por_cenario[cenario],
                                     ipca_12m_carteira,
                                     n_anos,

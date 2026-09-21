@@ -284,7 +284,14 @@ def rodar_screener(
 
     `tickers` sobrescreve o universo do Ibovespa (útil pra rodar um
     subconjunto, ex: em teste). Grava incrementalmente em `caminho_saida`
-    — uma linha por ação, assim que calculada, não só no final.
+    durante o processamento — uma linha por ação, assim que calculada, não
+    só no final — mas nessa hora ainda na ordem de processamento (universo
+    do Ibovespa, alfabética), não por desconto. Depois que o loop termina,
+    `caminho_saida` é reescrito de uma vez com a tabela já ordenada, a
+    partir dos mesmos dados já calculados em memória (sem reler do disco
+    nem bater na rede de novo) — bug real corrigido em 2026-09-21: antes
+    disso o arquivo em disco nunca refletia a ordenação, só o retorno da
+    função em memória.
     """
     if tickers is None:
         universo = obter_universo_ibovespa(diretorio_cache=diretorio_cache)
@@ -332,6 +339,16 @@ def rodar_screener(
             arquivo.flush()
 
     resultado = pd.DataFrame(linhas, columns=COLUNAS_RESULTADO)
-    return resultado.sort_values(
+    resultado_ordenado = resultado.sort_values(
         "desconto_percentual", ascending=False, na_position="last"
     ).reset_index(drop=True)
+
+    # Reescreve o arquivo já ordenado — a escrita incremental acima é só
+    # proteção de RAM durante o processamento (nunca acumula histórico/
+    # indicadores de todas as ações na memória ao mesmo tempo), não
+    # precisa refletir a ordem final em disco. Reaproveita `resultado`,
+    # já montado a partir de `linhas` — sem nova leitura de disco nem
+    # nova chamada de rede.
+    resultado_ordenado.to_csv(caminho_saida, index=False)
+
+    return resultado_ordenado
