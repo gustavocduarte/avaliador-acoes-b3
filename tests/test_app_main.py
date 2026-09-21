@@ -411,3 +411,106 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     metricas_bazin = [metrica for metrica in at.metric if metrica.label == "Bazin (preço teto)"]
     assert len(metricas_bazin) == 1
     assert not metricas_bazin[0].delta
+
+
+# --- Formatação abreviada de Valor de mercado/Dívida líquida/Valor de firma --
+#
+# Regressão: sem abreviação, o valor por extenso (ex: "R$ 625,10 bi") ficava
+# truncado com reticências pelo st.metric dentro da coluna estreita de 4 da
+# seção "Saúde financeira" (ex: "R$ 625,1...") — bug real encontrado em
+# produção, não hipotético. `_fmt_bilhoes` cobre isso com "X,X bi"/"X,X mi".
+
+
+def _indicadores_falsos_com(numero_acoes: float, divida_liquida: float) -> dict:
+    return {
+        "lpa": 5.0,
+        "vpa": 20.0,
+        "numero_acoes": numero_acoes,
+        "divida_liquida_sobre_patrimonio": 0.5,
+        "roe_percentual": 15.0,
+        "margem_liquida_percentual": 10.0,
+        "liquidez_corrente": 1.2,
+        "crescimento_receita_5a_percentual": 8.0,
+        "patrimonio_liquido": 20_000_000.0,
+        "divida_liquida": divida_liquida,
+    }
+
+
+# Cada caso: (preço, número de ações, dívida líquida) -> (Valor de mercado,
+# Dívida líquida, Valor de firma) esperados, já formatados.
+CASOS_FORMATACAO_VALOR_GRANDE = {
+    # Casa dos milhões: R$ 50 mi de mercado, R$ 10 mi de dívida -> R$ 60 mi de firma.
+    "milhoes": (50.0, 1_000_000.0, 10_000_000.0, "R$ 50,0 mi", "R$ 10,0 mi", "R$ 60,0 mi"),
+    # Casa dos bilhões: R$ 5 bi de mercado, R$ 2 bi de dívida -> R$ 7 bi de firma.
+    "bilhoes": (100.0, 50_000_000.0, 2_000_000_000.0, "R$ 5,0 bi", "R$ 2,0 bi", "R$ 7,0 bi"),
+    # Caixa líquido (dívida líquida negativa) — sinal precisa continuar
+    # visível depois de abreviado. Firma = 50 mi + (-300 mi) = -250 mi.
+    "caixa_liquido": (
+        50.0,
+        1_000_000.0,
+        -300_000_000.0,
+        "R$ 50,0 mi",
+        "R$ -300,0 mi",
+        "R$ -250,0 mi",
+    ),
+    # Limite exato de R$ 1 bilhão: >= 1 bi já mostra "bi", não "1000,0 mi".
+    # Firma = 50 mi + 1 bi = 1,05 bi, também cai no ramo "bi".
+    "limite_1bi": (
+        50.0,
+        1_000_000.0,
+        1_000_000_000.0,
+        "R$ 50,0 mi",
+        "R$ 1,0 bi",
+        "R$ 1,1 bi",
+    ),
+}
+
+
+@pytest.mark.parametrize("id_caso", list(CASOS_FORMATACAO_VALOR_GRANDE))
+def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso):
+    preco, numero_acoes, divida_liquida, esperado_mercado, esperado_divida, esperado_firma = (
+        CASOS_FORMATACAO_VALOR_GRANDE[id_caso]
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": preco, "3mo": preco, "1y": preco, f"{ANOS_JANELA_CORRELACAO}y": preco}
+        ),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_com(numero_acoes, divida_liquida),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    def _valor_metrica(rotulo: str) -> str:
+        metricas = [metrica for metrica in at.metric if metrica.label == rotulo]
+        assert len(metricas) == 1, f"esperava 1 métrica '{rotulo}', achei {len(metricas)}"
+        return metricas[0].value
+
+    assert _valor_metrica("Valor de mercado") == esperado_mercado
+    assert _valor_metrica("Dívida líquida") == esperado_divida
+    assert _valor_metrica("Valor de firma") == esperado_firma

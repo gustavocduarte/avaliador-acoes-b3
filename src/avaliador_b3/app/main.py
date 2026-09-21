@@ -443,10 +443,25 @@ def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
 
 def _fmt_bilhoes(valor: float | None) -> str:
     """Formata um valor grande (Valor de Mercado, Valor de Firma, Dívida
-    Líquida — ordem de grandeza de bilhões pras ações da B3) em R$
-    bilhões, mesma convenção da imprensa financeira brasileira — ou
-    "N/D" se ausente."""
-    return f"R$ {valor / 1e9:.2f} bi".replace(".", ",") if valor is not None else "N/D"
+    Líquida — ordem de grandeza de milhões a bilhões pras ações da B3) de
+    forma abreviada, 1 casa decimal: "X,X bi" a partir de R$ 1 bilhão (em
+    módulo — dívida líquida negativa, posição de caixa líquido, também vira
+    "bi" se for grande o bastante, com o sinal preservado), "X,X mi" abaixo
+    disso. Mesma convenção da imprensa financeira brasileira — ou "N/D" se
+    ausente.
+
+    Sem essa abreviação, valores reais de empresas da B3 (centenas de
+    bilhões de reais) formatados por extenso ficavam truncados com
+    reticências pelo st.metric dentro da coluna estreita da seção "Saúde
+    financeira" (ex: "R$ 625,1..." em vez do valor completo) — bug real,
+    não hipotético, achado em produção."""
+    if valor is None:
+        return "N/D"
+    if abs(valor) >= 1e9:
+        texto = f"R$ {valor / 1e9:.1f} bi"
+    else:
+        texto = f"R$ {valor / 1e6:.1f} mi"
+    return texto.replace(".", ",")
 
 
 def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
