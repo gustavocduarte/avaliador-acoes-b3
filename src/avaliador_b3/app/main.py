@@ -1563,3 +1563,14 @@ with aba_carteira:
                         use_container_width=True,
                     )
 
+# Nota de rodapé, fora de qualquer aba (aparece nas três) — Streamlit
+# Community Cloud "adormece" apps sem acesso recente e o primeiro visitante
+# depois disso paga o custo de acordar o container, sem indicação nenhuma
+# nativa da plataforma de que isso está acontecendo (a tela só fica em
+# branco/carregando). Sem esse aviso, pareceria que o link está quebrado.
+st.divider()
+st.caption(
+    "Hospedado no Streamlit Community Cloud — se o app estiver \"dormindo\", "
+    "o primeiro acesso pode levar cerca de 1 minuto pra carregar."
+)
+

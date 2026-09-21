@@ -5,6 +5,18 @@ data/raw/
 data/processed/*
 !data/processed/.gitkeep
 
+# Exceção deliberada: screener.csv É versionado, ao contrário do resto de
+# data/processed/. Streamlit Community Cloud não preserva disco local entre
+# sleep/wake do container — sem esse arquivo já presente no repo, o
+# primeiro acesso depois de um cold-start mostraria as abas Screener e
+# Comparação Setorial vazias até alguém clicar em "Rodar screener agora"
+# manualmente (~5-15 min, ~228 requisições reais). A UI já deixa claro que
+# não é dado ao vivo ("Última atualização: <data>") — isto só garante que
+# exista algum resultado desde o primeiro acesso. Fica desatualizado com o
+# tempo; atualizar rodando o screener de novo e commitando o CSV resultante
+# quando fizer sentido, não é regerado automaticamente no deploy.
+!data/processed/screener.csv
+
 # Python
 __pycache__/
 *.pyc
