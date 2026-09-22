@@ -16,6 +16,8 @@ continuarem rápidos e determinísticos, sem rede de verdade — ver
 `_bloquear_buscas_de_rede_por_ticker`.
 """
 
+import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -23,7 +25,7 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from avaliador_b3.config import ANOS_JANELA_CORRELACAO
+from avaliador_b3.config import ANOS_JANELA_CORRELACAO, TICKER_PETROLEO_BRENT
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 
@@ -406,11 +408,196 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     metricas_graham = [metrica for metrica in at.metric if metrica.label == "Graham"]
     assert len(metricas_graham) == 1
     # Graham = raiz(22,5 × 5 × 20) ≈ 47,43; preço 50 -> delta ≈ -5,1%.
-    assert metricas_graham[0].delta == "-5.1%"
+    assert metricas_graham[0].value == "R$ 47,43"
+    assert metricas_graham[0].delta == "-5,1%"
 
     metricas_bazin = [metrica for metrica in at.metric if metrica.label == "Bazin (preço teto)"]
     assert len(metricas_bazin) == 1
     assert not metricas_bazin[0].delta
+
+
+def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
+    # ROE/Margem líquida/LPA/VPA/Liquidez corrente usavam `_fmt()` sem
+    # conversão de ponto pra vírgula (ex: "15.0%"/"R$ 5.00" em vez de
+    # "15,0%"/"R$ 5,00") — bug real confirmado por screenshot, mesma
+    # família do "Preço atual" corrigido em 2026-09-21 (aqui é `_fmt` em
+    # si que estava sem a conversão, não um call site isolado).
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    def _valor(rotulo):
+        metricas = [metrica for metrica in at.metric if metrica.label == rotulo]
+        assert len(metricas) == 1, f"métrica {rotulo!r} não encontrada"
+        return metricas[0].value
+
+    # Valores de _indicadores_falsos_aplicavel_pra_graham: roe_percentual=15.0,
+    # margem_liquida_percentual=10.0, lpa=5.0, vpa=20.0, liquidez_corrente=1.2.
+    assert _valor("ROE") == "15,0%"
+    assert _valor("Margem líquida") == "10,0%"
+    assert _valor("LPA") == "R$ 5,00"
+    assert _valor("VPA") == "R$ 20,00"
+    assert _valor("Liquidez corrente") == "1,20"
+
+
+def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
+    # _cartao_correlacao usava f"{...:.2f}" sem conversão de ponto pra
+    # vírgula (ex: "1.00" em vez de "1,00") — mesma família de bug.
+    # Petróleo em queda constante e ação em alta constante -> correlação
+    # perfeita negativa (-1,00), fácil de prever exatamente.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+
+    n = 40  # > MINIMO_OBSERVACOES_CORRELACAO (30)
+    datas = pd.date_range("2024-01-01", periods=n, freq="D")
+    historico_acao = pd.DataFrame(
+        {
+            "data": datas,
+            "Close": [float(i + 1) for i in range(n)],
+            "Volume": [30_000_000] * n,
+        }
+    )
+    historico_petroleo = pd.DataFrame(
+        {"data": datas, "Close": [float(n - i) for i in range(n)], "Volume": [0] * n}
+    )
+
+    def _historico_por_ticker(ticker, periodo=None, **kwargs):
+        # Mesma função de ingest atende ação e petróleo (Brent) — só o
+        # `ticker` muda (ver `_buscar_historico`/`_buscar_historico_petroleo`
+        # em app/main.py).
+        if ticker == TICKER_PETROLEO_BRENT:
+            return historico_petroleo.copy()
+        return historico_acao.copy()
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _historico_por_ticker)
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+
+    def _falha_fundamentus(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    metricas_petroleo = [m for m in at.metric if m.label == "Petróleo (Brent)"]
+    assert len(metricas_petroleo) == 1
+    # Correlação calculada sobre retorno % dia a dia, não sobre o nível
+    # bruto — não vale a pena prever o coeficiente exato aqui (não é -1,00
+    # só porque os níveis são lineares opostos); o que importa pro bug
+    # corrigido é o formato: vírgula decimal, não ponto.
+    valor_petroleo = metricas_petroleo[0].value
+    assert re.fullmatch(r"-?\d,\d\d", valor_petroleo), (
+        f"correlação não está no formato brasileiro esperado: {valor_petroleo!r}"
+    )
+
+
+def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
+    # figura_dividendos usava texttemplate="R$ %{text:.2f}" e "%{text:.1f}%"
+    # — o d3-format que o Plotly usa por trás desses especificadores tem o
+    # mesmo problema de locale do _fmt/_fmt_bilhoes (sem vírgula decimal
+    # brasileira sem registrar um locale que o bundle do Streamlit não
+    # traz). Corrigido pré-formatando `text` com _fmt_bilhoes/
+    # _fmt_percentual e usando "%{text}" (passthrough) no texttemplate.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+    dividendos_fake = pd.DataFrame(
+        {"data": pd.to_datetime(["2023-06-01", "2024-06-01"]), "dividendo": [2.5, 3.25]}
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos", lambda *args, **kwargs: dividendos_fake
+    )
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    graficos_plotly = at.get("plotly_chart")
+    figuras_dividendos = [
+        json.loads(g.proto.spec)
+        for g in graficos_plotly
+        if json.loads(g.proto.spec)["data"]
+        and json.loads(g.proto.spec)["data"][0].get("name") == "Dividendos"
+    ]
+    assert len(figuras_dividendos) == 1
+    trace_dividendos = figuras_dividendos[0]["data"][0]
+    assert trace_dividendos["texttemplate"] == "%{text}"
+    for texto in trace_dividendos["text"]:
+        assert "," in texto and "R$" in texto
+        assert not re.search(r"\d\.\d\d\b", texto), f"rótulo com ponto decimal: {texto!r}"
 
 
 # --- Formatação abreviada de Valor de mercado/Dívida líquida/Valor de firma --
@@ -610,6 +797,70 @@ def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs)
     raise RuntimeError(f"série {codigo} não mockada neste teste")
 
 
+def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
+    monkeypatch, tmp_path
+):
+    # Bug real (2026-09-22): as colunas monetárias/percentuais da tabela do
+    # Screener (e das outras 3 tabelas do projeto — Comparação Setorial,
+    # Simulador de carteira, Ganho nominal vs. real) usavam
+    # st.column_config.NumberColumn(format="R$ %.2f"/"%.1f%%") — o
+    # printf-style desse `format` (sprintf-js) não tem vírgula decimal
+    # brasileira em locale nenhum (ex: "1370.8%" em vez de "1.370,8%").
+    # Corrigido pré-formatando a coluna inteira como texto com
+    # _fmt_bilhoes/_fmt_percentual e trocando NumberColumn por TextColumn
+    # — custo aceito (ver comentário central em app/main.py, perto da
+    # tabela do Screener): ordenar por essas colunas no cabeçalho da
+    # tabela vira alfabético, não numérico.
+    import avaliador_b3.screener as screener_mod
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+
+    def _falha_fundamentus(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+
+    caminho_screener_falso = tmp_path / "screener.csv"
+    _escrever_screener_falso_dobra_e_sem_cenario(caminho_screener_falso)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    tabelas_com_preco = [df.value for df in at.dataframe if "preco_atual" in df.value.columns]
+    assert len(tabelas_com_preco) == 1
+    tabela = tabelas_com_preco[0]
+
+    # texto, não numérico — a coluna virou texto pré-formatado.
+    assert pd.api.types.is_string_dtype(tabela["preco_atual"])
+    linha_dobr4 = tabela.loc[tabela["ticker"] == "DOBR4"].iloc[0]
+    assert linha_dobr4["preco_atual"] == "R$ 40,00"
+    assert linha_dobr4["valor_combinado"] == "R$ 80,00"
+    assert linha_dobr4["desconto_percentual"] == "100,0%"
+
+
 def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tmp_path):
     import avaliador_b3.carteira as carteira_mod
     import avaliador_b3.graficos as graficos_mod
@@ -731,3 +982,26 @@ def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tm
 
     assert chamadas_inflacao, "projetar_curva_inflacao não foi chamada"
     assert all(valor == pytest.approx(1000.0) for valor in chamadas_inflacao)
+
+    # Bug real (2026-09-22): a frase "R$X podem valer entre..." e as
+    # legendas de CAGR ("equivale a X% ao ano") usavam f"{...:.2f}"/
+    # f"{...:.1f}%" sem conversão de ponto pra vírgula. soma_investida_
+    # com_cenario é exatamente 1000,00 aqui (só DOBR4 tem cenário) — dá
+    # pra conferir esse valor exato; o regex cobre os demais números da
+    # frase (pessimista/otimista), que dependem do resultado do
+    # screener falso e não vale a pena recalcular à mão aqui.
+    frases_projecao = [
+        m.value for m in at.markdown if "com projeção disponível hoje" in m.value
+    ]
+    assert len(frases_projecao) == 1
+    assert "R\\$ 1.000,00 com projeção disponível hoje" in frases_projecao[0]
+    assert not re.search(r"R\\\$\s*[\d.]*\d\.\d\d\b", frases_projecao[0]), (
+        f"frase de projeção com ponto decimal em vez de vírgula: {frases_projecao[0]!r}"
+    )
+
+    legendas_cagr = [c.value for c in at.caption if "equivale a" in c.value]
+    assert legendas_cagr, "nenhuma legenda de CAGR encontrada"
+    for legenda in legendas_cagr:
+        assert not re.search(r"\d\.\d%", legenda), (
+            f"legenda de CAGR com ponto decimal em vez de vírgula: {legenda!r}"
+        )

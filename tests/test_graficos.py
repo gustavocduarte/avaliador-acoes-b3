@@ -3,6 +3,54 @@ import pytest
 
 from avaliador_b3 import carteira, graficos
 
+# --- ticks_mensais_pt_br ------------------------------------------------------
+#
+# Bug real (2026-09-22, confirmado por screenshot): o eixo X dos gráficos
+# "Preço vs. Ibovespa" e "Comparando com Petróleo" mostrava abreviação de mês
+# em inglês ("May", "Sep", "Oct") — o Plotly usa o locale en-US por padrão, e
+# o bundle de Plotly.js que o Streamlit empacota não traz nenhum outro locale
+# registrado, então `config={"locale": "pt-BR"}` não teria efeito. Corrigido
+# gerando tickvals/ticktext explicitamente, com mês traduzido em Python.
+
+
+def test_ticks_mensais_pt_br_traduz_mes_em_portugues():
+    datas = pd.Series(pd.to_datetime(["2025-05-10", "2025-09-20"]))
+
+    tickvals, ticktext = graficos.ticks_mensais_pt_br(datas, max_ticks=2)
+
+    assert len(tickvals) == 2
+    assert ticktext[0] == "Mai/25"
+    assert ticktext[-1] == "Set/25"
+    assert all("May" not in texto and "Sep" not in texto for texto in ticktext)
+
+
+def test_ticks_mensais_pt_br_ignora_nulos():
+    datas = pd.Series([None, pd.Timestamp("2025-01-01"), pd.NaT, pd.Timestamp("2025-12-31")])
+
+    tickvals, ticktext = graficos.ticks_mensais_pt_br(datas)
+
+    assert tickvals[0] == pd.Timestamp("2025-01-01")
+    assert tickvals[-1] == pd.Timestamp("2025-12-31")
+    assert ticktext[0] == "Jan/25"
+    assert ticktext[-1] == "Dez/25"
+
+
+def test_ticks_mensais_pt_br_serie_vazia_devolve_listas_vazias():
+    tickvals, ticktext = graficos.ticks_mensais_pt_br(pd.Series([], dtype="datetime64[ns]"))
+
+    assert tickvals == []
+    assert ticktext == []
+
+
+def test_ticks_mensais_pt_br_data_unica_nao_quebra():
+    datas = pd.Series(pd.to_datetime(["2025-07-04"]))
+
+    tickvals, ticktext = graficos.ticks_mensais_pt_br(datas)
+
+    assert tickvals == [pd.Timestamp("2025-07-04")]
+    assert ticktext == ["Jul/25"]
+
+
 # --- normalizar_base_100 -----------------------------------------------------
 
 

@@ -7,6 +7,46 @@ from __future__ import annotations
 
 import pandas as pd
 
+MESES_ABREVIADOS_PT_BR = {
+    1: "Jan",
+    2: "Fev",
+    3: "Mar",
+    4: "Abr",
+    5: "Mai",
+    6: "Jun",
+    7: "Jul",
+    8: "Ago",
+    9: "Set",
+    10: "Out",
+    11: "Nov",
+    12: "Dez",
+}
+
+
+def ticks_mensais_pt_br(datas: pd.Series, max_ticks: int = 8) -> tuple[list, list[str]]:
+    """Gera `(tickvals, ticktext)` pro eixo X de um gráfico de série
+    temporal do Plotly, com abreviação de mês em português ("Mai/25") em
+    vez do padrão em inglês ("May") que o Plotly usa quando não
+    configurado — o bundle de Plotly.js que o Streamlit empacota só traz
+    o locale en-US (nenhum outro registrado), então passar
+    `config={"locale": "pt-BR"}` pro `st.plotly_chart` não teria efeito
+    nenhum. Mesmo princípio já usado pra vírgula decimal (`_fmt_bilhoes`
+    em app/main.py): não depender de locale automático de sistema/
+    biblioteca, traduzir explicitamente no nosso código.
+
+    Escolhe até `max_ticks` datas igualmente espaçadas entre a primeira e
+    a última data de `datas` (ignorando nulos) — não precisam corresponder
+    a candles reais do histórico, são só posições no eixo contínuo de
+    tempo. Série vazia (após remover nulos) devolve duas listas vazias.
+    """
+    datas_validas = pd.to_datetime(datas).dropna().sort_values()
+    if datas_validas.empty:
+        return [], []
+    inicio, fim = datas_validas.iloc[0], datas_validas.iloc[-1]
+    posicoes = [inicio] if inicio == fim else list(pd.date_range(inicio, fim, periods=max_ticks))
+    ticktext = [f"{MESES_ABREVIADOS_PT_BR[data.month]}/{data.strftime('%y')}" for data in posicoes]
+    return posicoes, ticktext
+
 
 def normalizar_base_100(serie: pd.Series) -> pd.Series:
     """Normaliza uma série de preços pra base 100 no primeiro valor não

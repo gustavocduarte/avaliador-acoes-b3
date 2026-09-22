@@ -64,6 +64,7 @@ from avaliador_b3.graficos import (
     projetar_curva_composta,
     projetar_curva_inflacao,
     projetar_curva_linear,
+    ticks_mensais_pt_br,
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.bcb_sgs import obter_serie
@@ -377,7 +378,10 @@ def _grafico_comparacao_normalizada(
         plot_bgcolor=COR_GRAFICO_FUNDO,
         font={"color": COR_GRAFICO_TEXTO},
     )
-    figura.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
+    tickvals, ticktext = ticks_mensais_pt_br(serie_a["data"])
+    figura.update_xaxes(
+        gridcolor=COR_GRAFICO_GRADE, tickmode="array", tickvals=tickvals, ticktext=ticktext
+    )
     figura.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
     return figura
 
@@ -395,7 +399,7 @@ def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | N
     mostrar o indicador"."""
     if preco_atual is None:
         return None
-    return f"{(valor - preco_atual) / preco_atual * 100:.1f}%"
+    return _fmt_percentual((valor - preco_atual) / preco_atual * 100)
 
 
 def _cartao_metodo(
@@ -412,7 +416,7 @@ def _cartao_metodo(
     if resultado["aplicavel"]:
         st.metric(
             nome,
-            f"R$ {resultado[rotulo_valor]:.2f}",
+            _fmt_bilhoes(resultado[rotulo_valor]),
             delta=_delta_percentual_upside(resultado[rotulo_valor], preco_atual),
         )
         st.caption("Aplicável")
@@ -433,15 +437,41 @@ def _cartao_correlacao(nome: str, resultado: dict) -> None:
         return
 
     magnitude = classificar_magnitude_correlacao(resultado["correlacao"])
-    st.metric(nome, f"{resultado['correlacao']:.2f}")
+    st.metric(nome, _fmt(resultado["correlacao"]))
     st.caption(f"Correlação {magnitude} ({resultado['observacoes']} observações)")
 
 
+def _pt_br(texto: str) -> str:
+    """Converte um texto já formatado no padrão americano (ponto decimal,
+    vírgula de milhar) pra convenção brasileira (vírgula decimal, ponto de
+    milhar) — troca em três passos com um placeholder intermediário pra
+    "," e "." não se pisarem (ex: "1,234.56" -> "1_234.56" -> "1_234,56"
+    -> "1.234,56"). Não depende de locale de sistema/navegador (idem
+    `graficos.ticks_mensais_pt_br` pros meses do eixo dos gráficos) —
+    Python/JS não garantem qual locale está instalado em produção."""
+    return texto.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def _fmt(valor: float | None, template: str = "{:.2f}") -> str:
-    """Formata um número, ou "N/D" se ausente — indicador individual
-    faltando (ex: banco sem Dív Líq/Patrim no Fundamentus) não deve
-    quebrar a tela nem virar um "None" cru na tela."""
-    return template.format(valor) if valor is not None else "N/D"
+    """Formata um número, na convenção brasileira (vírgula decimal), ou
+    "N/D" se ausente — indicador individual faltando (ex: banco sem Dív
+    Líq/Patrim no Fundamentus) não deve quebrar a tela nem virar um "None"
+    cru na tela. `pd.isna` (não `is None`) porque também roda sobre
+    valores vindos direto de coluna de DataFrame/CSV (tabelas com
+    NumberColumn convertidas pra texto) — lá, ausente é NaN, não None."""
+    return _pt_br(template.format(valor)) if not pd.isna(valor) else "N/D"
+
+
+def _fmt_percentual(valor: float | None, casas: int = 1) -> str:
+    """Formata um percentual na convenção brasileira (vírgula decimal,
+    ponto de milhar acima de 1.000%) — usado pros deltas de upside dos
+    cartões de Valor Justo e pelo CAGR implícito da carteira, nenhum dos
+    dois passa por `_fmt` porque não são só "número + template fixo"
+    (delta é opcional/`None`, CAGR já vem multiplicado por 100 antes de
+    chamar). "N/D" se ausente (`pd.isna`, ver `_fmt`)."""
+    if pd.isna(valor):
+        return "N/D"
+    return _pt_br(f"{valor:,.{casas}f}%")
 
 
 def _fmt_bilhoes(valor: float | None) -> str:
@@ -458,15 +488,15 @@ def _fmt_bilhoes(valor: float | None) -> str:
     Sem essa abreviação (ou com o piso baixo demais), valores grandes
     ficavam truncados com reticências pelo st.metric dentro das colunas
     estreitas de 4 do projeto (ex: "R$ 625,1..." em "Saúde financeira") —
-    bug real, não hipotético, achado em produção."""
-    if valor is None:
+    bug real, não hipotético, achado em produção. "N/D" se ausente
+    (`pd.isna`, ver `_fmt`)."""
+    if pd.isna(valor):
         return "N/D"
     if abs(valor) >= 1e9:
-        return f"R$ {valor / 1e9:.1f} bi".replace(".", ",")
+        return _pt_br(f"R$ {valor / 1e9:.1f} bi")
     if abs(valor) >= 1e6:
-        return f"R$ {valor / 1e6:.1f} mi".replace(".", ",")
-    texto = f"R$ {valor:,.2f}"
-    return texto.replace(",", "_").replace(".", ",").replace("_", ".")
+        return _pt_br(f"R$ {valor / 1e6:.1f} mi")
+    return _pt_br(f"R$ {valor:,.2f}")
 
 
 def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
@@ -777,12 +807,12 @@ with aba_analisar:
             _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
             if resultado_fcd["aplicavel"]:
                 origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
-                st.caption(f"Beta no WACC: {resultado_fcd['beta_utilizado']:.2f} ({origem_beta})")
+                st.caption(f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})")
         with coluna_combinado:
             if resultado_combinado["aplicavel"]:
                 st.metric(
                     "Valor combinado",
-                    f"R$ {resultado_combinado['valor_combinado']:.2f}",
+                    _fmt_bilhoes(resultado_combinado["valor_combinado"]),
                     delta=_delta_percentual_upside(
                         resultado_combinado["valor_combinado"], preco_atual
                     ),
@@ -917,9 +947,10 @@ with aba_analisar:
                 volatilidade = calcular_volatilidade_anualizada(historico)
                 # calcular_volume_medio agora pode devolver None (histórico
                 # vazio) — _fmt já trata isso como "N/D" no resto do
-                # arquivo; sem essa troca, f"{None:,.0f}" levantaria
-                # TypeError.
-                st.metric("Volume médio (3m)", _fmt(volume_medio, "{:,.0f}").replace(",", "."))
+                # arquivo; sem essa checagem, f"{None:,.0f}" levantaria
+                # TypeError. _fmt já converte pro padrão brasileiro
+                # (milhar com ponto), sem replace() extra aqui.
+                st.metric("Volume médio (3m)", _fmt(volume_medio, "{:,.0f}"))
                 st.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
 
             # Beta usa uma janela própria mais longa (PERIODO_BETA) que
@@ -1030,15 +1061,21 @@ with aba_analisar:
                     )
 
                     figura_dividendos = go.Figure()
+                    # text/hovertemplate pré-formatados com _fmt_bilhoes/
+                    # _fmt_percentual (não "%{text:.2f}"/"%{y:.1f}%" do
+                    # Plotly) — o d3-format que o Plotly usa por trás desses
+                    # especificadores também não tem vírgula decimal
+                    # brasileira sem um locale registrado, mesmo problema do
+                    # ponto vs. vírgula resolvido em _fmt_bilhoes/_fmt.
                     figura_dividendos.add_trace(
                         go.Bar(
                             x=dividendos_por_ano["ano"],
                             y=dividendos_por_ano["total"],
                             name="Dividendos",
-                            text=dividendos_por_ano["total"],
-                            texttemplate="R$ %{text:.2f}",
+                            text=dividendos_por_ano["total"].apply(_fmt_bilhoes),
+                            texttemplate="%{text}",
                             textposition="outside",
-                            hovertemplate="R$ %{y:.2f}<extra></extra>",
+                            hovertemplate="%{text}<extra></extra>",
                             marker={"color": COR_GRAFICO_PROTAGONISTA},
                         )
                     )
@@ -1049,11 +1086,13 @@ with aba_analisar:
                                 y=dividend_yield_por_ano["yield_percentual"],
                                 name="Dividend Yield",
                                 mode="lines+markers+text",
-                                text=dividend_yield_por_ano["yield_percentual"],
-                                texttemplate="%{text:.1f}%",
+                                text=dividend_yield_por_ano["yield_percentual"].apply(
+                                    _fmt_percentual
+                                ),
+                                texttemplate="%{text}",
                                 textposition="top center",
                                 yaxis="y2",
-                                hovertemplate="%{y:.1f}%<extra></extra>",
+                                hovertemplate="%{text}<extra></extra>",
                                 line={"color": COR_GRAFICO_CONTEXTO},
                                 marker_color=COR_GRAFICO_CONTEXTO,
                             )
@@ -1158,8 +1197,20 @@ with aba_analisar:
                             )
                         else:
                             st.caption(f"Segmento setorial (B3): {segmento_setorial}")
+                            # Colunas monetárias/percentuais pré-formatadas como
+                            # texto com _fmt_bilhoes/_fmt_percentual, não
+                            # NumberColumn(format=...) — ver nota central sobre
+                            # essa troca logo abaixo, perto da tabela do Screener.
                             st.dataframe(
-                                tabela_pares,
+                                tabela_pares.assign(
+                                    preco_atual=tabela_pares["preco_atual"].apply(_fmt_bilhoes),
+                                    valor_combinado=tabela_pares["valor_combinado"].apply(
+                                        _fmt_bilhoes
+                                    ),
+                                    desconto_percentual=tabela_pares["desconto_percentual"].apply(
+                                        _fmt_percentual
+                                    ),
+                                ),
                                 column_order=[
                                     "ticker",
                                     "preco_atual",
@@ -1168,14 +1219,14 @@ with aba_analisar:
                                 ],
                                 column_config={
                                     "ticker": "Ticker",
-                                    "preco_atual": st.column_config.NumberColumn(
-                                        "Preço atual", format="R$ %.2f"
+                                    "preco_atual": st.column_config.TextColumn(
+                                        "Preço atual", alignment="right"
                                     ),
-                                    "valor_combinado": st.column_config.NumberColumn(
-                                        "Valor combinado", format="R$ %.2f"
+                                    "valor_combinado": st.column_config.TextColumn(
+                                        "Valor combinado", alignment="right"
                                     ),
-                                    "desconto_percentual": st.column_config.NumberColumn(
-                                        "Desconto", format="%.1f%%"
+                                    "desconto_percentual": st.column_config.TextColumn(
+                                        "Desconto", alignment="right"
                                     ),
                                 },
                                 hide_index=True,
@@ -1255,17 +1306,37 @@ with aba_screener:
                 "uma oportunidade real."
             )
 
+        # Colunas monetárias/percentuais pré-formatadas como texto (não
+        # st.column_config.NumberColumn(format=...)) em TODAS as tabelas
+        # do projeto que mostram R$/% — decisão deliberada, não bug
+        # esquecido: o format do NumberColumn é sprintf-js/d3-format por
+        # baixo, nenhum dos dois tem vírgula decimal brasileira em
+        # qualquer locale, e a opção "format='localized'" do Streamlit usa
+        # `Intl.NumberFormat` com o locale do NAVEGADOR de quem visita (não
+        # do nosso código) — mesmo anti-padrão já rejeitado pro locale de
+        # mês dos gráficos (ver `graficos.ticks_mensais_pt_br`), não dá
+        # pra garantir pt-BR pra todo visitante. Custo aceito: clicar no
+        # cabeçalho dessas colunas específicas pra reordenar por elas
+        # ordena como TEXTO (alfabético, ex: "R$ 1.000,00" antes de
+        # "R$ 618,70"), não numericamente — as outras colunas (Ticker,
+        # Métodos utilizados, etc.) continuam ordenando normal.
         st.dataframe(
-            tabela_screener,
+            tabela_screener.assign(
+                preco_atual=tabela_screener["preco_atual"].apply(_fmt_bilhoes),
+                valor_combinado=tabela_screener["valor_combinado"].apply(_fmt_bilhoes),
+                desconto_percentual=tabela_screener["desconto_percentual"].apply(
+                    _fmt_percentual
+                ),
+            ),
             column_order=COLUNAS_TABELA_SCREENER,
             column_config={
                 "ticker": "Ticker",
-                "preco_atual": st.column_config.NumberColumn("Preço atual", format="R$ %.2f"),
-                "valor_combinado": st.column_config.NumberColumn(
-                    "Valor combinado", format="R$ %.2f"
+                "preco_atual": st.column_config.TextColumn("Preço atual", alignment="right"),
+                "valor_combinado": st.column_config.TextColumn(
+                    "Valor combinado", alignment="right"
                 ),
-                "desconto_percentual": st.column_config.NumberColumn(
-                    "Desconto", format="%.1f%%"
+                "desconto_percentual": st.column_config.TextColumn(
+                    "Desconto", alignment="right"
                 ),
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",
@@ -1319,40 +1390,57 @@ with aba_carteira:
             linhas_sem_cenario = tabela_carteira[~tabela_carteira["aplicavel"]]
             for _, linha_sem_cenario in linhas_sem_cenario.iterrows():
                 st.warning(
-                    f"{linha_sem_cenario['ticker']}: R$ {linha_sem_cenario['valor_investido']:.2f} "
+                    f"{linha_sem_cenario['ticker']}: "
+                    f"{_fmt_bilhoes(linha_sem_cenario['valor_investido'])} "
                     f"investidos, mas sem cenário — {linha_sem_cenario['motivo_nao_aplicavel']}"
                 )
 
             tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
             if not tabela_carteira_aplicavel.empty:
+                tc = tabela_carteira_aplicavel
                 st.dataframe(
-                    tabela_carteira_aplicavel,
+                    tc.assign(
+                        valor_investido=tc["valor_investido"].apply(_fmt_bilhoes),
+                        preco_atual=tc["preco_atual"].apply(_fmt_bilhoes),
+                        projecao_pessimista=tc["projecao_pessimista"].apply(_fmt_bilhoes),
+                        retorno_pessimista_percentual=tc["retorno_pessimista_percentual"].apply(
+                            _fmt_percentual
+                        ),
+                        projecao_base=tc["projecao_base"].apply(_fmt_bilhoes),
+                        retorno_base_percentual=tc["retorno_base_percentual"].apply(
+                            _fmt_percentual
+                        ),
+                        projecao_otimista=tc["projecao_otimista"].apply(_fmt_bilhoes),
+                        retorno_otimista_percentual=tc["retorno_otimista_percentual"].apply(
+                            _fmt_percentual
+                        ),
+                    ),
                     column_order=COLUNAS_TABELA_CARTEIRA,
                     column_config={
                         "ticker": "Ticker",
-                        "valor_investido": st.column_config.NumberColumn(
-                            "Investido", format="R$ %.2f"
+                        "valor_investido": st.column_config.TextColumn(
+                            "Investido", alignment="right"
                         ),
-                        "preco_atual": st.column_config.NumberColumn(
-                            "Preço atual", format="R$ %.2f"
+                        "preco_atual": st.column_config.TextColumn(
+                            "Preço atual", alignment="right"
                         ),
-                        "projecao_pessimista": st.column_config.NumberColumn(
-                            "Pessimista (R$)", format="R$ %.2f"
+                        "projecao_pessimista": st.column_config.TextColumn(
+                            "Pessimista (R$)", alignment="right"
                         ),
-                        "retorno_pessimista_percentual": st.column_config.NumberColumn(
-                            "Pessimista (%)", format="%.1f%%"
+                        "retorno_pessimista_percentual": st.column_config.TextColumn(
+                            "Pessimista (%)", alignment="right"
                         ),
-                        "projecao_base": st.column_config.NumberColumn(
-                            "Base (R$)", format="R$ %.2f"
+                        "projecao_base": st.column_config.TextColumn(
+                            "Base (R$)", alignment="right"
                         ),
-                        "retorno_base_percentual": st.column_config.NumberColumn(
-                            "Base (%)", format="%.1f%%"
+                        "retorno_base_percentual": st.column_config.TextColumn(
+                            "Base (%)", alignment="right"
                         ),
-                        "projecao_otimista": st.column_config.NumberColumn(
-                            "Otimista (R$)", format="R$ %.2f"
+                        "projecao_otimista": st.column_config.TextColumn(
+                            "Otimista (R$)", alignment="right"
                         ),
-                        "retorno_otimista_percentual": st.column_config.NumberColumn(
-                            "Otimista (%)", format="%.1f%%"
+                        "retorno_otimista_percentual": st.column_config.TextColumn(
+                            "Otimista (%)", alignment="right"
                         ),
                     },
                     hide_index=True,
@@ -1417,7 +1505,9 @@ with aba_carteira:
                 # vira LaTeX — com 3 "R$" na mesma frase, os dois primeiros
                 # formam um par e o Streamlit tenta renderizar o trecho entre
                 # eles como fórmula matemática. Bug real encontrado testando
-                # essa frase no navegador.
+                # essa frase no navegador. _fmt_bilhoes já devolve "R$ ..."
+                # com vírgula decimal — só troca o "R$" pelo "R\$" escapado
+                # depois de formatar, não repete a lógica de conversão.
                 #
                 # Base = soma_investida_com_cenario, não soma_investida total
                 # (bug real corrigido em 2026-09-21, mesmo motivo do CAGR
@@ -1427,24 +1517,27 @@ with aba_carteira:
                 # Quando há capital de fora, uma legenda explica o total
                 # real logo abaixo — sem essa nota, o total sumiria da tela
                 # sem explicação nessa frase específica.
+                def _fmt_bilhoes_md(valor: float) -> str:
+                    return _fmt_bilhoes(valor).replace("R$", "R\\$", 1)
+
                 st.write(
-                    f"R\\$ {soma_investida_com_cenario:.2f} com projeção disponível hoje "
-                    f"podem valer entre R\\$ {valor_por_cenario['pessimista']:.2f} "
-                    f"(pessimista) e R\\$ {valor_por_cenario['otimista']:.2f} (otimista) "
+                    f"{_fmt_bilhoes_md(soma_investida_com_cenario)} com projeção disponível "
+                    f"hoje podem valer entre {_fmt_bilhoes_md(valor_por_cenario['pessimista'])} "
+                    f"(pessimista) e {_fmt_bilhoes_md(valor_por_cenario['otimista'])} (otimista) "
                     f"em {n_anos} anos."
                 )
                 if totais_carteira["quantidade_sem_cenario"]:
                     valor_fora_da_projecao = soma_investida - soma_investida_com_cenario
                     st.caption(
-                        f"De um total de R\\$ {soma_investida:.2f} investidos, "
-                        f"R\\$ {valor_fora_da_projecao:.2f} "
+                        f"De um total de {_fmt_bilhoes_md(soma_investida)} investidos, "
+                        f"{_fmt_bilhoes_md(valor_fora_da_projecao)} "
                         f"({totais_carteira['quantidade_sem_cenario']} ação(ões)) "
                         "ficaram de fora dessa projeção — ver avisos acima."
                     )
                 for cenario, rotulo in ROTULO_CENARIO.items():
                     cagr = cagr_por_cenario[cenario]
                     if cagr is not None:
-                        st.caption(f"{rotulo}: equivale a {cagr * 100:.1f}% ao ano.")
+                        st.caption(f"{rotulo}: equivale a {_fmt_percentual(cagr * 100)} ao ano.")
                     else:
                         # Cenário com valor projetado não positivo (possível com
                         # FCD muito sensível numa ação específica) não tem taxa
@@ -1515,7 +1608,8 @@ with aba_carteira:
                                     mode="lines",
                                     name=f"{rotulo} (composto)",
                                     line={"color": CORES_CENARIO[cenario]},
-                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                    customdata=curva["valor"].apply(_fmt_bilhoes),
+                                    hovertemplate="%{customdata}<extra></extra>",
                                 )
                             )
 
@@ -1537,7 +1631,8 @@ with aba_carteira:
                                     mode="lines",
                                     name=f"{rotulo} (linear)",
                                     line={"color": CORES_CENARIO[cenario], "dash": "dash"},
-                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                    customdata=curva["valor"].apply(_fmt_bilhoes),
+                                    hovertemplate="%{customdata}<extra></extra>",
                                 )
                             )
 
@@ -1570,7 +1665,8 @@ with aba_carteira:
                                     mode="lines",
                                     name="Inflação (IPCA, suposição constante)",
                                     line={"color": COR_GRAFICO_CONTEXTO, "dash": "dot"},
-                                    hovertemplate="R$ %{y:.2f}<extra></extra>",
+                                    customdata=curva_ipca["valor"].apply(_fmt_bilhoes),
+                                    hovertemplate="%{customdata}<extra></extra>",
                                 )
                             )
 
@@ -1621,15 +1717,18 @@ with aba_carteira:
                         ]
                     )
                     st.dataframe(
-                        tabela_ganho,
+                        tabela_ganho.assign(
+                            ganho_nominal=tabela_ganho["ganho_nominal"].apply(_fmt_bilhoes),
+                            ganho_real=tabela_ganho["ganho_real"].apply(_fmt_bilhoes),
+                        ),
                         column_order=["cenario", "ganho_nominal", "ganho_real"],
                         column_config={
                             "cenario": "Cenário",
-                            "ganho_nominal": st.column_config.NumberColumn(
-                                "Ganho nominal", format="R$ %.2f"
+                            "ganho_nominal": st.column_config.TextColumn(
+                                "Ganho nominal", alignment="right"
                             ),
-                            "ganho_real": st.column_config.NumberColumn(
-                                "Ganho real (IPCA)", format="R$ %.2f"
+                            "ganho_real": st.column_config.TextColumn(
+                                "Ganho real (IPCA)", alignment="right"
                             ),
                         },
                         hide_index=True,
