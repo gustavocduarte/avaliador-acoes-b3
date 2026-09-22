@@ -316,7 +316,7 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     assert not at.exception
     precos_atuais = [metrica for metrica in at.metric if metrica.label == "Preço atual"]
     assert len(precos_atuais) == 1
-    assert precos_atuais[0].value == "R$ 50.43"
+    assert precos_atuais[0].value == "R$ 50,43"
 
 
 # --- Correlação com fatores externos, movida pra dentro de "Analisar uma ---

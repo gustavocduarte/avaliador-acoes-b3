@@ -1,6 +1,9 @@
-"""Protótipo mínimo do dashboard (Streamlit) — teste de integração visual,
-não a versão final. Só chama os adapters/modelos que já existem e organiza
-o resultado na tela; nenhuma lógica de cálculo é reimplementada aqui.
+"""Dashboard (Streamlit) do Avaliador de Ações da B3 — ferramenta de
+avaliação de valor justo para ações principais da B3 (bolsa brasileira),
+com projeções apresentadas sempre como cenários (pessimista/base/
+otimista), nunca como um número único. Só chama os adapters/modelos que
+já existem e organiza o resultado na tela; nenhuma lógica de cálculo é
+reimplementada aqui.
 
 Rodar com: streamlit run src/avaliador_b3/app/main.py
 """
@@ -527,8 +530,9 @@ TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
 st.title("Avaliador de Ações da B3")
 st.caption(
-    "Protótipo mínimo — teste de integração visual dos adapters e modelos já "
-    "implementados, não a versão final do dashboard."
+    "Ferramenta de avaliação de valor justo para ações principais da B3 (bolsa "
+    "brasileira), com projeções apresentadas sempre como cenários "
+    "(pessimista/base/otimista) — nunca como um número único."
 )
 
 def _ativar_aba(aba: str) -> None:
@@ -686,7 +690,7 @@ with aba_analisar:
             preco_atual = None
         else:
             preco_atual = float(historico_preco_atual["Close"].iloc[-1])
-            st.metric("Preço atual", f"R$ {preco_atual:.2f}")
+            st.metric("Preço atual", _fmt_bilhoes(preco_atual))
 
         if erro_indicadores:
             st.warning(f"Fundamentus: {erro_indicadores}")
@@ -834,29 +838,35 @@ with aba_analisar:
             if indicadores is None:
                 st.info("Indisponível — ver aviso do Fundamentus acima.")
             else:
-                col_a, col_b, col_c, col_d = st.columns(4)
+                # 2 colunas por linha (não 3 ou 4) — testado manualmente em
+                # 1024/1366/1920px: valores abreviados como "R$ 618,7 bi"
+                # precisam de ~188px, e só a largura de coluna de uma grade
+                # 2x cabe isso sem cortar nas larguras de notebook comuns.
+                col_a, col_b = st.columns(2)
                 col_a.metric("ROE", _fmt(indicadores["roe_percentual"], "{:.1f}%"))
                 col_b.metric(
                     "Margem líquida", _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%")
                 )
+                col_c, col_d = st.columns(2)
                 col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
                 col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
-                col_e, col_f, col_g, col_h = st.columns(4)
+                col_e, col_f = st.columns(2)
                 col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
                 col_f.metric(
                     "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
                 )
+                valores_mercado_firma = calcular_valor_mercado_e_firma(
+                    preco_atual, numero_acoes, divida_liquida
+                )
+                col_g, col_h = st.columns(2)
                 col_g.metric(
                     "Cresc. receita (5a)",
                     _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
                 )
-                valores_mercado_firma = calcular_valor_mercado_e_firma(
-                    preco_atual, numero_acoes, divida_liquida
-                )
                 col_h.metric(
                     "Valor de mercado", _fmt_bilhoes(valores_mercado_firma["valor_mercado"])
                 )
-                col_i, col_j, _col_k, _col_l = st.columns(4)
+                col_i, col_j = st.columns(2)
                 col_i.metric(
                     "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
                 )
