@@ -23,6 +23,13 @@ MESES_ABREVIADOS_PT_BR = {
 }
 
 
+# Passos "redondos" candidatos, em meses, pro espaçamento dos ticks —
+# só valores que uma pessoa lê como intervalo natural (mensal, bimestral,
+# trimestral, semestral, anual, bienal, cada 5 anos), nunca um número
+# quebrado tipo "a cada 7 meses".
+PASSOS_MENSAIS_CANDIDATOS = (1, 2, 3, 6, 12, 24, 60)
+
+
 def ticks_mensais_pt_br(datas: pd.Series, max_ticks: int = 8) -> tuple[list, list[str]]:
     """Gera `(tickvals, ticktext)` pro eixo X de um gráfico de série
     temporal do Plotly, com abreviação de mês em português ("Mai/25") em
@@ -34,18 +41,40 @@ def ticks_mensais_pt_br(datas: pd.Series, max_ticks: int = 8) -> tuple[list, lis
     em app/main.py): não depender de locale automático de sistema/
     biblioteca, traduzir explicitamente no nosso código.
 
-    Escolhe até `max_ticks` datas igualmente espaçadas entre a primeira e
-    a última data de `datas` (ignorando nulos) — não precisam corresponder
-    a candles reais do histórico, são só posições no eixo contínuo de
-    tempo. Série vazia (após remover nulos) devolve duas listas vazias.
+    O passo entre ticks é calculado em MESES, não em dias — usar
+    `pd.date_range(periods=...)` (dias corridos) produzia ticks com pulo
+    de mês inconsistente (ex: 2/2/1/2/2/1/2 meses num gráfico de 1 ano),
+    porque meses têm tamanho diferente. Em vez disso: acha o menor passo
+    "redondo" (`PASSOS_MENSAIS_CANDIDATOS`) que mantém a contagem de
+    ticks dentro de `max_ticks`, depois anda de `passo` em `passo` meses
+    a partir da ÚLTIMA data (a mais recente, geralmente "hoje") pra trás
+    — a data mais recente fica sempre como âncora à direita do eixo,
+    igual ao comportamento anterior, só o espaçamento das anteriores é
+    regular agora. Datas não precisam corresponder a candles reais do
+    histórico, são só posições no eixo contínuo de tempo. Série vazia
+    (após remover nulos) devolve duas listas vazias.
     """
     datas_validas = pd.to_datetime(datas).dropna().sort_values()
     if datas_validas.empty:
         return [], []
     inicio, fim = datas_validas.iloc[0], datas_validas.iloc[-1]
-    posicoes = [inicio] if inicio == fim else list(pd.date_range(inicio, fim, periods=max_ticks))
-    ticktext = [f"{MESES_ABREVIADOS_PT_BR[data.month]}/{data.strftime('%y')}" for data in posicoes]
-    return posicoes, ticktext
+
+    total_meses = (fim.year - inicio.year) * 12 + (fim.month - inicio.month)
+    passo = PASSOS_MENSAIS_CANDIDATOS[-1]
+    for candidato in PASSOS_MENSAIS_CANDIDATOS:
+        if total_meses // candidato + 1 <= max_ticks:
+            passo = candidato
+            break
+
+    tickvals = []
+    atual = fim
+    while atual >= inicio:
+        tickvals.append(atual)
+        atual = atual - pd.DateOffset(months=passo)
+    tickvals.reverse()
+
+    ticktext = [f"{MESES_ABREVIADOS_PT_BR[data.month]}/{data.strftime('%y')}" for data in tickvals]
+    return tickvals, ticktext
 
 
 def normalizar_base_100(serie: pd.Series) -> pd.Series:

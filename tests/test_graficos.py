@@ -5,34 +5,46 @@ from avaliador_b3 import carteira, graficos
 
 # --- ticks_mensais_pt_br ------------------------------------------------------
 #
-# Bug real (2026-09-22, confirmado por screenshot): o eixo X dos gráficos
+# Bug real #1 (2026-09-22, confirmado por screenshot): o eixo X dos gráficos
 # "Preço vs. Ibovespa" e "Comparando com Petróleo" mostrava abreviação de mês
 # em inglês ("May", "Sep", "Oct") — o Plotly usa o locale en-US por padrão, e
 # o bundle de Plotly.js que o Streamlit empacota não traz nenhum outro locale
 # registrado, então `config={"locale": "pt-BR"}` não teria efeito. Corrigido
 # gerando tickvals/ticktext explicitamente, com mês traduzido em Python.
+#
+# Bug real #2 (2026-09-22, também confirmado por screenshot, na mesma
+# correção): a primeira versão espaçava os ticks por `pd.date_range(periods=)`
+# — dias corridos, não meses —, o que produzia pulo de mês inconsistente
+# (ex: 2/2/1/2/2/1/2 meses num gráfico de 1 ano), porque os meses têm
+# tamanho diferente. Corrigido calculando o passo em MESES e andando a
+# partir da data mais recente pra trás — por isso os testes abaixo verificam
+# tickvals[-1] (a âncora, sempre a data mais recente) em vez de tickvals[0]
+# (que não é mais garantido bater exatamente com a primeira data da série).
 
 
 def test_ticks_mensais_pt_br_traduz_mes_em_portugues():
-    datas = pd.Series(pd.to_datetime(["2025-05-10", "2025-09-20"]))
+    datas = pd.Series(pd.to_datetime(["2025-05-01", "2025-09-01"]))
 
     tickvals, ticktext = graficos.ticks_mensais_pt_br(datas, max_ticks=2)
 
-    assert len(tickvals) == 2
-    assert ticktext[0] == "Mai/25"
-    assert ticktext[-1] == "Set/25"
+    # 4 meses de intervalo, max_ticks=2 -> passo de 3 meses (menor passo
+    # "redondo" que mantém a contagem <= 2): Jun/25, Set/25 (ancorado no
+    # fim, Set/25 — não em Mai/25, o início).
+    assert ticktext == ["Jun/25", "Set/25"]
+    assert tickvals[-1] == pd.Timestamp("2025-09-01")
     assert all("May" not in texto and "Sep" not in texto for texto in ticktext)
 
 
 def test_ticks_mensais_pt_br_ignora_nulos():
-    datas = pd.Series([None, pd.Timestamp("2025-01-01"), pd.NaT, pd.Timestamp("2025-12-31")])
+    datas = pd.Series([None, pd.Timestamp("2025-01-01"), pd.NaT, pd.Timestamp("2025-12-01")])
 
     tickvals, ticktext = graficos.ticks_mensais_pt_br(datas)
 
-    assert tickvals[0] == pd.Timestamp("2025-01-01")
-    assert tickvals[-1] == pd.Timestamp("2025-12-31")
-    assert ticktext[0] == "Jan/25"
+    # Âncora sempre na data mais recente válida (None/NaT não contam).
+    assert tickvals[-1] == pd.Timestamp("2025-12-01")
     assert ticktext[-1] == "Dez/25"
+    # O primeiro tick gerado não pode ficar antes da primeira data válida.
+    assert tickvals[0] >= pd.Timestamp("2025-01-01")
 
 
 def test_ticks_mensais_pt_br_serie_vazia_devolve_listas_vazias():
@@ -48,7 +60,37 @@ def test_ticks_mensais_pt_br_data_unica_nao_quebra():
     tickvals, ticktext = graficos.ticks_mensais_pt_br(datas)
 
     assert tickvals == [pd.Timestamp("2025-07-04")]
-    assert ticktext == ["Jul/25"]
+
+
+def _passos_em_meses(tickvals: list) -> list[int]:
+    return [
+        (depois.year - antes.year) * 12 + (depois.month - antes.month)
+        for antes, depois in zip(tickvals, tickvals[1:])
+    ]
+
+
+def test_ticks_mensais_pt_br_passo_constante_janela_de_1_ano():
+    # Mesma janela usada em "Preço vs. Ibovespa" (1 ano) — a que mostrou o
+    # pulo inconsistente 2/2/1/2/2/1/2 no bug real.
+    datas = pd.Series(pd.to_datetime(["2025-09-22", "2026-09-22"]))
+
+    tickvals, _ = graficos.ticks_mensais_pt_br(datas, max_ticks=8)
+
+    passos = _passos_em_meses(tickvals)
+    assert len(set(passos)) == 1, f"passo inconsistente entre ticks: {passos}"
+    assert tickvals[-1] == pd.Timestamp("2026-09-22")
+
+
+def test_ticks_mensais_pt_br_passo_constante_janela_de_2_anos():
+    # Mesma janela padrão do seletor "Comparando com Petróleo" (2 anos) —
+    # a que mostrou o pulo inconsistente 4/3/4/3/3/4/3 no bug real.
+    datas = pd.Series(pd.to_datetime(["2024-09-22", "2026-09-22"]))
+
+    tickvals, _ = graficos.ticks_mensais_pt_br(datas, max_ticks=8)
+
+    passos = _passos_em_meses(tickvals)
+    assert len(set(passos)) == 1, f"passo inconsistente entre ticks: {passos}"
+    assert tickvals[-1] == pd.Timestamp("2026-09-22")
 
 
 # --- normalizar_base_100 -----------------------------------------------------
