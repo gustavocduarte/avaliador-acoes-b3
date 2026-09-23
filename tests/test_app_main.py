@@ -18,6 +18,7 @@ continuarem rápidos e determinísticos, sem rede de verdade — ver
 
 import json
 import re
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -26,12 +27,19 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3.config import (
-    ANO_REFERENCIA_FCD,
     ANOS_JANELA_CORRELACAO,
     TICKER_PETROLEO_BRENT,
 )
+from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
+from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning
+
+# Ano fixo usado pelos mocks de FCD abaixo — substitui ANO_REFERENCIA_FCD
+# (removida em 2026-09-24, ver docs/correcao-ano-fcd-2026-09-24.md), já
+# que o ano agora é detectado em tempo de execução
+# (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não uma constante.
+ANO_FCD_MOCK = 2025
 
 # Caminho absoluto: AppTest.from_file resolve caminho relativo contra o
 # arquivo que CHAMA from_file (este arquivo de teste), não contra o cwd do
@@ -475,9 +483,13 @@ def _preparar_fcd_aplicavel(
         },
     )
     monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.resolver_ano_mais_recente_disponivel",
+        lambda **kwargs: ANO_FCD_MOCK,
+    )
+    monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
-        lambda cnpj, ano, **kw: {
-            "fcf_atual": 1_000_000.0 if ano == ANO_REFERENCIA_FCD else 800_000.0
+        lambda cnpj, ano, *a, **kw: {
+            "fcf_atual": 1_000_000.0 if ano == ANO_FCD_MOCK else 800_000.0
         },
     )
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
@@ -508,6 +520,45 @@ def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
     avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
     assert len(avisos_divida) == 1
     assert "tende a ficar mais alto" in avisos_divida[0]
+
+
+def test_fcd_mostra_rotulo_do_ano_normal_quando_empresa_esta_no_ano_mais_recente(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    rotulos_ano = [c.value for c in at.caption if "demonstração financeira anual de" in c.value]
+    assert len(rotulos_ano) == 1
+    assert (
+        rotulos_ano[0]
+        == f"FCD calculado com a demonstração financeira anual de {ANO_FCD_MOCK} (CVM)."
+    )
+
+
+def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recente(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    def obter_fluxo_caixa_livre_com_fallback(cnpj, ano, *args, **kwargs):
+        if ano == ANO_FCD_MOCK:
+            raise CnpjNaoEncontrado("não encontrado no ano mais recente")
+        return {"fcf_atual": 800_000.0}
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre", obter_fluxo_caixa_livre_com_fallback
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    rotulos_ano = [c.value for c in at.caption if "demonstração financeira anual de" in c.value]
+    assert len(rotulos_ano) == 1
+    assert rotulos_ano[0] == (
+        f"FCD calculado com a demonstração financeira anual de {ANO_FCD_MOCK - 1} (CVM) — "
+        f"a de {ANO_FCD_MOCK} ainda não foi entregue por essa empresa."
+    )
 
 
 def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):
@@ -918,6 +969,47 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
     assert linha_dobr4["preco_atual"] == "R$ 40,00"
     assert linha_dobr4["valor_combinado"] == "R$ 80,00"
     assert linha_dobr4["desconto_percentual"] == "100,0%"
+
+
+def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkeypatch):
+    # Correção de 2026-09-24: warnings.warn dentro de rodar_screener vai só
+    # pro log do servidor, invisível pra quem clicou no botão — sem essa
+    # captura+reexibição em session_state, a coluna do FCD ficaria vazia
+    # sem nenhuma explicação na tela. rodar_screener é substituído por um
+    # fake que reproduz só o efeito relevante (emitir o aviso da categoria
+    # DeteccaoAnoCvmFalhouWarning) — o comportamento real de emitir esse
+    # aviso quando resolver_ano_mais_recente_disponivel falha já é coberto
+    # em tests/test_screener.py; este teste cobre só a plumbing nova de
+    # captura/reexibição em app/main.py.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    def rodar_screener_falso(*args, **kwargs):
+        warnings.warn(
+            "Detecção do ano mais recente da CVM falhou — o FCD de todas as "
+            "ações desta rodada ficará indisponível: CVM fora do ar (simulado)",
+            category=DeteccaoAnoCvmFalhouWarning,
+            stacklevel=2,
+        )
+
+    monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    at.button[1].click().run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        aviso.value
+        for aviso in at.warning
+        if "Detecção do ano mais recente da CVM falhou" in aviso.value
+    ]
+    assert len(avisos) == 1
+    assert "CVM fora do ar (simulado)" in avisos[0]
 
 
 def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tmp_path):

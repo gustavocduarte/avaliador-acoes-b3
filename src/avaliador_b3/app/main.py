@@ -9,6 +9,7 @@ Rodar com: streamlit run src/avaliador_b3/app/main.py
 """
 
 import sys
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -29,7 +30,6 @@ from avaliador_b3.carteira import (
     montar_tabela_carteira,
 )
 from avaliador_b3.config import (
-    ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
     COR_GRAFICO_CONTEXTO,
@@ -77,7 +77,8 @@ from avaliador_b3.ingest.crosswalk_cnpj import (
 from avaliador_b3.ingest.cvm import (
     CnpjNaoEncontrado,
     ContaFluxoCaixaNaoEncontrada,
-    obter_fluxo_caixa_livre,
+    obter_fluxo_caixa_livre_com_fallback,
+    resolver_ano_mais_recente_disponivel,
 )
 from avaliador_b3.ingest.fundamentus import (
     EstruturaPaginaMudou,
@@ -96,7 +97,11 @@ from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_valor_combinado
 from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
-from avaliador_b3.screener import CAMINHO_SAIDA_PADRAO, rodar_screener
+from avaliador_b3.screener import (
+    CAMINHO_SAIDA_PADRAO,
+    DeteccaoAnoCvmFalhouWarning,
+    rodar_screener,
+)
 
 COLUNAS_TABELA_SCREENER = [
     "ticker",
@@ -249,7 +254,7 @@ def _buscar_dividendos(ticker: str) -> tuple[pd.DataFrame | None, str | None]:
 def _buscar_cnpj(ticker: str) -> tuple[str | None, str | None]:
     """CNPJ da empresa via crosswalk ticker -> catálogo de emissores da
     B3 (`ingest.crosswalk_cnpj`) — usado pra buscar dados da CVM
-    (`_buscar_fcf` abaixo). `EmissorNaoEncontrado` (ticker sem emissor
+    (`_buscar_fcf_fcd` abaixo). `EmissorNaoEncontrado` (ticker sem emissor
     correspondente no catálogo) vira o par `(None, motivo)`."""
     try:
         catalogo = obter_catalogo_emissores()
@@ -270,20 +275,49 @@ def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
         return None, str(erro)
 
 
-def _buscar_fcf(cnpj: str, ano: int) -> tuple[float | None, str | None]:
-    """Fluxo de Caixa Livre (FCF) de um ano específico via CVM
-    (`ingest.cvm.obter_fluxo_caixa_livre`) — usado duas vezes por busca
-    (ano de referência e `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes) pra
-    calcular a CAGR de crescimento explícita do FCD. Erro aqui não é
-    mostrado à parte na tela — já aparece embutido no motivo de "não
-    aplicável" do próprio card do FCD (`calcular_valor_justo_fcd` trata
-    `fcf_atual=None` internamente)."""
+@st.cache_data(ttl=3600)
+def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
+    """Ano mais recente do DFP da CVM disponível pra download — nível
+    ARQUIVO (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não
+    depende do ticker buscado. Cacheado na sessão do Streamlit por 1h,
+    mesmo padrão de `_buscar_macro`/`_buscar_universo_ibovespa` — sem
+    isso, cada busca de ticker checaria de novo se o zip do ano corrente
+    existe."""
     try:
-        return obter_fluxo_caixa_livre(cnpj, ano)["fcf_atual"], None
+        return resolver_ano_mais_recente_disponivel(), None
+    except Exception as erro:
+        return None, f"Falha ao detectar o ano mais recente do DFP da CVM: {erro}"
+
+
+def _buscar_fcf_fcd(
+    cnpj: str, ano_mais_recente: int
+) -> tuple[float | None, float | None, int | None, bool, str | None]:
+    """FCF do FCD com detecção automática de ano POR EMPRESA
+    (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`) — uma chamada só
+    que já resolve tanto o ano atual (`ano_mais_recente`, caindo um ano
+    só pra essa empresa se ela ainda não apareceu nele) quanto o ano-base
+    do crescimento (que anda junto do ano efetivamente usado, não fica
+    preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
+
+    Devolve (fcf_atual, fcf_ha_n_anos, ano_utilizado, usou_fallback, erro).
+    Erro aqui não é mostrado à parte na tela — já aparece embutido no
+    motivo de "não aplicável" do próprio card do FCD (`calcular_valor_
+    justo_fcd` trata `fcf_atual=None` internamente)."""
+    try:
+        resultado = obter_fluxo_caixa_livre_com_fallback(
+            cnpj, ano_mais_recente, ANOS_HISTORICO_CRESCIMENTO_FCD
+        )
+        return (
+            resultado["fcf_atual"],
+            resultado["fcf_ha_n_anos"],
+            resultado["ano_referencia_utilizado"],
+            resultado["usou_fallback"],
+            None,
+        )
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
-        return None, str(erro)
-    except Exception as erro:  # zip da CVM indisponível pra esse ano, erro de rede, etc.
-        return None, f"Falha ao buscar dados da CVM para {ano}: {erro}"
+        return None, None, None, False, str(erro)
+    except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
+        return None, None, None, False, f"Falha ao buscar dados da CVM: {erro}"
 
 
 @st.cache_data(ttl=3600)
@@ -747,6 +781,7 @@ with aba_analisar:
             # reaproveita esse mesmo resultado, não busca de novo.
             segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
             selic_meta, ipca_12m, erro_macro = _buscar_macro()
+            ano_fcd_mais_recente, erro_ano_fcd = _buscar_ano_fcd_mais_recente()
             # Pro card "Correlação com fatores externos" mais abaixo — custo
             # parecido com o resto (mais duas séries de 2 anos e uma leitura
             # de arquivo do GPR), por isso já busca aqui junto, sem exigir
@@ -759,12 +794,16 @@ with aba_analisar:
             serie_gpr, erro_gpr = _buscar_gpr_diaria()
 
             # Erros de FCF não são exibidos à parte — já aparecem no motivo de
-            # "não aplicável" do próprio card do FCD.
-            fcf_atual = fcf_ha_n_anos = None
-            if cnpj:
-                ano_anterior = ANO_REFERENCIA_FCD - ANOS_HISTORICO_CRESCIMENTO_FCD
-                fcf_atual, _ = _buscar_fcf(cnpj, ANO_REFERENCIA_FCD)
-                fcf_ha_n_anos, _ = _buscar_fcf(cnpj, ano_anterior)
+            # "não aplicável" do próprio card do FCD. `erro_ano_fcd` (detecção
+            # do ano em si falhando, ex: CVM fora do ar) tem o mesmo destino:
+            # sem `ano_fcd_mais_recente`, fcf_atual segue None e o card cai no
+            # "não aplicável" do jeito de sempre, sem aviso à parte.
+            fcf_atual = fcf_ha_n_anos = ano_fcd_utilizado = None
+            fcd_usou_fallback = False
+            if cnpj and ano_fcd_mais_recente is not None:
+                fcf_atual, fcf_ha_n_anos, ano_fcd_utilizado, fcd_usou_fallback, _ = _buscar_fcf_fcd(
+                    cnpj, ano_fcd_mais_recente
+                )
 
         st.subheader(ticker)
 
@@ -795,6 +834,8 @@ with aba_analisar:
             st.warning(f"CNPJ (CVM): {erro_cnpj}")
         if erro_macro:
             st.warning(erro_macro)
+        if erro_ano_fcd:
+            st.warning(erro_ano_fcd)
 
         lpa = indicadores["lpa"] if indicadores else None
         vpa = indicadores["vpa"] if indicadores else None
@@ -876,6 +917,20 @@ with aba_analisar:
             if resultado_fcd["aplicavel"]:
                 origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
                 st.caption(f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})")
+                # Rótulo específico do FCD (não da página toda) — só o FCD vem
+                # da DFP anual da CVM; "Saúde financeira" abaixo vem do
+                # Fundamentus (últimos 12 meses), sem relação com esse ano.
+                if fcd_usou_fallback:
+                    st.caption(
+                        f"FCD calculado com a demonstração financeira anual de "
+                        f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
+                        "ainda não foi entregue por essa empresa."
+                    )
+                else:
+                    st.caption(
+                        f"FCD calculado com a demonstração financeira anual de "
+                        f"{ano_fcd_utilizado} (CVM)."
+                    )
         with coluna_combinado:
             if resultado_combinado["aplicavel"]:
                 st.metric(
@@ -1345,10 +1400,36 @@ with aba_screener:
             "uma das ~76 ações, com delay entre chamadas) — leva de 5 a 15 "
             "minutos. Não feche esta aba enquanto roda."
         )
-        with st.spinner("Rodando o screener — isso leva alguns minutos..."):
-            rodar_screener()
+        # Captura os avisos emitidos durante a rodada pra poder mostrar na
+        # tela os de DeteccaoAnoCvmFalhouWarning especificamente (sem isso,
+        # quem clica no botão só veria a coluna do FCD inteira vazia, sem
+        # nenhuma explicação — o aviso de rodar_screener ia só pro log do
+        # servidor, invisível na UI). `record=True` intercepta TODOS os
+        # avisos da rodada (inclusive o de cache do zip da CVM desatualizado,
+        # categoria diferente) — por isso, ao sair do bloco, cada um é
+        # reemitido pro canal normal antes de filtrar só os de detecção do
+        # ano, preservando o comportamento de log de todos os outros.
+        with warnings.catch_warnings(record=True) as avisos_capturados:
+            warnings.simplefilter("always")
+            with st.spinner("Rodando o screener — isso leva alguns minutos..."):
+                rodar_screener()
+        for aviso in avisos_capturados:
+            warnings.warn_explicit(aviso.message, aviso.category, aviso.filename, aviso.lineno)
+        avisos_deteccao_ano = [
+            str(aviso.message)
+            for aviso in avisos_capturados
+            if issubclass(aviso.category, DeteccaoAnoCvmFalhouWarning)
+        ]
+        if avisos_deteccao_ano:
+            # st.rerun() logo abaixo descarta qualquer coisa renderizada
+            # nesta mesma execução — guarda em session_state pra mostrar
+            # DEPOIS do rerun, não aqui.
+            st.session_state["avisos_screener_deteccao_ano"] = avisos_deteccao_ano
         st.success("Screener concluído — resultado salvo em disco.")
         st.rerun()
+
+    for aviso in st.session_state.pop("avisos_screener_deteccao_ano", []):
+        st.warning(aviso)
 
     tabela_screener = _carregar_screener_ou_avisar(
         CAMINHO_SAIDA_PADRAO,

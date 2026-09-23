@@ -1,3 +1,5 @@
+import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -259,6 +261,101 @@ def test_baixar_zip_ano_propaga_erro_quando_fora_do_ar(tmp_path, monkeypatch):
         cvm._baixar_zip_ano(2024, tmp_path, forcar_atualizacao=False)
 
 
+# --- Prazo de validade do cache do zip pro ano em preenchimento (correção
+# de 2026-09-24) — ver docs/correcao-ano-fcd-2026-09-24.md e o comentário
+# de DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE em config.py.
+
+
+def _gravar_zip_com_idade(caminho: Path, conteudo: bytes, idade: timedelta, hoje: datetime) -> None:
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_bytes(conteudo)
+    mtime = (hoje - idade).timestamp()
+    os.utime(caminho, (mtime, mtime))
+
+
+def test_baixar_zip_ano_em_preenchimento_expira_depois_do_prazo_e_baixa_de_novo(
+    tmp_path, monkeypatch
+):
+    hoje = datetime(2027, 1, 1)
+    caminho = tmp_path / "cvm" / "dfp_cia_aberta_2026.zip"
+    _gravar_zip_com_idade(caminho, b"conteudo antigo", timedelta(days=10), hoje)
+
+    conteudo_novo = ZIP_AMOSTRA.read_bytes()
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout, stream):
+        chamadas["contador"] += 1
+        return _RespostaStreamFalsa(conteudo_novo)
+
+    monkeypatch.setattr(cvm.requests, "get", get_falso)
+
+    resultado = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, hoje=hoje)
+
+    assert chamadas["contador"] == 1
+    assert resultado.read_bytes() == conteudo_novo
+
+
+def test_baixar_zip_ano_em_preenchimento_dentro_do_prazo_usa_cache(tmp_path, monkeypatch):
+    hoje = datetime(2027, 1, 1)
+    caminho = tmp_path / "cvm" / "dfp_cia_aberta_2026.zip"
+    _gravar_zip_com_idade(caminho, b"conteudo em cache", timedelta(days=2), hoje)
+
+    def get_falso(*args, **kwargs):
+        raise AssertionError("não deveria bater na rede — cache ainda dentro do prazo")
+
+    monkeypatch.setattr(cvm.requests, "get", get_falso)
+
+    resultado = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, hoje=hoje)
+
+    assert resultado.read_bytes() == b"conteudo em cache"
+
+
+def test_baixar_zip_ano_fechado_nunca_expira_independente_da_idade(tmp_path, monkeypatch):
+    hoje = datetime(2027, 1, 1)
+    caminho = tmp_path / "cvm" / "dfp_cia_aberta_2020.zip"
+    _gravar_zip_com_idade(caminho, b"conteudo antigo de ano fechado", timedelta(days=1000), hoje)
+
+    def get_falso(*args, **kwargs):
+        raise AssertionError("ano fechado não deveria bater na rede, não importa a idade")
+
+    monkeypatch.setattr(cvm.requests, "get", get_falso)
+
+    resultado = cvm._baixar_zip_ano(2020, tmp_path, forcar_atualizacao=False, hoje=hoje)
+
+    assert resultado.read_bytes() == b"conteudo antigo de ano fechado"
+
+
+def test_baixar_zip_ano_prazo_vencido_download_falha_usa_cache_existente_com_aviso(
+    tmp_path, monkeypatch
+):
+    hoje = datetime(2027, 1, 1)
+    caminho = tmp_path / "cvm" / "dfp_cia_aberta_2026.zip"
+    _gravar_zip_com_idade(caminho, b"conteudo em cache, desatualizado", timedelta(days=10), hoje)
+
+    monkeypatch.setattr(
+        cvm.requests,
+        "get",
+        lambda url, timeout, stream: _RespostaStreamFalsa(b"", status_ok=False),
+    )
+
+    with pytest.warns(UserWarning, match="cache"):
+        resultado = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, hoje=hoje)
+
+    assert resultado.read_bytes() == b"conteudo em cache, desatualizado"
+
+
+def test_baixar_zip_ano_prazo_vencido_download_falha_sem_cache_propaga_erro(tmp_path, monkeypatch):
+    hoje = datetime(2027, 1, 1)
+    monkeypatch.setattr(
+        cvm.requests,
+        "get",
+        lambda url, timeout, stream: _RespostaStreamFalsa(b"", status_ok=False),
+    )
+
+    with pytest.raises(requests.HTTPError):
+        cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, hoje=hoje)
+
+
 def test_linha_por_codigo_caminho_feliz():
     linhas = [
         {"CD_CONTA": "6.01", "VL_CONTA": "100", "ESCALA_MOEDA": "MIL"},
@@ -371,3 +468,171 @@ def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_pa
 
     assert chamadas["contador"] == 1
     assert (tmp_path / "cvm" / "fcf_33000167000101_2024.json").exists()
+
+
+# --- Detecção automática do ano de referência (correção de 2026-09-24) ---
+# Ver docs/correcao-ano-fcd-2026-09-24.md: constante fixa ANO_REFERENCIA_FCD
+# removida de config.py, substituída por detecção em dois níveis. Os testes
+# abaixo mockam `_baixar_zip_ano`/`obter_fluxo_caixa_livre` diretamente (não
+# `requests.get`) porque testam a ORQUESTRAÇÃO da detecção, não o download
+# ou o parsing em si (já cobertos acima).
+
+
+def _erro_http_404() -> requests.HTTPError:
+    """Réplica o formato real de `Response.raise_for_status()` (erro com
+    `.response.status_code` preenchido) — a fake `_RespostaStreamFalsa`
+    usada nos testes de `_baixar_zip_ano` acima não preenche `.response`,
+    então não serve pra testar a distinção 404 vs. outros erros aqui."""
+    erro = requests.HTTPError("404 Client Error: Not Found")
+    erro.response = requests.Response()
+    erro.response.status_code = 404
+    return erro
+
+
+def test_resolver_ano_mais_recente_disponivel_usa_ano_candidato_quando_zip_existe(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda ano, *a, **k: ZIP_AMOSTRA)
+
+    ano = cvm.resolver_ano_mais_recente_disponivel(
+        diretorio_cache=tmp_path, hoje=datetime(2026, 6, 1)
+    )
+
+    assert ano == 2025
+
+
+def test_resolver_ano_mais_recente_disponivel_cai_pro_ano_anterior_quando_404(
+    tmp_path, monkeypatch
+):
+    def baixar_falso(ano, diretorio_cache, forcar_atualizacao):
+        if ano == 2026:
+            raise _erro_http_404()
+        return ZIP_AMOSTRA
+
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", baixar_falso)
+
+    ano = cvm.resolver_ano_mais_recente_disponivel(
+        diretorio_cache=tmp_path, hoje=datetime(2027, 2, 15)
+    )
+
+    assert ano == 2025
+
+
+def test_resolver_ano_mais_recente_disponivel_janela_transicao_fevereiro_zip_ja_disponivel(
+    tmp_path, monkeypatch
+):
+    # Mesma janela jan-mar do teste acima, mas com o zip do ano candidato JÁ
+    # publicado — não deve cair pro ano anterior só por estar na janela.
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda ano, *a, **k: ZIP_AMOSTRA)
+
+    ano = cvm.resolver_ano_mais_recente_disponivel(
+        diretorio_cache=tmp_path, hoje=datetime(2027, 2, 15)
+    )
+
+    assert ano == 2026
+
+
+def test_resolver_ano_mais_recente_disponivel_propaga_erro_que_nao_e_404(tmp_path, monkeypatch):
+    def baixar_falso(*args, **kwargs):
+        raise requests.ConnectionError("rede fora do ar")
+
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", baixar_falso)
+
+    with pytest.raises(requests.ConnectionError):
+        cvm.resolver_ano_mais_recente_disponivel(
+            diretorio_cache=tmp_path, hoje=datetime(2027, 2, 15)
+        )
+
+
+def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empresa_esta_nele(
+    tmp_path, monkeypatch
+):
+    chamadas = []
+
+    def obter_falso(cnpj, ano, *a, **k):
+        chamadas.append(ano)
+        return {"fcf_atual": 100.0 if ano == 2025 else 80.0}
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS,
+        ano_mais_recente=2025,
+        anos_historico_crescimento=5,
+        diretorio_cache=tmp_path,
+    )
+
+    assert resultado["ano_referencia_utilizado"] == 2025
+    assert resultado["usou_fallback"] is False
+    assert resultado["fcf_atual"] == 100.0
+    assert resultado["fcf_ha_n_anos"] == 80.0
+    assert chamadas == [2025, 2020]  # ano base = 2025 - 5
+
+
+def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
+    tmp_path, monkeypatch
+):
+    def obter_falso(cnpj, ano, *a, **k):
+        if ano == 2025:
+            raise cvm.CnpjNaoEncontrado("não encontrado em 2025")
+        if ano == 2024:
+            return {"fcf_atual": 100.0}
+        if ano == 2019:
+            return {"fcf_atual": 80.0}
+        raise AssertionError(f"ano inesperado: {ano}")
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS,
+        ano_mais_recente=2025,
+        anos_historico_crescimento=5,
+        diretorio_cache=tmp_path,
+    )
+
+    # Empresa não aparece em 2025 -> cai pra 2024, e o ano-base do
+    # crescimento cai JUNTO (2019, não 2020) — continua 5 anos de intervalo.
+    assert resultado["ano_referencia_utilizado"] == 2024
+    assert resultado["usou_fallback"] is True
+    assert resultado["fcf_atual"] == 100.0
+    assert resultado["fcf_ha_n_anos"] == 80.0
+
+
+def test_obter_fluxo_caixa_livre_com_fallback_propaga_conta_fluxo_caixa_nao_encontrada_sem_fallback(
+    tmp_path, monkeypatch
+):
+    chamadas = []
+
+    def obter_falso(cnpj, ano, *a, **k):
+        chamadas.append(ano)
+        raise cvm.ContaFluxoCaixaNaoEncontrada("layout mudou")
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada):
+        cvm.obter_fluxo_caixa_livre_com_fallback(
+            CNPJ_PETROBRAS,
+            ano_mais_recente=2025,
+            anos_historico_crescimento=5,
+            diretorio_cache=tmp_path,
+        )
+
+    # Não tentou 2024 — layout mudado não é "ainda não publicado".
+    assert chamadas == [2025]
+
+
+def test_obter_fluxo_caixa_livre_com_fallback_propaga_cnpj_nao_encontrado_nos_dois_anos(
+    tmp_path, monkeypatch
+):
+    def obter_falso(cnpj, ano, *a, **k):
+        raise cvm.CnpjNaoEncontrado(f"não encontrado em {ano}")
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    with pytest.raises(cvm.CnpjNaoEncontrado):
+        cvm.obter_fluxo_caixa_livre_com_fallback(
+            CNPJ_PETROBRAS,
+            ano_mais_recente=2025,
+            anos_historico_crescimento=5,
+            diretorio_cache=tmp_path,
+        )

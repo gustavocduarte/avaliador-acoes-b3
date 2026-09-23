@@ -32,7 +32,9 @@ import csv
 import io
 import json
 import re
+import warnings
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -42,6 +44,7 @@ from avaliador_b3.config import (
     CODIGO_CFO_CVM,
     CONTA_LUCRO_POR_ACAO_CVM,
     DATA_RAW_DIR,
+    DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE,
     FATOR_ESCALA_MOEDA_CVM,
     URL_CVM_DFP_ZIP,
 )
@@ -93,23 +96,74 @@ def _caminho_cache_resultado(cnpj_normalizado: str, ano: int, diretorio_cache: P
     return diretorio_cache / "cvm" / f"lucro_{cnpj_normalizado}_{ano}.json"
 
 
-def _baixar_zip_ano(ano: int, diretorio_cache: Path, forcar_atualizacao: bool) -> Path:
+def _cache_zip_expirado(caminho: Path, ano: int, hoje: datetime) -> bool:
+    """Só o zip do(s) ano(s) ainda em preenchimento (`ano >= hoje.year -
+    1`) tem prazo de validade — ver `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_
+    CORRENTE` em config.py pra o porquê. Anos fechados (`ano < hoje.year
+    - 1`) nunca expiram: a CVM não reabre exercícios encerrados, o
+    arquivo não muda mais."""
+    if ano < hoje.year - 1:
+        return False
+    idade = hoje - datetime.fromtimestamp(caminho.stat().st_mtime)
+    return idade.days >= DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE
+
+
+def _baixar_zip_ano(
+    ano: int,
+    diretorio_cache: Path,
+    forcar_atualizacao: bool,
+    hoje: datetime | None = None,
+) -> Path:
     """Baixa (com streaming, sem carregar tudo em memória) o zip anual do
     DFP, ou devolve o caminho do já cacheado. Um único zip serve para
-    qualquer número de empresas consultadas naquele ano."""
+    qualquer número de empresas consultadas naquele ano.
+
+    Cache é permanente pra anos fechados, mas expira pro ano ainda em
+    preenchimento depois de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE`
+    dias — ver `_cache_zip_expirado` e o comentário em config.py (bug
+    real corrigido em 2026-09-24: sem isso, um zip baixado cedo na
+    janela jan-mar ficava incompleto pra sempre localmente).
+
+    Se o prazo venceu mas o download de atualização falha (CVM fora do
+    ar, timeout, erro de rede) e já existe um zip em cache pra esse ano,
+    usa o arquivo existente (com um aviso via `warnings.warn`, não
+    silenciosamente) em vez de propagar o erro — uma versão levemente
+    desatualizada é preferível a quebrar o FCD inteiro por uma falha
+    temporária de rede. Só propaga o erro se não houver NENHUM arquivo
+    em cache pra usar. O download em si continua indo pro `.zip.tmp`
+    com troca atômica (`.replace`) só no final — uma falha no meio do
+    download nunca corrompe o arquivo já cacheado, que só é sobrescrito
+    depois de o download novo terminar por completo.
+
+    `hoje` é injetável (default `datetime.now()`) pra testes."""
+    hoje = hoje or datetime.now()
     caminho = _caminho_zip_ano(ano, diretorio_cache)
-    if caminho.exists() and not forcar_atualizacao:
+    if (
+        caminho.exists()
+        and not forcar_atualizacao
+        and not _cache_zip_expirado(caminho, ano, hoje)
+    ):
         return caminho
 
     url = URL_CVM_DFP_ZIP.format(ano=ano)
     caminho.parent.mkdir(parents=True, exist_ok=True)
     caminho_temporario = caminho.with_suffix(".zip.tmp")
 
-    with requests.get(url, timeout=TIMEOUT_SEGUNDOS, stream=True) as resposta:
-        resposta.raise_for_status()
-        with open(caminho_temporario, "wb") as arquivo:
-            for pedaco in resposta.iter_content(chunk_size=TAMANHO_PEDACO_DOWNLOAD):
-                arquivo.write(pedaco)
+    try:
+        with requests.get(url, timeout=TIMEOUT_SEGUNDOS, stream=True) as resposta:
+            resposta.raise_for_status()
+            with open(caminho_temporario, "wb") as arquivo:
+                for pedaco in resposta.iter_content(chunk_size=TAMANHO_PEDACO_DOWNLOAD):
+                    arquivo.write(pedaco)
+    except requests.RequestException:
+        if caminho.exists():
+            warnings.warn(
+                f"Falha ao atualizar o zip da CVM pra {ano} (cache expirado) — "
+                "usando a versão em cache, possivelmente desatualizada.",
+                stacklevel=2,
+            )
+            return caminho
+        raise
 
     caminho_temporario.replace(caminho)
     return caminho
@@ -356,6 +410,116 @@ def obter_fluxo_caixa_livre(
         caminho_resultado.write_text(json.dumps(resultado, ensure_ascii=False), encoding="utf-8")
 
     return resultado
+
+
+def _zip_ano_disponivel(ano: int, diretorio_cache: Path, forcar_atualizacao: bool) -> bool:
+    """Garante que o zip anual de `ano` está disponível localmente (baixando
+    se preciso — se já estiver em cache, `_baixar_zip_ano` não bate na rede
+    de novo). Devolve `False` só quando a CVM responde 404 pra esse ano
+    (ainda não publicado — janela jan-mar antes do prazo legal de entrega da
+    DFP); qualquer outro erro (rede fora do ar, timeout, 5xx) propaga em vez
+    de virar `False` — mascarar uma falha real como "ano indisponível"
+    esconderia um problema que precisa aparecer, não cair silenciosamente
+    pro ano anterior."""
+    try:
+        _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
+        return True
+    except requests.HTTPError as erro:
+        if erro.response is not None and erro.response.status_code == 404:
+            return False
+        raise
+
+
+def resolver_ano_mais_recente_disponivel(
+    diretorio_cache: Path = DATA_RAW_DIR,
+    hoje: datetime | None = None,
+    forcar_atualizacao: bool = False,
+) -> int:
+    """Detecção do ano mais recente do DFP da CVM disponível — nível
+    ARQUIVO (existe zip pra esse ano?), não nível empresa (uma empresa
+    específica pode não ter entregado ainda mesmo com o zip do ano já
+    publicado — isso é resolvido depois, por ticker, em
+    `obter_fluxo_caixa_livre_com_fallback`).
+
+    Ano candidato = ano corrente - 1 (o último exercício fiscal que já
+    deveria ter fechado). Se a CVM ainda não publicou o zip desse ano
+    (404 — comum na janela jan-mar, antes do prazo legal de entrega da
+    DFP), cai pro ano anterior inteiro, sem tentar de novo.
+
+    Chamada uma vez só por execução (não por ticker) — o resultado é
+    reaproveitado entre todas as empresas consultadas na mesma sessão/
+    rodada do screener, exatamente como o zip em si já é.
+
+    `hoje` é injetável (default `datetime.now()`) pra testes simularem a
+    janela de transição jan-mar sem depender do relógio real."""
+    hoje = hoje or datetime.now()
+    ano_candidato = hoje.year - 1
+    if _zip_ano_disponivel(ano_candidato, diretorio_cache, forcar_atualizacao):
+        return ano_candidato
+    return ano_candidato - 1
+
+
+def obter_fluxo_caixa_livre_com_fallback(
+    cnpj: str,
+    ano_mais_recente: int,
+    anos_historico_crescimento: int,
+    usar_cache: bool = True,
+    forcar_atualizacao: bool = False,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> dict:
+    """FCF com detecção de ano por EMPRESA — o nível seguinte ao de
+    `resolver_ano_mais_recente_disponivel` (que só garante que o zip do ano
+    mais recente existe, não que uma empresa específica já entregou a
+    demonstração nele).
+
+    Tenta `ano_mais_recente` pra essa empresa; se ela ainda não aparece
+    nesse zip (`CnpjNaoEncontrado` — não entregou a DFP daquele exercício
+    ainda, comum bem no início da janela jan-mar mesmo com o zip do ano já
+    publicado), cai um ano só pra ELA, sem afetar as demais empresas
+    consultadas com `ano_mais_recente`. O ano-base do crescimento
+    (`fcf_ha_n_anos`) anda junto com o ano efetivamente usado, sempre
+    mantendo o intervalo de `anos_historico_crescimento` anos entre os dois
+    pontos usados na CAGR — não fica preso a `ano_mais_recente -
+    anos_historico_crescimento` se o ano atual caiu.
+
+    `ContaFluxoCaixaNaoEncontrada` (empresa entregou a demonstração, mas as
+    contas 6.01/6.02 não estão no formato esperado) NÃO dispara esse
+    fallback — é sinal de mudança de layout/parsing, não de "ainda não
+    publicado", e cair pro ano anterior nesse caso esconderia um erro real
+    atrás de um número (de outro ano) que parece válido. Propaga, como
+    sempre propagou.
+
+    Se a empresa também não aparecer no ano de fallback, a exceção
+    (`CnpjNaoEncontrado` ou `ContaFluxoCaixaNaoEncontrada`) propaga
+    normalmente pro chamador, que já trata os dois casos como "FCD não
+    aplicável" com o motivo correspondente."""
+    try:
+        resultado_atual = obter_fluxo_caixa_livre(
+            cnpj, ano_mais_recente, usar_cache, forcar_atualizacao, diretorio_cache
+        )
+        ano_utilizado = ano_mais_recente
+    except CnpjNaoEncontrado:
+        ano_utilizado = ano_mais_recente - 1
+        resultado_atual = obter_fluxo_caixa_livre(
+            cnpj, ano_utilizado, usar_cache, forcar_atualizacao, diretorio_cache
+        )
+
+    ano_base = ano_utilizado - anos_historico_crescimento
+    try:
+        resultado_base = obter_fluxo_caixa_livre(
+            cnpj, ano_base, usar_cache, forcar_atualizacao, diretorio_cache
+        )
+        fcf_ha_n_anos = resultado_base["fcf_atual"]
+    except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
+        fcf_ha_n_anos = None
+
+    return {
+        "fcf_atual": resultado_atual["fcf_atual"],
+        "fcf_ha_n_anos": fcf_ha_n_anos,
+        "ano_referencia_utilizado": ano_utilizado,
+        "ano_mais_recente_disponivel": ano_mais_recente,
+        "usou_fallback": ano_utilizado != ano_mais_recente,
+    }
 
 
 def obter_lucro_liquido(

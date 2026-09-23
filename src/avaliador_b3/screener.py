@@ -35,13 +35,13 @@ requisição real (decisão alinhada com o usuário antes de implementar).
 from __future__ import annotations
 
 import csv
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
 from avaliador_b3.config import (
-    ANO_REFERENCIA_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     AVISO_DESCONTO_EXTREMO,
     DATA_PROCESSED_DIR,
@@ -63,7 +63,8 @@ from avaliador_b3.ingest.crosswalk_cnpj import (
 from avaliador_b3.ingest.cvm import (
     CnpjNaoEncontrado,
     ContaFluxoCaixaNaoEncontrada,
-    obter_fluxo_caixa_livre,
+    obter_fluxo_caixa_livre_com_fallback,
+    resolver_ano_mais_recente_disponivel,
 )
 from avaliador_b3.ingest.fundamentus import (
     EstruturaPaginaMudou,
@@ -84,6 +85,18 @@ from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 
 CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
 
+
+class DeteccaoAnoCvmFalhouWarning(UserWarning):
+    """Categoria própria (não `UserWarning` genérico) pro aviso que
+    `rodar_screener` emite quando `resolver_ano_mais_recente_disponivel`
+    falha — permite que `app/main.py` capture especificamente ESSE aviso
+    (via `category=DeteccaoAnoCvmFalhouWarning`) e mostre na tela pra
+    quem clicou em "Rodar screener agora", sem confundir com os demais
+    `warnings.warn` que podem disparar na mesma rodada (ex: cache do zip
+    da CVM desatualizado em `ingest.cvm._baixar_zip_ano`), que devem
+    continuar indo só pro log, sem mudança de comportamento."""
+
+
 COLUNAS_RESULTADO = [
     "ticker",
     "sucesso",
@@ -95,6 +108,7 @@ COLUNAS_RESULTADO = [
     "graham_valor_justo",
     "bazin_preco_teto",
     "fcd_valor_justo",
+    "ano_referencia_fcd",
     "beta_utilizado",
     "aviso_desconto_extremo",
 ]
@@ -152,7 +166,8 @@ def _calcular_linha_ticker(
     historico_ibovespa_beta: pd.DataFrame | None,
     selic_meta: float | None,
     ipca_12m: float | None,
-    ano_referencia: int,
+    ano_mais_recente_fcd: int | None,
+    erro_deteccao_ano_fcd: str | None,
     diretorio_cache: Path,
 ) -> dict:
     """Roda o pipeline completo (Graham, Bazin, FCD, combinado) pra UM
@@ -214,21 +229,26 @@ def _calcular_linha_ticker(
     except EmissorNaoEncontrado:
         cnpj = None
 
-    fcf_atual = fcf_ha_n_anos = None
-    if cnpj:
+    # Detecção de ano por empresa (nível seguinte ao do ano mais recente
+    # disponível, que já vem resolvido — nível arquivo — de `rodar_screener`
+    # e é reaproveitado entre todas as ações): se esse ticker específico
+    # ainda não apareceu no zip mais recente, cai um ano só pra ele, com o
+    # ano-base do crescimento andando junto. Ver
+    # ingest.cvm.obter_fluxo_caixa_livre_com_fallback.
+    fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
+    if cnpj and ano_mais_recente_fcd is not None:
         try:
-            fcf_atual = obter_fluxo_caixa_livre(
-                cnpj, ano_referencia, diretorio_cache=diretorio_cache
-            )["fcf_atual"]
+            resultado_fcf = obter_fluxo_caixa_livre_com_fallback(
+                cnpj,
+                ano_mais_recente_fcd,
+                ANOS_HISTORICO_CRESCIMENTO_FCD,
+                diretorio_cache=diretorio_cache,
+            )
+            fcf_atual = resultado_fcf["fcf_atual"]
+            fcf_ha_n_anos = resultado_fcf["fcf_ha_n_anos"]
+            ano_referencia_fcd = resultado_fcf["ano_referencia_utilizado"]
         except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
-            fcf_atual = None
-        try:
-            ano_anterior = ano_referencia - ANOS_HISTORICO_CRESCIMENTO_FCD
-            fcf_ha_n_anos = obter_fluxo_caixa_livre(
-                cnpj, ano_anterior, diretorio_cache=diretorio_cache
-            )["fcf_atual"]
-        except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
-            fcf_ha_n_anos = None
+            fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
 
     resultado_graham = calcular_valor_justo_graham(lpa, vpa)
     resultado_bazin = (
@@ -240,7 +260,22 @@ def _calcular_linha_ticker(
             "motivo_nao_aplicavel": "Histórico de dividendos indisponível.",
         }
     )
-    if selic_meta is not None and ipca_12m is not None:
+    # A detecção do ano falhando (CVM fora do ar, timeout, etc. — ver
+    # rodar_screener) tem prioridade sobre o motivo genérico de "FCF
+    # indisponível" que calcular_valor_justo_fcd devolveria com
+    # fcf_atual=None: sem essa checagem explícita, a causa real (detecção
+    # do ano quebrada) ficava indistinguível de uma empresa que
+    # simplesmente não tem FCD na CVM — mascarando um bug de
+    # infraestrutura atrás de um motivo que parece só "sem dado".
+    if ano_mais_recente_fcd is None and erro_deteccao_ano_fcd is not None and cnpj:
+        resultado_fcd = {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": (
+                f"Detecção do ano mais recente da CVM falhou: {erro_deteccao_ano_fcd}"
+            ),
+        }
+    elif selic_meta is not None and ipca_12m is not None:
         resultado_fcd = calcular_valor_justo_fcd(
             fcf_atual=fcf_atual,
             numero_acoes=numero_acoes,
@@ -279,6 +314,7 @@ def _calcular_linha_ticker(
         "graham_valor_justo": resultado_graham.get("valor_justo"),
         "bazin_preco_teto": resultado_bazin.get("preco_teto"),
         "fcd_valor_justo": resultado_fcd.get("valor_justo"),
+        "ano_referencia_fcd": ano_referencia_fcd if resultado_fcd["aplicavel"] else None,
         "beta_utilizado": resultado_fcd.get("beta_utilizado"),
         "aviso_desconto_extremo": _aviso_desconto_extremo(desconto_percentual),
     }
@@ -286,7 +322,7 @@ def _calcular_linha_ticker(
 
 def rodar_screener(
     tickers: list[str] | None = None,
-    ano_referencia: int = ANO_REFERENCIA_FCD,
+    ano_mais_recente_fcd: int | None = None,
     diretorio_cache: Path = DATA_RAW_DIR,
     caminho_saida: Path = CAMINHO_SAIDA_PADRAO,
 ) -> pd.DataFrame:
@@ -296,7 +332,15 @@ def rodar_screener(
     no fim).
 
     `tickers` sobrescreve o universo do Ibovespa (útil pra rodar um
-    subconjunto, ex: em teste). Grava incrementalmente em `caminho_saida`
+    subconjunto, ex: em teste). `ano_mais_recente_fcd` sobrescreve a
+    detecção automática do ano mais recente do DFP da CVM disponível —
+    nível ARQUIVO, ver `ingest.cvm.resolver_ano_mais_recente_disponivel`;
+    `None` (padrão) detecta em tempo de execução, chamado uma vez só e
+    reaproveitado entre todas as ações. Cada ação ainda resolve seu
+    PRÓPRIO ano por cima disso — nível EMPRESA, ver `ingest.cvm.
+    obter_fluxo_caixa_livre_com_fallback` — caindo um ano só pra quem
+    ainda não apareceu no zip mais recente, sem afetar as demais. Grava
+    incrementalmente em `caminho_saida`
     durante o processamento — uma linha por ação, assim que calculada, não
     só no final — mas nessa hora ainda na ordem de processamento (universo
     do Ibovespa, alfabética), não por desconto. Depois que o loop termina,
@@ -324,6 +368,30 @@ def rodar_screener(
     except Exception:
         selic_meta = ipca_12m = None
 
+    # Falha aqui é global (afeta o FCD de TODAS as ações da rodada, não uma
+    # linha específica) — por isso o aviso é emitido uma vez aqui, não por
+    # ticker. `erro_deteccao_ano_fcd` também alimenta o motivo_nao_
+    # aplicavel do FCD em _calcular_linha_ticker, pros casos em que ele
+    # decide a coluna "erro" da linha (Graham/Bazin também não aplicáveis)
+    # — mas isso sozinho não é visível se Graham OU Bazin funcionarem pra
+    # alguma ação, daí o aviso global garantir que a causa nunca fique
+    # silenciosa mesmo assim.
+    erro_deteccao_ano_fcd: str | None = None
+    if ano_mais_recente_fcd is None:
+        try:
+            ano_mais_recente_fcd = resolver_ano_mais_recente_disponivel(
+                diretorio_cache=diretorio_cache
+            )
+        except Exception as erro:
+            ano_mais_recente_fcd = None
+            erro_deteccao_ano_fcd = str(erro)
+            warnings.warn(
+                f"Detecção do ano mais recente da CVM falhou — o FCD de todas as "
+                f"ações desta rodada ficará indisponível: {erro_deteccao_ano_fcd}",
+                category=DeteccaoAnoCvmFalhouWarning,
+                stacklevel=2,
+            )
+
     caminho_saida.parent.mkdir(parents=True, exist_ok=True)
     linhas: list[dict] = []
 
@@ -339,7 +407,8 @@ def rodar_screener(
                     historico_ibovespa_beta=historico_ibovespa_beta,
                     selic_meta=selic_meta,
                     ipca_12m=ipca_12m,
-                    ano_referencia=ano_referencia,
+                    ano_mais_recente_fcd=ano_mais_recente_fcd,
+                    erro_deteccao_ano_fcd=erro_deteccao_ano_fcd,
                     diretorio_cache=diretorio_cache,
                 )
             except (TickerInvalido, FalhaFontePreco) as erro:

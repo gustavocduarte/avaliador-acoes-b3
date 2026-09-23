@@ -4,6 +4,13 @@ import pytest
 from avaliador_b3 import screener
 from avaliador_b3.ingest.precos import TickerInvalido
 
+# Ano fixo usado pelos mocks de FCD abaixo — substitui screener.
+# ANO_REFERENCIA_FCD (removida em 2026-09-24, ver
+# docs/correcao-ano-fcd-2026-09-24.md), já que o ano agora é detectado em
+# tempo de execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não
+# uma constante.
+ANO_FCD_MOCK = 2025
+
 
 def _historico(fechamentos: list[float]) -> pd.DataFrame:
     datas = pd.date_range("2026-01-01", periods=len(fechamentos), freq="D")
@@ -74,9 +81,18 @@ def ambiente_feliz(monkeypatch):
     monkeypatch.setattr(screener, "obter_dividendos", lambda ticker, **kw: _dividendos_vazio())
     monkeypatch.setattr(
         screener,
-        "obter_fluxo_caixa_livre",
-        lambda cnpj, ano, **kw: {
-            "fcf_atual": 1_000_000.0 if ano == screener.ANO_REFERENCIA_FCD else 800_000.0
+        "resolver_ano_mais_recente_disponivel",
+        lambda **kw: ANO_FCD_MOCK,
+    )
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: {
+            "fcf_atual": 1_000_000.0,
+            "fcf_ha_n_anos": 800_000.0,
+            "ano_referencia_utilizado": ano_mais_recente,
+            "ano_mais_recente_disponivel": ano_mais_recente,
+            "usou_fallback": False,
         },
     )
     monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: (0.10, 0.04))
@@ -98,11 +114,88 @@ def test_rodar_screener_processa_ticker_com_sucesso(ambiente_feliz, tmp_path):
     assert linha["preco_atual"] == pytest.approx(40.0)
     assert linha["graham_valor_justo"] is not None
     assert linha["fcd_valor_justo"] is not None
+    assert linha["ano_referencia_fcd"] == ANO_FCD_MOCK
     assert linha["bazin_preco_teto"] is None  # dividendos vazios -> não aplicável
     assert "graham" in linha["metodos_utilizados"]
     assert "fcd" in linha["metodos_utilizados"]
     assert "bazin" not in linha["metodos_utilizados"]
     assert linha["desconto_percentual"] is not None
+
+
+def test_rodar_screener_ano_referencia_fcd_fica_nulo_quando_fcd_nao_aplicavel(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # FCD "não aplicável" por segmento (ver config.SEGMENTOS_FCD_NAO_
+    # APLICAVEL) não deve deixar um ano "órfão" na coluna nova — mesmo
+    # padrão de fcd_valor_justo, que já fica None nesse caso.
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: {"cnpj": f"CNPJ-{ticker}", "segmento_setorial": "Bancos"},
+    )
+
+    resultado = screener.rodar_screener(
+        tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+    )
+
+    linha = resultado.iloc[0]
+    assert linha["fcd_valor_justo"] is None
+    assert linha["ano_referencia_fcd"] is None
+
+
+def test_rodar_screener_avisa_globalmente_quando_deteccao_do_ano_falha(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Falha na detecção é GLOBAL (afeta o FCD de todas as ações da rodada,
+    # não uma linha específica) — por isso o sinal é um aviso da rodada
+    # inteira, não uma coluna por ticker. Sem isso, a causa ficava
+    # completamente silenciosa: cada linha só mostrava fcd_valor_justo
+    # vazio, indistinguível de "essa empresa não tem FCD na CVM".
+    def resolver_falso(**kw):
+        raise RuntimeError("CVM fora do ar (simulado)")
+
+    monkeypatch.setattr(screener, "resolver_ano_mais_recente_disponivel", resolver_falso)
+
+    with pytest.warns(screener.DeteccaoAnoCvmFalhouWarning, match="Detecção do ano mais recente"):
+        resultado = screener.rodar_screener(
+            tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+        )
+
+    linha = resultado.iloc[0]
+    assert linha["fcd_valor_justo"] is None
+    assert linha["ano_referencia_fcd"] is None
+    # Nada derrubou a rodada -- o resto da linha continua calculado.
+    assert linha["sucesso"]
+    assert linha["graham_valor_justo"] is not None
+
+
+def test_calcular_linha_ticker_erro_deteccao_ano_fcd_nao_derruba_o_calculo(
+    ambiente_feliz, tmp_path
+):
+    # calcular_valor_combinado sempre usa sua PRÓPRIA mensagem genérica
+    # quando nada é aplicável ("Nenhum dos três métodos...") — o motivo
+    # específico do FCD nunca vaza pra "erro" da linha, mesmo aqui. Por
+    # isso o sinal de verdade pra essa falha é o aviso global em
+    # rodar_screener (ver teste acima), não esta coluna; este teste só
+    # garante que passar erro_deteccao_ano_fcd não quebra o cálculo em
+    # si (fica "não aplicável" graciosamente, como qualquer outra causa).
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=None,
+        erro_deteccao_ano_fcd="CVM fora do ar (simulado)",
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["sucesso"] is True
+    assert linha["fcd_valor_justo"] is None
+    assert linha["ano_referencia_fcd"] is None
+    # Graham continua aplicável normalmente — a falha de detecção do ano
+    # não derruba os outros métodos.
+    assert linha["graham_valor_justo"] is not None
 
 
 def test_rodar_screener_grava_incrementalmente_no_csv(ambiente_feliz, tmp_path):
@@ -243,7 +336,8 @@ def test_calcular_linha_ticker_degrada_graciosamente_quando_fundamentus_falha(
         historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
         selic_meta=0.10,
         ipca_12m=0.04,
-        ano_referencia=screener.ANO_REFERENCIA_FCD,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
         diretorio_cache=tmp_path,
     )
 
@@ -301,7 +395,8 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_positivo(
         historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
         selic_meta=0.10,
         ipca_12m=0.04,
-        ano_referencia=screener.ANO_REFERENCIA_FCD,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
         diretorio_cache=tmp_path,
     )
 
@@ -331,7 +426,8 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_negativo(
         historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
         selic_meta=0.10,
         ipca_12m=0.04,
-        ano_referencia=screener.ANO_REFERENCIA_FCD,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
         diretorio_cache=tmp_path,
     )
 
@@ -359,7 +455,8 @@ def test_calcular_linha_ticker_nao_sinaliza_desconto_normal(ambiente_feliz, tmp_
         historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
         selic_meta=0.10,
         ipca_12m=0.04,
-        ano_referencia=screener.ANO_REFERENCIA_FCD,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
         diretorio_cache=tmp_path,
     )
 

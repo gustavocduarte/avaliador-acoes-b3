@@ -252,6 +252,25 @@ URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_c
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
+# Bug real encontrado em 2026-09-24 (ver docs/correcao-ano-fcd-2026-09-24.md):
+# ingest.cvm._baixar_zip_ano cacheava o zip anual da CVM pra sempre, sem
+# prazo de validade — "existe no disco?" era a única checagem. Isso é
+# inofensivo pra anos fechados (a CVM não reabre exercícios encerrados,
+# então o arquivo não muda mais), mas quebra o ano ainda em preenchimento:
+# a CVM atualiza esse mesmo zip ao longo do ano conforme empresas entregam
+# a DFP (inclusive fora do prazo), então um zip baixado cedo (ex: na janela
+# jan-mar, ainda incompleto) ficava preso pra sempre localmente — empresas
+# que entregassem depois nunca mais apareceriam nesse zip aqui, mesmo com
+# a CVM já tendo atualizado o arquivo remoto há meses.
+#
+# Prazo de validade de 7 dias (escolha redonda, não uma medição — a DFP não
+# muda hora a hora, então checar 1x/semana já evita ficar preso por meses,
+# sem bater na rede a cada busca) que só vale pro(s) ano(s) ainda em
+# preenchimento (`ano >= ano corrente - 1` em ingest.cvm._cache_zip_
+# expirado); anos fechados continuam com cache permanente, sem custo de
+# rede repetido à toa.
+DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE = 7
+
 # Códigos de conta da DFC (Demonstração de Fluxo de Caixa) usados pro Fluxo
 # de Caixa Livre (FCF) do FCD — ver a justificativa completa (por que
 # CFO+CFI, e a checagem de estabilidade desses dois códigos entre
@@ -387,12 +406,30 @@ ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 # conhecida, não decidida aqui.
 SEGMENTOS_FCD_NAO_APLICAVEL = {"Bancos"}
 
-# Ano de referência pro FCD: 2025 ainda não estava publicado pela CVM na
-# época em que isso foi escrito (confirmado no adapter da CVM), então usa
-# 2024 como padrão fixo por ora — trocar por uma detecção automática do
-# ano mais recente disponível é um refinamento futuro. Compartilhado entre
-# app/main.py e screener.py, pra não divergir entre os dois.
-ANO_REFERENCIA_FCD = 2024
+# Correção em 2026-09-24 (terceiro achado da mesma revisão externa): o ano
+# de referência do FCD era uma constante fixa aqui, ANO_REFERENCIA_FCD =
+# 2024, com a justificativa original de que "2025 ainda não estava
+# publicado pela CVM na época em que isso foi escrito (confirmado no
+# adapter da CVM)". Essa premissa ficou desatualizada — confirmado em
+# 2026-09-24 que o zip de 2025 já estava disponível e completo (FCF
+# calculável, comparado ano a ano, pra PETR4/VALE3/WEGE3/RADL3), então o
+# valor fixo defasava o FCD de TODAS as empresas por um exercício inteiro
+# sem nenhum aviso na tela — ver docs/correcao-ano-fcd-2026-09-24.md.
+#
+# Substituído por detecção automática em dois níveis, sem constante fixa
+# aqui (cada busca resolve o ano em tempo de execução):
+# - Nível arquivo (`ingest.cvm.resolver_ano_mais_recente_disponivel`):
+#   existe zip da CVM pro ano corrente - 1? Se a CVM ainda não publicou
+#   (404 — janela jan-mar, antes do prazo legal de entrega da DFP), cai
+#   pro ano anterior inteiro. Chamado uma vez por execução, reaproveitado
+#   entre todas as empresas, mesmo padrão do zip em si.
+# - Nível empresa (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`): se
+#   uma empresa específica ainda não aparece no zip mais recente
+#   (`CnpjNaoEncontrado` — não entregou a DFP daquele exercício ainda),
+#   cai um ano só pra ELA, sem afetar as demais; o ano-base do
+#   crescimento anda junto, mantendo sempre o intervalo de
+#   ANOS_HISTORICO_CRESCIMENTO_FCD anos. `ContaFluxoCaixaNaoEncontrada`
+#   (layout mudou) NÃO dispara esse fallback — propaga como erro.
 
 # Taxa de crescimento explícita: CAGR do FCF entre o ano de referência e
 # `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes (dois pontos, não a série
