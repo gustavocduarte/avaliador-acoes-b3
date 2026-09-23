@@ -350,3 +350,57 @@ def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_dedu
     valor_justo_esperado = (valor_presente_explicito + valor_presente_terminal) / 100.0
 
     assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)
+
+
+# --- Correção de 2026-09-24: FCD "não aplicável" pra instituições --------
+# financeiras (segmento "Bancos") — segundo achado da mesma revisão externa
+# de 2026-09-23. Critério é segmento_setorial (crosswalk_cnpj, campo oficial
+# da B3), não divida_liquida is None — ver justificativa completa em
+# config.SEGMENTOS_FCD_NAO_APLICAVEL.
+
+
+def test_calcular_valor_justo_fcd_banco_e_nao_aplicavel():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        segmento_setorial="Bancos",
+    )
+    assert resultado["aplicavel"] is False
+    assert resultado["valor_justo"] is None
+    assert resultado["motivo_nao_aplicavel"] == fcd.MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA
+
+
+def test_calcular_valor_justo_fcd_seguradora_continua_aplicavel():
+    # Só "Bancos" é excluído — seguradoras têm dívida líquida reportada
+    # normalmente pelo Fundamentus (confirmado na investigação que
+    # motivou essa correção) e não compartilham a mesma lacuna de dado
+    # nem, necessariamente, a mesma distorção econômica dos bancos.
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        segmento_setorial="Seguradoras",
+    )
+    assert resultado["aplicavel"] is True
+    assert resultado["valor_justo"] is not None
+
+
+def test_calcular_valor_justo_fcd_segmento_none_continua_aplicavel():
+    # segmento_setorial=None (não resolvido — ex: falha ao buscar o
+    # catálogo de emissores) segue o cálculo normal, não é tratado como
+    # exclusão.
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        segmento_setorial=None,
+    )
+    assert resultado["aplicavel"] is True
+    assert resultado["valor_justo"] is not None

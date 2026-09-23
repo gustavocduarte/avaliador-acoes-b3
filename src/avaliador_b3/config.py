@@ -342,15 +342,50 @@ ANOS_HISTORICO_MINIMO_BAZIN = 5
 # `modelos.fcd.calcular_valor_justo_fcd`); dívida líquida negativa
 # (posição de caixa líquido) soma ao valor normalmente, mesma convenção
 # de `calcular_valor_mercado_e_firma`, sem caso especial. Quando a
-# dívida líquida não está disponível pra uma empresa (mesmo campo
-# ausente pra bancos), o cálculo cai de volta na aproximação antiga só
-# pra esse caso específico, com um aviso explícito na UI
+# dívida líquida não está disponível pra uma empresa, o cálculo cai de
+# volta na aproximação antiga só pra esse caso específico, com um aviso
+# explícito na UI
 # (`divida_liquida_deduzida=False` no retorno da função).
 #
 # Dividido pelo número de ações (Fundamentus, campo "Nro. Ações") pra
 # chegar num valor justo por ação comparável a Graham/Bazin.
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
+
+# Correção em 2026-09-24 (segundo achado da mesma revisão externa, um dia
+# depois da correção EV->Equity acima): FCD "não aplicável" pra
+# instituições financeiras, pelo segmento setorial oficial da B3
+# (`ingest.crosswalk_cnpj`, campo "segment" do catálogo de emissores) —
+# NÃO por `divida_liquida is None`, que é lacuna de UMA fonte de dado
+# (Fundamentus não reporta "Dív. Líquida" pra banco), não uma
+# classificação de tipo de negócio. Os dois coincidiam por acaso no
+# universo do Ibovespa em 2026-09-24 (os 6 tickers com
+# `divida_liquida=None` eram exatamente os 6 do segmento "Bancos"), mas
+# são conceitos diferentes — usar a lacuna de dado como critério
+# quebraria silenciosamente se o Fundamentus passasse a reportar esse
+# campo pra bancos, ou parasse de reportar pra alguma não-financeira.
+#
+# Argumento econômico: a metodologia do FCD (FCF via CFO+CFI -> WACC ->
+# Enterprise Value -> - dívida líquida -> Equity Value) pressupõe que
+# dívida é financiamento externo à operação. Em bancos, dívida e
+# depósitos SÃO a própria operação (captação pra emprestar), não
+# financiamento dela — e o CFO oscila com a expansão/contração da
+# carteira de crédito, não com geração de valor. A conta não tem
+# interpretação econômica válida nesse setor. Graham e Bazin continuam
+# aplicáveis normalmente (não dependem de estrutura de capital nem de
+# fluxo de caixa operacional do mesmo jeito).
+#
+# Escopo deliberadamente restrito a "Bancos": seguradoras (BBSE3, CXSE3,
+# PSSA3) e outras financeiras (B3SA3 — bolsa/infraestrutura de mercado;
+# ITSA4 — holding cujo principal ativo é participação no Itaú, mas não é
+# ela mesma um banco) ficaram de fora por decisão deliberada, não
+# esquecimento: diferente dos bancos, essas empresas TÊM dívida líquida
+# reportada pelo Fundamentus normalmente (confirmado uma a uma antes
+# dessa decisão), então não compartilham a mesma lacuna de dado nem,
+# necessariamente, a mesma distorção — se o FCD também não faz sentido
+# econômico pra elas é uma questão em aberto, registrada como limitação
+# conhecida, não decidida aqui.
+SEGMENTOS_FCD_NAO_APLICAVEL = {"Bancos"}
 
 # Ano de referência pro FCD: 2025 ainda não estava publicado pela CVM na
 # época em que isso foi escrito (confirmado no adapter da CVM), então usa

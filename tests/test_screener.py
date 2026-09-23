@@ -58,7 +58,17 @@ def ambiente_feliz(monkeypatch):
     )
     monkeypatch.setattr(screener, "obter_catalogo_emissores", lambda **kw: pd.DataFrame())
     monkeypatch.setattr(
-        screener, "resolver_cnpj", lambda ticker, catalogo: {"cnpj": f"CNPJ-{ticker}"}
+        screener,
+        "resolver_cnpj",
+        # segmento_setorial genérico (não-financeiro) por padrão — os
+        # testes de exclusão do FCD por segmento têm sua própria fixture
+        # em test_fcd.py; aqui só precisa não bater com
+        # SEGMENTOS_FCD_NAO_APLICAVEL, pra não mudar o comportamento que
+        # esses testes já esperavam.
+        lambda ticker, catalogo: {
+            "cnpj": f"CNPJ-{ticker}",
+            "segmento_setorial": "Setor Genérico",
+        },
     )
     monkeypatch.setattr(screener, "obter_indicadores", lambda ticker, **kw: _indicadores())
     monkeypatch.setattr(screener, "obter_dividendos", lambda ticker, **kw: _dividendos_vazio())

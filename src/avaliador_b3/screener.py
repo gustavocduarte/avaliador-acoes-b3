@@ -202,8 +202,15 @@ def _calcular_linha_ticker(
         dividendos = None
 
     cnpj = None
+    segmento_setorial = None
     try:
-        cnpj = resolver_cnpj(ticker, catalogo_emissores)["cnpj"]
+        registro_cnpj = resolver_cnpj(ticker, catalogo_emissores)
+        cnpj = registro_cnpj["cnpj"]
+        # Mesmo registro que já traz o cnpj — sem busca extra. Usado só
+        # pra decidir se o FCD se aplica (ver config.SEGMENTOS_FCD_NAO_
+        # APLICAVEL), instituição financeira não tem interpretação
+        # econômica válida pra CFO+CFI descontado pelo WACC.
+        segmento_setorial = registro_cnpj["segmento_setorial"]
     except EmissorNaoEncontrado:
         cnpj = None
 
@@ -243,6 +250,7 @@ def _calcular_linha_ticker(
             divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
             beta=beta,
             divida_liquida=divida_liquida,
+            segmento_setorial=segmento_setorial,
         )
     else:
         resultado_fcd = {

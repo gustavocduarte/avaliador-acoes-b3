@@ -425,13 +425,19 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     assert not _metrica_por_label(at, "Bazin (preço teto)").delta
 
 
-def _preparar_fcd_aplicavel(monkeypatch, divida_liquida: float | None) -> None:
+def _preparar_fcd_aplicavel(
+    monkeypatch,
+    divida_liquida: float | None,
+    segmento_setorial: str = "Petróleo, Gás e Biocombustíveis",
+) -> None:
     """Configura mocks pro FCD ficar 'aplicável' de verdade — diferente
     dos outros testes deste arquivo (que mockam `obter_catalogo_
     emissores` vazio via `_bloquear_buscas_de_rede_por_ticker`, o que faz
     `resolver_cnpj` sempre falhar e o FCD ficar sempre 'não aplicável'
     antes de chegar no cálculo), aqui `resolver_cnpj` e `obter_fluxo_
-    caixa_livre` são mockados com sucesso, de propósito."""
+    caixa_livre` são mockados com sucesso, de propósito. `segmento_
+    setorial` default é não-financeiro (o "aplicável" no nome da função
+    só vale pra esse caso) — passar "Bancos" testa a exclusão."""
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -465,7 +471,7 @@ def _preparar_fcd_aplicavel(monkeypatch, divida_liquida: float | None) -> None:
             "cnpj": "33000167000101",
             "codigo_cvm": "9512",
             "nome_empresa": "PETROBRAS",
-            "segmento_setorial": "Petróleo, Gás e Biocombustíveis",
+            "segmento_setorial": segmento_setorial,
         },
     )
     monkeypatch.setattr(
@@ -501,8 +507,54 @@ def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
 
     avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
     assert len(avisos_divida) == 1
-    assert "comum em bancos" in avisos_divida[0]
     assert "tende a ficar mais alto" in avisos_divida[0]
+
+
+def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):
+    # Correção de 2026-09-24: segmento "Bancos" -> FCD "não aplicável",
+    # mesmo padrão de Graham/Bazin quando não se aplicam (não é erro nem
+    # exceção, é um resultado explícito). Bazin mockado com histórico
+    # válido de dividendo (diferente da fixture padrão de
+    # _preparar_fcd_aplicavel, que deixa obter_dividendos falhando) pra
+    # confirmar que o combinado vira a média de Graham+Bazin só, sem FCD.
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+
+    # Um pagamento em 1/dez de cada um dos últimos 5 anos civis — sem
+    # lacuna, e o mais recente dentro dos últimos 12 meses (mesmo padrão
+    # de tests/test_bazin.py), pra Bazin ficar "aplicável" de verdade.
+    ano_atual = pd.Timestamp.now().year
+    dividendos_validos = pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [1.0] * 5,
+        }
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: dividendos_validos,
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+
+    metrica_fcd = _metrica_por_label(at, "FCD")
+    assert metrica_fcd.value == "—"
+
+    avisos_fcd = [c.value for c in at.caption if "Instituição financeira" in c.value]
+    assert len(avisos_fcd) == 1
+    assert "Graham e Bazin continuam válidos" in avisos_fcd[0]
+
+    # Graham: raiz(22,5 × 5 × 20) ≈ 47,4342; Bazin: 1,0/0,06 ≈ 16,6667.
+    # Combinado sem FCD = média dos dois ≈ 32,05 — bem diferente do que
+    # sairia se o FCD (não aplicável aqui) entrasse na conta.
+    valor_combinado_esperado = ((22.5 * 5 * 20) ** 0.5 + 1.0 / 0.06) / 2
+    texto_combinado = _metrica_por_label(at, "Valor combinado").value
+    valor_combinado_exibido = float(
+        texto_combinado.replace("R$ ", "").replace(".", "").replace(",", ".")
+    )
+    assert valor_combinado_exibido == pytest.approx(valor_combinado_esperado, abs=0.01)
 
 
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):

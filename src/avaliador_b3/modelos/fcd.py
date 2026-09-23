@@ -13,10 +13,13 @@ disponível.
 Diferente de Graham/Bazin, o FCD é pensado pra ser "quase sempre
 aplicável" — inclusive pra empresa com prejuízo/FCF negativo atual, que só
 faz o valor calculado sair baixo ou negativo (um resultado válido, não um
-erro). Só é "não aplicável" quando falta dado essencial pra sequer montar
-a conta: FCF atual ausente na CVM, número de ações ausente no Fundamentus,
-ou um WACC calculado que não é positivo (cenário macro fora do esperado
-pro modelo).
+erro). É "não aplicável" quando falta dado essencial pra sequer montar a
+conta (FCF atual ausente na CVM, número de ações ausente no Fundamentus,
+WACC calculado que não é positivo) ou quando a empresa é uma instituição
+financeira (segmento "Bancos", ver `config.SEGMENTOS_FCD_NAO_APLICAVEL`) —
+nesse caso a metodologia (CFO+CFI descontado pelo WACC) não tem
+interpretação econômica válida, já que dívida/depósitos são a própria
+operação do banco, não financiamento externo.
 
 Premissas de WACC/crescimento documentadas e justificadas em config.py:
 - Custo de capital próprio via CAPM (Selic + Beta × prêmio de risco Brasil).
@@ -45,9 +48,18 @@ from avaliador_b3.config import (
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
     PREMIO_RISCO_MERCADO_BRASIL,
+    SEGMENTOS_FCD_NAO_APLICAVEL,
     SPREAD_CREDITO_PADRAO,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
+)
+
+MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA = (
+    "Instituição financeira: o FCD mede valor pela geração de caixa "
+    "operacional descontada pelo custo de capital, mas em bancos a dívida e "
+    "os depósitos são a própria operação, e o fluxo de caixa varia com a "
+    "expansão do crédito, não com a geração de valor. Graham e Bazin "
+    "continuam válidos."
 )
 
 
@@ -117,6 +129,7 @@ def calcular_valor_justo_fcd(
     divida_liquida_sobre_patrimonio: float | None = None,
     beta: float | None = None,
     divida_liquida: float | None = None,
+    segmento_setorial: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -130,7 +143,18 @@ def calcular_valor_justo_fcd(
     `divida_liquida_sobre_patrimonio`, que é a RAZÃO usada só pro peso de
     dívida no WACC); `selic_meta`/`ipca_12m` de `ingest.bcb_sgs`; `beta`
     de `empresa.comportamento.calcular_beta` (pode vir None — cai pra
-    `BETA_PADRAO` dentro de `calcular_wacc`, não impede o FCD de rodar).
+    `BETA_PADRAO` dentro de `calcular_wacc`, não impede o FCD de rodar);
+    `segmento_setorial` de `ingest.crosswalk_cnpj.resolver_cnpj` (campo
+    "segment" do catálogo de emissores da B3 — ver justificativa completa
+    do critério e do escopo em `config.SEGMENTOS_FCD_NAO_APLICAVEL`).
+
+    Se `segmento_setorial` estiver em `config.SEGMENTOS_FCD_NAO_APLICAVEL`
+    (hoje só "Bancos"), devolve "não aplicável" antes de qualquer cálculo
+    — a metodologia (FCF via CFO+CFI descontado pelo WACC) não tem
+    interpretação econômica válida pra instituição financeira, onde
+    dívida/depósitos são a própria operação, não financiamento externo.
+    `segmento_setorial=None` (não resolvido) segue o cálculo normal, não
+    é tratado como exclusão.
 
     O fluxo de caixa livre descontado (`valor_total`) é, por construção,
     Enterprise Value — valor da empresa como um todo, dívida incluída —
@@ -142,10 +166,11 @@ def calcular_valor_justo_fcd(
     caixa que dívida) funciona corretamente com subtração normal, sem
     caso especial, mesma convenção de `calcular_valor_mercado_e_firma`
     (`valor_firma = valor_mercado + divida_liquida`, a operação inversa).
-    Quando `divida_liquida` é `None` (ausente — mesmo campo opcional que
-    falta pra bancos, ver `config.CAMPOS_FUNDAMENTUS_OPCIONAIS`), o FCD
-    continua aplicável, só sem a dedução — `divida_liquida_deduzida=False`
-    no retorno sinaliza esse caso pro chamador avisar na tela.
+    Quando `divida_liquida` é `None` (ausente), o FCD continua aplicável,
+    só sem a dedução — `divida_liquida_deduzida=False` no retorno
+    sinaliza esse caso pro chamador avisar na tela. Na prática, hoje isso
+    só acontece fora do segmento "Bancos" (banco nunca chega até aqui,
+    já é filtrado acima).
 
     Devolve um dict com `aplicavel` (bool), `valor_justo` (float ou None),
     `motivo_nao_aplicavel` (str ou None), `divida_liquida_deduzida` (bool)
@@ -153,6 +178,13 @@ def calcular_valor_justo_fcd(
     `taxa_crescimento_explicita`, `taxa_crescimento_perpetuidade`) para
     transparência do cálculo.
     """
+    if segmento_setorial in SEGMENTOS_FCD_NAO_APLICAVEL:
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA,
+        }
+
     if fcf_atual is None:
         return {
             "aplicavel": False,

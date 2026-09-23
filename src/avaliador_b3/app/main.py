@@ -416,8 +416,10 @@ def _cartao_metodo(
 
     `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD
     (ver modelos/fcd.py) — quando presente e `False`, mostra um aviso no
-    lugar de "Aplicável": o valor não teve dívida líquida deduzida
-    (dado ausente, comum em bancos), então aproxima Enterprise Value
+    lugar de "Aplicável": o valor não teve dívida líquida deduzida (dado
+    ausente pra essa empresa específica — desde 2026-09-24, banco nunca
+    chega mais aqui, já é "não aplicável" antes, ver
+    config.SEGMENTOS_FCD_NAO_APLICAVEL), então aproxima Enterprise Value
     como Equity Value em vez do valor real por ação."""
     if resultado["aplicavel"]:
         st.metric(
@@ -427,10 +429,9 @@ def _cartao_metodo(
         )
         if resultado.get("divida_liquida_deduzida") is False:
             st.caption(
-                "Dívida líquida indisponível pra essa empresa (comum em bancos, "
-                "ver \"Saúde financeira\") — sem ela pra deduzir, este valor não "
-                "desconta a dívida da empresa, então tende a ficar mais alto do "
-                "que se a dedução fosse possível."
+                "Dívida líquida indisponível pra essa empresa — sem ela pra "
+                "deduzir, este valor não desconta a dívida da empresa, então "
+                "tende a ficar mais alto do que se a dedução fosse possível."
             )
         else:
             st.caption("Aplicável")
@@ -739,6 +740,12 @@ with aba_analisar:
             indicadores, erro_indicadores = _buscar_indicadores_fundamentus(ticker)
             dividendos, erro_dividendos = _buscar_dividendos(ticker)
             cnpj, erro_cnpj = _buscar_cnpj(ticker)
+            # Buscado aqui (cedo, perto do cnpj) pra alimentar o FCD logo
+            # abaixo — não decide se o FCD se aplica com nenhum outro dado
+            # já buscado (ver config.SEGMENTOS_FCD_NAO_APLICAVEL), só o
+            # segmento setorial. "Comparação setorial" mais abaixo
+            # reaproveita esse mesmo resultado, não busca de novo.
+            segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
             selic_meta, ipca_12m, erro_macro = _buscar_macro()
             # Pro card "Correlação com fatores externos" mais abaixo — custo
             # parecido com o resto (mais duas séries de 2 anos e uma leitura
@@ -845,6 +852,7 @@ with aba_analisar:
                 divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
                 beta=beta,
                 divida_liquida=divida_liquida,
+                segmento_setorial=segmento_setorial,
             )
         else:
             resultado_fcd = {
@@ -905,11 +913,16 @@ with aba_analisar:
                 "custo de capital (WACC). Esse valor presente é o da empresa como um "
                 "todo, dívida incluída — por isso a dívida líquida é deduzida antes "
                 "de dividir pelo número de ações, chegando no valor que sobra pros "
-                "acionistas. Quando a dívida líquida não está disponível (comum em "
-                "bancos), o cálculo aproxima os dois, sem deduzir nada. É o único "
-                "dos três que funciona mesmo para empresas sem lucro no momento, já "
-                "que olha geração de caixa futura, não resultado contábil "
-                "passado.\n\n"
+                "acionistas; quando a dívida líquida não está disponível pra uma "
+                "empresa, o cálculo usa o valor da empresa inteira como aproximação, "
+                "sem deduzir nada, e mostra um aviso na tela. Não se aplica a bancos "
+                "— a dívida e os depósitos são a própria operação do banco, não "
+                "financiamento externo, então a "
+                "lógica de custo de capital do FCD não tem interpretação econômica "
+                "válida aí (Graham e Bazin continuam funcionando normalmente). Fora "
+                "esse caso, é o único dos três que funciona mesmo para empresas sem "
+                "lucro no momento, já que olha geração de caixa futura, não "
+                "resultado contábil passado.\n\n"
                 "**Valor combinado** — média simples apenas dos métodos que se aplicam "
                 "à empresa específica analisada, nunca uma média forçada dos três. Se "
                 "só um método for aplicável, o combinado é igual a esse método sozinho.\n\n"
@@ -1227,7 +1240,9 @@ with aba_analisar:
 
         with coluna_comparacao_setorial:
             st.subheader("Comparação setorial")
-            segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
+            # segmento_setorial/erro_segmento_setorial já buscados mais
+            # acima (perto do cnpj, pro FCD) — reaproveitado aqui, sem
+            # busca nova.
             if erro_segmento_setorial:
                 st.warning(f"Classificação setorial: {erro_segmento_setorial}")
             else:
