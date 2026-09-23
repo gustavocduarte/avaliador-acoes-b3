@@ -25,7 +25,11 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from avaliador_b3.config import ANOS_JANELA_CORRELACAO, TICKER_PETROLEO_BRENT
+from avaliador_b3.config import (
+    ANO_REFERENCIA_FCD,
+    ANOS_JANELA_CORRELACAO,
+    TICKER_PETROLEO_BRENT,
+)
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 
@@ -419,6 +423,86 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     assert metrica_graham.delta == "-5,1%"
 
     assert not _metrica_por_label(at, "Bazin (preço teto)").delta
+
+
+def _preparar_fcd_aplicavel(monkeypatch, divida_liquida: float | None) -> None:
+    """Configura mocks pro FCD ficar 'aplicável' de verdade — diferente
+    dos outros testes deste arquivo (que mockam `obter_catalogo_
+    emissores` vazio via `_bloquear_buscas_de_rede_por_ticker`, o que faz
+    `resolver_cnpj` sempre falhar e o FCD ficar sempre 'não aplicável'
+    antes de chegar no cálculo), aqui `resolver_cnpj` e `obter_fluxo_
+    caixa_livre` são mockados com sucesso, de propósito."""
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: {
+            "lpa": 5.0,
+            "vpa": 20.0,
+            "numero_acoes": 100.0,
+            "roe_percentual": 15.0,
+            "margem_liquida_percentual": 10.0,
+            "liquidez_corrente": 1.2,
+            "crescimento_receita_5a_percentual": 8.0,
+            "divida_liquida_sobre_patrimonio": 0.5,
+            "divida_liquida": divida_liquida,
+        },
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.resolver_cnpj",
+        lambda ticker, catalogo: {
+            "ticker": ticker,
+            "codigo_emissor": "PETR",
+            "cnpj": "33000167000101",
+            "codigo_cvm": "9512",
+            "nome_empresa": "PETROBRAS",
+            "segmento_setorial": "Petróleo, Gás e Biocombustíveis",
+        },
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
+        lambda cnpj, ano, **kw: {
+            "fcf_atual": 1_000_000.0 if ano == ANO_REFERENCIA_FCD else 800_000.0
+        },
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
+
+
+def test_fcd_nao_mostra_aviso_quando_divida_liquida_esta_disponivel(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != "—"
+
+    avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
+    assert avisos_divida == []
+
+
+def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != "—"
+
+    avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
+    assert len(avisos_divida) == 1
+    assert "comum em bancos" in avisos_divida[0]
+    assert "tende a ficar mais alto" in avisos_divida[0]
 
 
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):

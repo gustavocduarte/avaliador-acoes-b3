@@ -10,12 +10,23 @@ def _historico(fechamentos: list[float]) -> pd.DataFrame:
     return pd.DataFrame({"data": datas, "Close": fechamentos, "Volume": [1000] * len(fechamentos)})
 
 
-def _indicadores(lpa=5.0, vpa=20.0, numero_acoes=1000.0, divida_liquida_sobre_patrimonio=0.3):
+def _indicadores(
+    lpa=5.0,
+    vpa=20.0,
+    numero_acoes=1000.0,
+    divida_liquida_sobre_patrimonio=0.3,
+    divida_liquida=None,
+):
     return {
         "lpa": lpa,
         "vpa": vpa,
         "numero_acoes": numero_acoes,
         "divida_liquida_sobre_patrimonio": divida_liquida_sobre_patrimonio,
+        # None por padrão (não deduzida do FCD) — preserva os valores/
+        # descontos que os testes existentes já esperavam antes da
+        # correção de 2026-09-23; ver test_fcd.py pra cobertura da
+        # dedução em si.
+        "divida_liquida": divida_liquida,
     }
 
 

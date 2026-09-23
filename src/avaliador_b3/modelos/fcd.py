@@ -2,9 +2,13 @@
 
 Projeta o fluxo de caixa livre (FCF, ver `ingest.cvm.obter_fluxo_caixa_livre`
 e a justificativa em config.py) por `config.HORIZONTE_PROJECAO_FCD_ANOS`
-anos, mais uma perpetuidade (Gordon Growth), descontados pelo WACC. O
-resultado é dividido pelo número de ações (Fundamentus) pra chegar num
-valor justo por ação comparável a Graham/Bazin.
+anos, mais uma perpetuidade (Gordon Growth), descontados pelo WACC —
+resultado que é Enterprise Value (valor da empresa, dívida incluída), não
+Equity Value. Convertido pra Equity Value subtraindo a dívida líquida
+(Fundamentus) quando disponível, só então dividido pelo número de ações
+pra chegar num valor justo por ação comparável a Graham/Bazin — ver
+`calcular_valor_justo_fcd` pro caso em que a dívida líquida não está
+disponível.
 
 Diferente de Graham/Bazin, o FCD é pensado pra ser "quase sempre
 aplicável" — inclusive pra empresa com prejuízo/FCF negativo atual, que só
@@ -112,21 +116,42 @@ def calcular_valor_justo_fcd(
     fcf_ha_n_anos: float | None = None,
     divida_liquida_sobre_patrimonio: float | None = None,
     beta: float | None = None,
+    divida_liquida: float | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
     `fcf_atual`/`fcf_ha_n_anos` tipicamente vêm de
     `ingest.cvm.obter_fluxo_caixa_livre` (ano de referência e
-    `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes); `numero_acoes` e
-    `divida_liquida_sobre_patrimonio` de `ingest.fundamentus.
-    obter_indicadores`; `selic_meta`/`ipca_12m` de `ingest.bcb_sgs`; `beta`
+    `ANOS_HISTORICO_CRESCIMENTO_FCD` anos antes); `numero_acoes`,
+    `divida_liquida_sobre_patrimonio` e `divida_liquida` de
+    `ingest.fundamentus.obter_indicadores` (o mesmo campo "Dív. Líquida"
+    já usado em `empresa.valor_mercado.calcular_valor_mercado_e_firma` e
+    exibido em "Saúde financeira" — não confundir com
+    `divida_liquida_sobre_patrimonio`, que é a RAZÃO usada só pro peso de
+    dívida no WACC); `selic_meta`/`ipca_12m` de `ingest.bcb_sgs`; `beta`
     de `empresa.comportamento.calcular_beta` (pode vir None — cai pra
     `BETA_PADRAO` dentro de `calcular_wacc`, não impede o FCD de rodar).
 
+    O fluxo de caixa livre descontado (`valor_total`) é, por construção,
+    Enterprise Value — valor da empresa como um todo, dívida incluída —
+    não Equity Value (valor do patrimônio dos acionistas, que é o que
+    "valor justo por ação" deveria representar, pra ser comparável a
+    Graham/Bazin). Quando `divida_liquida` está disponível, ela é
+    subtraída de `valor_total` antes de dividir por `numero_acoes` —
+    dívida líquida negativa (empresa em posição de caixa líquido, mais
+    caixa que dívida) funciona corretamente com subtração normal, sem
+    caso especial, mesma convenção de `calcular_valor_mercado_e_firma`
+    (`valor_firma = valor_mercado + divida_liquida`, a operação inversa).
+    Quando `divida_liquida` é `None` (ausente — mesmo campo opcional que
+    falta pra bancos, ver `config.CAMPOS_FUNDAMENTUS_OPCIONAIS`), o FCD
+    continua aplicável, só sem a dedução — `divida_liquida_deduzida=False`
+    no retorno sinaliza esse caso pro chamador avisar na tela.
+
     Devolve um dict com `aplicavel` (bool), `valor_justo` (float ou None),
-    `motivo_nao_aplicavel` (str ou None) e, quando aplicável, as premissas
-    usadas (`wacc`, `beta_utilizado`, `taxa_crescimento_explicita`,
-    `taxa_crescimento_perpetuidade`) para transparência do cálculo.
+    `motivo_nao_aplicavel` (str ou None), `divida_liquida_deduzida` (bool)
+    e, quando aplicável, as premissas usadas (`wacc`, `beta_utilizado`,
+    `taxa_crescimento_explicita`, `taxa_crescimento_perpetuidade`) para
+    transparência do cálculo.
     """
     if fcf_atual is None:
         return {
@@ -176,10 +201,18 @@ def calcular_valor_justo_fcd(
 
     valor_total = valor_presente_explicito + valor_presente_terminal
 
+    # Enterprise Value -> Equity Value: subtrai dívida líquida ANTES de
+    # dividir por número de ações. Negativa (caixa líquido) soma ao valor
+    # normalmente, sem caso especial — ver docstring da função.
+    divida_liquida_deduzida = divida_liquida is not None
+    if divida_liquida_deduzida:
+        valor_total -= divida_liquida
+
     return {
         "aplicavel": True,
         "valor_justo": valor_total / numero_acoes,
         "motivo_nao_aplicavel": None,
+        "divida_liquida_deduzida": divida_liquida_deduzida,
         "wacc": wacc,
         "beta_utilizado": beta_utilizado,
         "taxa_crescimento_explicita": taxa_crescimento,

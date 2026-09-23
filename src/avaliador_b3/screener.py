@@ -190,6 +190,10 @@ def _calcular_linha_ticker(
     divida_liquida_sobre_patrimonio = (
         indicadores["divida_liquida_sobre_patrimonio"] if indicadores else None
     )
+    # Dívida líquida em valor ABSOLUTO (não a proporção acima) — pra
+    # converter o FCD de Enterprise Value pra Equity Value, mesmo campo
+    # usado em app/main.py (ver modelos/fcd.py).
+    divida_liquida = indicadores["divida_liquida"] if indicadores else None
 
     dividendos = None
     try:
@@ -238,6 +242,7 @@ def _calcular_linha_ticker(
             fcf_ha_n_anos=fcf_ha_n_anos,
             divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
             beta=beta,
+            divida_liquida=divida_liquida,
         )
     else:
         resultado_fcd = {

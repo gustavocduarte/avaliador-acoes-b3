@@ -260,3 +260,93 @@ def test_calcular_valor_justo_fcd_beta_real_muda_o_valor_justo():
     # já que cada ação tem seu próprio risco em vez de Beta=1,0 fixo.
     assert resultado_beta_baixo["valor_justo"] > resultado_beta_padrao["valor_justo"]
     assert resultado_beta_padrao["valor_justo"] > resultado_beta_alto["valor_justo"]
+
+
+# --- Correção de 2026-09-23: EV -> Equity Value via dedução de dívida ------
+# líquida — ver justificativa completa em config.py e no docstring de
+# `calcular_valor_justo_fcd`. Caso fabricado equivalente ao verificado à mão
+# nesta sessão pra PETR4 (dívida líquida ~R$312,8 bi, ~12,89 bi ações, FCD
+# caindo de ~R$118,99 pra ~R$94,72) — não precisa bater esses números
+# exatos, só confirmar que a subtração em si está correta.
+
+
+def test_calcular_valor_justo_fcd_deduz_divida_liquida_do_valor_justo():
+    parametros_comuns = dict(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        divida_liquida_sobre_patrimonio=None,
+        beta=1.0,
+    )
+    resultado_sem_divida = fcd.calcular_valor_justo_fcd(**parametros_comuns, divida_liquida=None)
+    resultado_com_divida = fcd.calcular_valor_justo_fcd(
+        **parametros_comuns, divida_liquida=5000.0
+    )
+
+    assert resultado_com_divida["aplicavel"] is True
+    assert resultado_com_divida["divida_liquida_deduzida"] is True
+    # Subtrair dívida líquida do Enterprise Value ANTES de dividir por
+    # número de ações reduz o valor justo por ação em exatamente
+    # divida_liquida / numero_acoes — propriedade linear, independente
+    # das outras premissas (WACC, crescimento) do cálculo.
+    assert resultado_com_divida["valor_justo"] == pytest.approx(
+        resultado_sem_divida["valor_justo"] - 5000.0 / 100.0
+    )
+
+
+def test_calcular_valor_justo_fcd_divida_liquida_negativa_aumenta_o_valor():
+    # Posição de caixa líquido (mais caixa que dívida): dívida líquida
+    # negativa SOMA ao valor justo com subtração normal, sem caso
+    # especial — mesma convenção de
+    # empresa.valor_mercado.calcular_valor_mercado_e_firma
+    # (valor_firma = valor_mercado + divida_liquida, a operação inversa).
+    parametros_comuns = dict(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        divida_liquida_sobre_patrimonio=None,
+    )
+    resultado_sem_divida = fcd.calcular_valor_justo_fcd(**parametros_comuns, divida_liquida=None)
+    resultado_caixa_liquido = fcd.calcular_valor_justo_fcd(
+        **parametros_comuns, divida_liquida=-2000.0
+    )
+
+    assert resultado_caixa_liquido["divida_liquida_deduzida"] is True
+    assert resultado_caixa_liquido["valor_justo"] > resultado_sem_divida["valor_justo"]
+    assert resultado_caixa_liquido["valor_justo"] == pytest.approx(
+        resultado_sem_divida["valor_justo"] + 2000.0 / 100.0
+    )
+
+
+def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_deduzir():
+    # divida_liquida=None (default) preserva o comportamento de antes da
+    # correção de 2026-09-23: aplicável normalmente, valor_justo =
+    # Enterprise Value / número de ações, sem nenhuma dedução — e o
+    # retorno sinaliza isso explicitamente (divida_liquida_deduzida=False)
+    # pra app/main.py avisar na UI. Mesmos parâmetros do teste "caminho
+    # feliz sem crescimento" acima, pra reaproveitar a fórmula fechada.
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.0,
+        fcf_ha_n_anos=1000.0,  # CAGR = 0 exatamente
+        divida_liquida_sobre_patrimonio=None,
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["divida_liquida_deduzida"] is False
+
+    wacc = resultado["wacc"]
+    valor_presente_explicito = sum(
+        1000.0 / (1 + wacc) ** ano for ano in range(1, fcd.HORIZONTE_PROJECAO_FCD_ANOS + 1)
+    )
+    valor_terminal = 1000.0 / wacc
+    valor_presente_terminal = valor_terminal / (1 + wacc) ** fcd.HORIZONTE_PROJECAO_FCD_ANOS
+    valor_justo_esperado = (valor_presente_explicito + valor_presente_terminal) / 100.0
+
+    assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)

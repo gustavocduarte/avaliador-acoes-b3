@@ -412,14 +412,28 @@ def _cartao_metodo(
     "motivo_nao_aplicavel"}` que os três modelos já devolvem —
     `rotulo_valor` é o nome da chave do valor em si (`"valor_justo"` pra
     Graham/FCD, `"preco_teto"` pro Bazin, já que os métodos não usam o
-    mesmo nome de campo)."""
+    mesmo nome de campo).
+
+    `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD
+    (ver modelos/fcd.py) — quando presente e `False`, mostra um aviso no
+    lugar de "Aplicável": o valor não teve dívida líquida deduzida
+    (dado ausente, comum em bancos), então aproxima Enterprise Value
+    como Equity Value em vez do valor real por ação."""
     if resultado["aplicavel"]:
         st.metric(
             nome,
             _fmt_bilhoes(resultado[rotulo_valor]),
             delta=_delta_percentual_upside(resultado[rotulo_valor], preco_atual),
         )
-        st.caption("Aplicável")
+        if resultado.get("divida_liquida_deduzida") is False:
+            st.caption(
+                "Dívida líquida indisponível pra essa empresa (comum em bancos, "
+                "ver \"Saúde financeira\") — sem ela pra deduzir, este valor não "
+                "desconta a dívida da empresa, então tende a ficar mais alto do "
+                "que se a dedução fosse possível."
+            )
+        else:
+            st.caption("Aplicável")
     else:
         st.metric(nome, "—")
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
@@ -784,7 +798,8 @@ with aba_analisar:
         # Dívida líquida em valor ABSOLUTO (campo próprio do Fundamentus,
         # ausente pra bancos — ver CAMPOS_FUNDAMENTUS_OPCIONAIS), não a
         # mesma coisa que divida_liquida_sobre_patrimonio acima (a
-        # proporção). Usada só pro Valor de Firma mais abaixo.
+        # proporção). Usada pro Valor de Firma mais abaixo e pra converter
+        # o FCD de Enterprise Value pra Equity Value (ver modelos/fcd.py).
         divida_liquida = indicadores["divida_liquida"] if indicadores else None
 
         # Beta real (janela de 1 ano, calculada uma vez e reaproveitada no WACC
@@ -829,6 +844,7 @@ with aba_analisar:
                 fcf_ha_n_anos=fcf_ha_n_anos,
                 divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
                 beta=beta,
+                divida_liquida=divida_liquida,
             )
         else:
             resultado_fcd = {
@@ -886,9 +902,14 @@ with aba_analisar:
                 "de dividendo.\n\n"
                 "**FCD (Fluxo de Caixa Descontado)** — projeta os fluxos de caixa "
                 "futuros da empresa e traz isso a valor presente, descontando pelo "
-                "custo de capital (WACC). É o único dos três que funciona mesmo para "
-                "empresas sem lucro no momento, já que olha geração de caixa futura, "
-                "não resultado contábil passado.\n\n"
+                "custo de capital (WACC). Esse valor presente é o da empresa como um "
+                "todo, dívida incluída — por isso a dívida líquida é deduzida antes "
+                "de dividir pelo número de ações, chegando no valor que sobra pros "
+                "acionistas. Quando a dívida líquida não está disponível (comum em "
+                "bancos), o cálculo aproxima os dois, sem deduzir nada. É o único "
+                "dos três que funciona mesmo para empresas sem lucro no momento, já "
+                "que olha geração de caixa futura, não resultado contábil "
+                "passado.\n\n"
                 "**Valor combinado** — média simples apenas dos métodos que se aplicam "
                 "à empresa específica analisada, nunca uma média forçada dos três. Se "
                 "só um método for aplicável, o combinado é igual a esse método sozinho.\n\n"

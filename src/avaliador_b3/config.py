@@ -323,12 +323,32 @@ ANOS_HISTORICO_MINIMO_BAZIN = 5
 # acadêmico, que exigiria reconstruir EBIT-CapEx-ΔWC ou separar juros de
 # financiamento item a item — dado que a CVM não padroniza essa quebra de
 # forma uniforme entre empresas): tratamos o valor presente desses fluxos
-# como aproximação direta do valor do patrimônio líquido (equity), sem
-# abater dívida líquida absoluta separadamente — outra simplificação, já
-# que ainda não extraímos dívida líquida em valor absoluto do balanço
-# patrimonial da CVM (BPP). Dividido pelo número de ações (Fundamentus,
-# campo "Nro. Ações") pra chegar num valor justo por ação comparável a
-# Graham/Bazin.
+# como Enterprise Value — valor da empresa como um todo, dívida incluída.
+#
+# Correção em 2026-09-23 (achado numa revisão externa do projeto): até
+# então, esse Enterprise Value era dividido direto pelo número de ações,
+# sem abater a dívida líquida — na prática tratando o resultado como se
+# já fosse Equity Value (valor só do patrimônio dos acionistas), o que
+# inflava o valor justo por ação de qualquer empresa com dívida líquida
+# positiva. A premissa original registrada aqui era "ainda não extraímos
+# dívida líquida em valor absoluto do balanço patrimonial da CVM (BPP)"
+# — verdade sobre a CVM, mas o projeto já extraía essa dívida por OUTRA
+# fonte desde o início: o campo "Dív. Líquida" do Fundamentus
+# (`divida_liquida` em `CAMPOS_FUNDAMENTUS_OPCIONAIS`), o mesmo já usado
+# em `empresa.valor_mercado.calcular_valor_mercado_e_firma` e exibido em
+# "Saúde financeira" — só não estava sendo passado pro FCD. Agora está:
+# o Enterprise Value é convertido pra Equity Value subtraindo essa
+# dívida líquida ANTES de dividir pelo número de ações (ver
+# `modelos.fcd.calcular_valor_justo_fcd`); dívida líquida negativa
+# (posição de caixa líquido) soma ao valor normalmente, mesma convenção
+# de `calcular_valor_mercado_e_firma`, sem caso especial. Quando a
+# dívida líquida não está disponível pra uma empresa (mesmo campo
+# ausente pra bancos), o cálculo cai de volta na aproximação antiga só
+# pra esse caso específico, com um aviso explícito na UI
+# (`divida_liquida_deduzida=False` no retorno da função).
+#
+# Dividido pelo número de ações (Fundamentus, campo "Nro. Ações") pra
+# chegar num valor justo por ação comparável a Graham/Bazin.
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 
