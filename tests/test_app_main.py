@@ -105,6 +105,16 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
 
 
+def _metrica_por_label(at, rotulo: str):
+    """Acha o único `st.metric` com esse `label` na árvore de elementos de
+    `at` — levanta `AssertionError` se não achar exatamente um (rótulo
+    ausente ou duplicado), em vez de devolver uma lista pro chamador
+    filtrar/indexar na mão."""
+    metricas = [metrica for metrica in at.metric if metrica.label == rotulo]
+    assert len(metricas) == 1, f"métrica {rotulo!r} não encontrada (ou duplicada)"
+    return metricas[0]
+
+
 def test_dropdown_lista_acoes_do_ibovespa_quando_universo_disponivel(monkeypatch):
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
@@ -316,9 +326,7 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    precos_atuais = [metrica for metrica in at.metric if metrica.label == "Preço atual"]
-    assert len(precos_atuais) == 1
-    assert precos_atuais[0].value == "R$ 50,43"
+    assert _metrica_por_label(at, "Preço atual").value == "R$ 50,43"
 
 
 # --- Correlação com fatores externos, movida pra dentro de "Analisar uma ---
@@ -405,15 +413,12 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
 
     assert not at.exception
 
-    metricas_graham = [metrica for metrica in at.metric if metrica.label == "Graham"]
-    assert len(metricas_graham) == 1
     # Graham = raiz(22,5 × 5 × 20) ≈ 47,43; preço 50 -> delta ≈ -5,1%.
-    assert metricas_graham[0].value == "R$ 47,43"
-    assert metricas_graham[0].delta == "-5,1%"
+    metrica_graham = _metrica_por_label(at, "Graham")
+    assert metrica_graham.value == "R$ 47,43"
+    assert metrica_graham.delta == "-5,1%"
 
-    metricas_bazin = [metrica for metrica in at.metric if metrica.label == "Bazin (preço teto)"]
-    assert len(metricas_bazin) == 1
-    assert not metricas_bazin[0].delta
+    assert not _metrica_por_label(at, "Bazin (preço teto)").delta
 
 
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
@@ -426,49 +431,30 @@ def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
     )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
     monkeypatch.setattr(
         "avaliador_b3.ingest.precos.obter_historico",
         _historico_por_periodo(
             {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
         ),
     )
-
-    def _falha_precos(*args, **kwargs):
-        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
-
-    def _falha_rt(*args, **kwargs):
-        raise RuntimeError(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
     monkeypatch.setattr(
         "avaliador_b3.ingest.fundamentus.obter_indicadores",
         lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
     )
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
-        lambda *args, **kwargs: _catalogo_emissores_vazio(),
-    )
-    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
-    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
 
-    def _valor(rotulo):
-        metricas = [metrica for metrica in at.metric if metrica.label == rotulo]
-        assert len(metricas) == 1, f"métrica {rotulo!r} não encontrada"
-        return metricas[0].value
-
     # Valores de _indicadores_falsos_aplicavel_pra_graham: roe_percentual=15.0,
     # margem_liquida_percentual=10.0, lpa=5.0, vpa=20.0, liquidez_corrente=1.2.
-    assert _valor("ROE") == "15,0%"
-    assert _valor("Margem líquida") == "10,0%"
-    assert _valor("LPA") == "R$ 5,00"
-    assert _valor("VPA") == "R$ 20,00"
-    assert _valor("Liquidez corrente") == "1,20"
+    assert _metrica_por_label(at, "ROE").value == "15,0%"
+    assert _metrica_por_label(at, "Margem líquida").value == "10,0%"
+    assert _metrica_por_label(at, "LPA").value == "R$ 5,00"
+    assert _metrica_por_label(at, "VPA").value == "R$ 20,00"
+    assert _metrica_por_label(at, "Liquidez corrente").value == "1,20"
 
 
 def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
@@ -480,6 +466,7 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
     )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     n = 40  # > MINIMO_OBSERVACOES_CORRELACAO (30)
     datas = pd.date_range("2024-01-01", periods=n, freq="D")
@@ -497,46 +484,24 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
     def _historico_por_ticker(ticker, periodo=None, **kwargs):
         # Mesma função de ingest atende ação e petróleo (Brent) — só o
         # `ticker` muda (ver `_buscar_historico`/`_buscar_historico_petroleo`
-        # em app/main.py).
+        # em app/main.py). Sobrescreve o mock de falha genérica que
+        # _bloquear_buscas_de_rede_por_ticker aplicou acima.
         if ticker == TICKER_PETROLEO_BRENT:
             return historico_petroleo.copy()
         return historico_acao.copy()
 
     monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _historico_por_ticker)
 
-    def _falha_precos(*args, **kwargs):
-        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
-
-    def _falha_fundamentus(*args, **kwargs):
-        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
-        lambda *args, **kwargs: _catalogo_emissores_vazio(),
-    )
-
-    def _falha_rt(*args, **kwargs):
-        raise RuntimeError(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
-    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
-
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
 
-    metricas_petroleo = [m for m in at.metric if m.label == "Petróleo (Brent)"]
-    assert len(metricas_petroleo) == 1
     # Correlação calculada sobre retorno % dia a dia, não sobre o nível
     # bruto — não vale a pena prever o coeficiente exato aqui (não é -1,00
     # só porque os níveis são lineares opostos); o que importa pro bug
     # corrigido é o formato: vírgula decimal, não ponto.
-    valor_petroleo = metricas_petroleo[0].value
+    valor_petroleo = _metrica_por_label(at, "Petróleo (Brent)").value
     assert re.fullmatch(r"-?\d,\d\d", valor_petroleo), (
         f"correlação não está no formato brasileiro esperado: {valor_petroleo!r}"
     )
@@ -553,6 +518,7 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
     )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
     monkeypatch.setattr(
         "avaliador_b3.ingest.precos.obter_historico",
         _historico_por_periodo(
@@ -565,20 +531,10 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
     monkeypatch.setattr(
         "avaliador_b3.ingest.precos.obter_dividendos", lambda *args, **kwargs: dividendos_fake
     )
-
-    def _falha_rt(*args, **kwargs):
-        raise RuntimeError(MENSAGEM_ERRO_MOCK)
-
     monkeypatch.setattr(
         "avaliador_b3.ingest.fundamentus.obter_indicadores",
         lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
     )
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
-        lambda *args, **kwargs: _catalogo_emissores_vazio(),
-    )
-    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
-    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
@@ -714,14 +670,9 @@ def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso)
 
     assert not at.exception
 
-    def _valor_metrica(rotulo: str) -> str:
-        metricas = [metrica for metrica in at.metric if metrica.label == rotulo]
-        assert len(metricas) == 1, f"esperava 1 métrica '{rotulo}', achei {len(metricas)}"
-        return metricas[0].value
-
-    assert _valor_metrica("Valor de mercado") == esperado_mercado
-    assert _valor_metrica("Dívida líquida") == esperado_divida
-    assert _valor_metrica("Valor de firma") == esperado_firma
+    assert _metrica_por_label(at, "Valor de mercado").value == esperado_mercado
+    assert _metrica_por_label(at, "Dívida líquida").value == esperado_divida
+    assert _metrica_por_label(at, "Valor de firma").value == esperado_firma
 
 
 # --- Base consistente na "Projeção de crescimento" da carteira --------------
@@ -800,45 +751,17 @@ def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs)
 def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
     monkeypatch, tmp_path
 ):
-    # Bug real (2026-09-22): as colunas monetárias/percentuais da tabela do
-    # Screener (e das outras 3 tabelas do projeto — Comparação Setorial,
-    # Simulador de carteira, Ganho nominal vs. real) usavam
-    # st.column_config.NumberColumn(format="R$ %.2f"/"%.1f%%") — o
-    # printf-style desse `format` (sprintf-js) não tem vírgula decimal
-    # brasileira em locale nenhum (ex: "1370.8%" em vez de "1.370,8%").
-    # Corrigido pré-formatando a coluna inteira como texto com
-    # _fmt_bilhoes/_fmt_percentual e trocando NumberColumn por TextColumn
-    # — custo aceito (ver comentário central em app/main.py, perto da
-    # tabela do Screener): ordenar por essas colunas no cabeçalho da
-    # tabela vira alfabético, não numérico.
+    # Ver comentário central perto de `_tabela_formatada_pt_br` em
+    # app/main.py pro porquê (NumberColumn sem vírgula brasileira em
+    # locale nenhum) e o trade-off aceito (ordenar pelo cabeçalho dessas
+    # colunas vira alfabético, não numérico).
     import avaliador_b3.screener as screener_mod
 
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
     )
-
-    def _falha_precos(*args, **kwargs):
-        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
-
-    def _falha_fundamentus(*args, **kwargs):
-        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
-        lambda *args, **kwargs: _catalogo_emissores_vazio(),
-    )
-
-    def _falha_rt(*args, **kwargs):
-        raise RuntimeError(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
-    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     caminho_screener_falso = tmp_path / "screener.csv"
     _escrever_screener_falso_dobra_e_sem_cenario(caminho_screener_falso)
@@ -983,13 +906,10 @@ def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tm
     assert chamadas_inflacao, "projetar_curva_inflacao não foi chamada"
     assert all(valor == pytest.approx(1000.0) for valor in chamadas_inflacao)
 
-    # Bug real (2026-09-22): a frase "R$X podem valer entre..." e as
-    # legendas de CAGR ("equivale a X% ao ano") usavam f"{...:.2f}"/
-    # f"{...:.1f}%" sem conversão de ponto pra vírgula. soma_investida_
-    # com_cenario é exatamente 1000,00 aqui (só DOBR4 tem cenário) — dá
-    # pra conferir esse valor exato; o regex cobre os demais números da
-    # frase (pessimista/otimista), que dependem do resultado do
-    # screener falso e não vale a pena recalcular à mão aqui.
+    # soma_investida_com_cenario é exatamente 1000,00 aqui (só DOBR4 tem
+    # cenário) — dá pra conferir esse valor exato; o regex cobre os
+    # demais números da frase (pessimista/otimista), que dependem do
+    # resultado do screener falso e não vale a pena recalcular à mão aqui.
     frases_projecao = [
         m.value for m in at.markdown if "com projeção disponível hoje" in m.value
     ]

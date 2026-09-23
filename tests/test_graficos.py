@@ -5,21 +5,12 @@ from avaliador_b3 import carteira, graficos
 
 # --- ticks_mensais_pt_br ------------------------------------------------------
 #
-# Bug real #1 (2026-09-22, confirmado por screenshot): o eixo X dos gráficos
-# "Preço vs. Ibovespa" e "Comparando com Petróleo" mostrava abreviação de mês
-# em inglês ("May", "Sep", "Oct") — o Plotly usa o locale en-US por padrão, e
-# o bundle de Plotly.js que o Streamlit empacota não traz nenhum outro locale
-# registrado, então `config={"locale": "pt-BR"}` não teria efeito. Corrigido
-# gerando tickvals/ticktext explicitamente, com mês traduzido em Python.
-#
-# Bug real #2 (2026-09-22, também confirmado por screenshot, na mesma
-# correção): a primeira versão espaçava os ticks por `pd.date_range(periods=)`
-# — dias corridos, não meses —, o que produzia pulo de mês inconsistente
-# (ex: 2/2/1/2/2/1/2 meses num gráfico de 1 ano), porque os meses têm
-# tamanho diferente. Corrigido calculando o passo em MESES e andando a
-# partir da data mais recente pra trás — por isso os testes abaixo verificam
-# tickvals[-1] (a âncora, sempre a data mais recente) em vez de tickvals[0]
-# (que não é mais garantido bater exatamente com a primeira data da série).
+# Ver docstring de `graficos.ticks_mensais_pt_br` pro histórico completo dos
+# dois bugs reais (mês em inglês, depois espaçamento irregular) que essa
+# função corrige. Os testes abaixo verificam `tickvals[-1]` (a âncora, sempre
+# a data mais recente) em vez de `tickvals[0]`, porque o passo em meses anda
+# de trás pra frente a partir do fim — o primeiro tick gerado não é mais
+# garantido bater exatamente com a primeira data da série.
 
 
 def test_ticks_mensais_pt_br_traduz_mes_em_portugues():

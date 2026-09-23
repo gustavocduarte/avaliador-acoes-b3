@@ -499,6 +499,50 @@ def _fmt_bilhoes(valor: float | None) -> str:
     return _pt_br(f"R$ {valor:,.2f}")
 
 
+def _tabela_formatada_pt_br(
+    df: pd.DataFrame,
+    colunas_moeda: dict[str, str],
+    colunas_percentual: dict[str, str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Pré-formata colunas monetárias/percentuais de `df` como texto em
+    convenção brasileira (`_fmt_bilhoes`/`_fmt_percentual`) e monta o
+    `column_config` correspondente, pronto pra passar pro `st.dataframe`
+    — devolve `(df_formatado, column_config)`. `colunas_moeda`/
+    `colunas_percentual` são dicts `{nome_da_coluna: rótulo_exibido}`.
+
+    Por que texto pré-formatado, não `st.column_config.NumberColumn
+    (format=...)`: o `format` do NumberColumn é sprintf-js/d3-format por
+    baixo, nenhum dos dois tem vírgula decimal brasileira em qualquer
+    locale, e a opção `format="localized"` do Streamlit usa
+    `Intl.NumberFormat` com o locale do NAVEGADOR de quem visita (não do
+    nosso código) — mesmo anti-padrão já rejeitado pro locale de mês dos
+    gráficos (ver `graficos.ticks_mensais_pt_br`), não dá pra garantir
+    pt-BR pra todo visitante.
+
+    Custo aceito: clicar no cabeçalho de uma coluna formatada por aqui
+    pra reordenar ordena como TEXTO (alfabético, ex: "R$ 1.000,00" antes
+    de "R$ 618,70"), não numericamente — as demais colunas da tabela
+    (que não passam por aqui) continuam ordenando normal. Usado nas 4
+    tabelas do projeto que mostram R$/%: Comparação Setorial, Screener,
+    Simulador de carteira, Ganho nominal vs. real."""
+    colunas_percentual = colunas_percentual or {}
+    df_formatado = df.assign(
+        **{coluna: df[coluna].apply(_fmt_bilhoes) for coluna in colunas_moeda}
+    )
+    if colunas_percentual:
+        df_formatado = df_formatado.assign(
+            **{
+                coluna: df_formatado[coluna].apply(_fmt_percentual)
+                for coluna in colunas_percentual
+            }
+        )
+    column_config = {
+        coluna: st.column_config.TextColumn(rotulo, alignment="right")
+        for coluna, rotulo in {**colunas_moeda, **colunas_percentual}.items()
+    }
+    return df_formatado, column_config
+
+
 def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
     """Lê o resultado do screener já salvo em disco (não roda nada ao
     vivo) — devolve None se o arquivo ainda não existir (primeira vez,
@@ -1197,38 +1241,23 @@ with aba_analisar:
                             )
                         else:
                             st.caption(f"Segmento setorial (B3): {segmento_setorial}")
-                            # Colunas monetárias/percentuais pré-formatadas como
-                            # texto com _fmt_bilhoes/_fmt_percentual, não
-                            # NumberColumn(format=...) — ver nota central sobre
-                            # essa troca logo abaixo, perto da tabela do Screener.
+                            tabela_pares_fmt, colunas_pares_fmt = _tabela_formatada_pt_br(
+                                tabela_pares,
+                                colunas_moeda={
+                                    "preco_atual": "Preço atual",
+                                    "valor_combinado": "Valor combinado",
+                                },
+                                colunas_percentual={"desconto_percentual": "Desconto"},
+                            )
                             st.dataframe(
-                                tabela_pares.assign(
-                                    preco_atual=tabela_pares["preco_atual"].apply(_fmt_bilhoes),
-                                    valor_combinado=tabela_pares["valor_combinado"].apply(
-                                        _fmt_bilhoes
-                                    ),
-                                    desconto_percentual=tabela_pares["desconto_percentual"].apply(
-                                        _fmt_percentual
-                                    ),
-                                ),
+                                tabela_pares_fmt,
                                 column_order=[
                                     "ticker",
                                     "preco_atual",
                                     "valor_combinado",
                                     "desconto_percentual",
                                 ],
-                                column_config={
-                                    "ticker": "Ticker",
-                                    "preco_atual": st.column_config.TextColumn(
-                                        "Preço atual", alignment="right"
-                                    ),
-                                    "valor_combinado": st.column_config.TextColumn(
-                                        "Valor combinado", alignment="right"
-                                    ),
-                                    "desconto_percentual": st.column_config.TextColumn(
-                                        "Desconto", alignment="right"
-                                    ),
-                                },
+                                column_config={"ticker": "Ticker", **colunas_pares_fmt},
                                 hide_index=True,
                                 use_container_width=True,
                             )
@@ -1306,38 +1335,17 @@ with aba_screener:
                 "uma oportunidade real."
             )
 
-        # Colunas monetárias/percentuais pré-formatadas como texto (não
-        # st.column_config.NumberColumn(format=...)) em TODAS as tabelas
-        # do projeto que mostram R$/% — decisão deliberada, não bug
-        # esquecido: o format do NumberColumn é sprintf-js/d3-format por
-        # baixo, nenhum dos dois tem vírgula decimal brasileira em
-        # qualquer locale, e a opção "format='localized'" do Streamlit usa
-        # `Intl.NumberFormat` com o locale do NAVEGADOR de quem visita (não
-        # do nosso código) — mesmo anti-padrão já rejeitado pro locale de
-        # mês dos gráficos (ver `graficos.ticks_mensais_pt_br`), não dá
-        # pra garantir pt-BR pra todo visitante. Custo aceito: clicar no
-        # cabeçalho dessas colunas específicas pra reordenar por elas
-        # ordena como TEXTO (alfabético, ex: "R$ 1.000,00" antes de
-        # "R$ 618,70"), não numericamente — as outras colunas (Ticker,
-        # Métodos utilizados, etc.) continuam ordenando normal.
+        tabela_screener_fmt, colunas_screener_fmt = _tabela_formatada_pt_br(
+            tabela_screener,
+            colunas_moeda={"preco_atual": "Preço atual", "valor_combinado": "Valor combinado"},
+            colunas_percentual={"desconto_percentual": "Desconto"},
+        )
         st.dataframe(
-            tabela_screener.assign(
-                preco_atual=tabela_screener["preco_atual"].apply(_fmt_bilhoes),
-                valor_combinado=tabela_screener["valor_combinado"].apply(_fmt_bilhoes),
-                desconto_percentual=tabela_screener["desconto_percentual"].apply(
-                    _fmt_percentual
-                ),
-            ),
+            tabela_screener_fmt,
             column_order=COLUNAS_TABELA_SCREENER,
             column_config={
                 "ticker": "Ticker",
-                "preco_atual": st.column_config.TextColumn("Preço atual", alignment="right"),
-                "valor_combinado": st.column_config.TextColumn(
-                    "Valor combinado", alignment="right"
-                ),
-                "desconto_percentual": st.column_config.TextColumn(
-                    "Desconto", alignment="right"
-                ),
+                **colunas_screener_fmt,
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",
                 "erro": "Erro",
@@ -1397,52 +1405,25 @@ with aba_carteira:
 
             tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
             if not tabela_carteira_aplicavel.empty:
-                tc = tabela_carteira_aplicavel
-                st.dataframe(
-                    tc.assign(
-                        valor_investido=tc["valor_investido"].apply(_fmt_bilhoes),
-                        preco_atual=tc["preco_atual"].apply(_fmt_bilhoes),
-                        projecao_pessimista=tc["projecao_pessimista"].apply(_fmt_bilhoes),
-                        retorno_pessimista_percentual=tc["retorno_pessimista_percentual"].apply(
-                            _fmt_percentual
-                        ),
-                        projecao_base=tc["projecao_base"].apply(_fmt_bilhoes),
-                        retorno_base_percentual=tc["retorno_base_percentual"].apply(
-                            _fmt_percentual
-                        ),
-                        projecao_otimista=tc["projecao_otimista"].apply(_fmt_bilhoes),
-                        retorno_otimista_percentual=tc["retorno_otimista_percentual"].apply(
-                            _fmt_percentual
-                        ),
-                    ),
-                    column_order=COLUNAS_TABELA_CARTEIRA,
-                    column_config={
-                        "ticker": "Ticker",
-                        "valor_investido": st.column_config.TextColumn(
-                            "Investido", alignment="right"
-                        ),
-                        "preco_atual": st.column_config.TextColumn(
-                            "Preço atual", alignment="right"
-                        ),
-                        "projecao_pessimista": st.column_config.TextColumn(
-                            "Pessimista (R$)", alignment="right"
-                        ),
-                        "retorno_pessimista_percentual": st.column_config.TextColumn(
-                            "Pessimista (%)", alignment="right"
-                        ),
-                        "projecao_base": st.column_config.TextColumn(
-                            "Base (R$)", alignment="right"
-                        ),
-                        "retorno_base_percentual": st.column_config.TextColumn(
-                            "Base (%)", alignment="right"
-                        ),
-                        "projecao_otimista": st.column_config.TextColumn(
-                            "Otimista (R$)", alignment="right"
-                        ),
-                        "retorno_otimista_percentual": st.column_config.TextColumn(
-                            "Otimista (%)", alignment="right"
-                        ),
+                tc_fmt, colunas_tc_fmt = _tabela_formatada_pt_br(
+                    tabela_carteira_aplicavel,
+                    colunas_moeda={
+                        "valor_investido": "Investido",
+                        "preco_atual": "Preço atual",
+                        "projecao_pessimista": "Pessimista (R$)",
+                        "projecao_base": "Base (R$)",
+                        "projecao_otimista": "Otimista (R$)",
                     },
+                    colunas_percentual={
+                        "retorno_pessimista_percentual": "Pessimista (%)",
+                        "retorno_base_percentual": "Base (%)",
+                        "retorno_otimista_percentual": "Otimista (%)",
+                    },
+                )
+                st.dataframe(
+                    tc_fmt,
+                    column_order=COLUNAS_TABELA_CARTEIRA,
+                    column_config={"ticker": "Ticker", **colunas_tc_fmt},
                     hide_index=True,
                     use_container_width=True,
                 )
@@ -1716,21 +1697,17 @@ with aba_carteira:
                             for cenario, rotulo in ROTULO_CENARIO.items()
                         ]
                     )
-                    st.dataframe(
-                        tabela_ganho.assign(
-                            ganho_nominal=tabela_ganho["ganho_nominal"].apply(_fmt_bilhoes),
-                            ganho_real=tabela_ganho["ganho_real"].apply(_fmt_bilhoes),
-                        ),
-                        column_order=["cenario", "ganho_nominal", "ganho_real"],
-                        column_config={
-                            "cenario": "Cenário",
-                            "ganho_nominal": st.column_config.TextColumn(
-                                "Ganho nominal", alignment="right"
-                            ),
-                            "ganho_real": st.column_config.TextColumn(
-                                "Ganho real (IPCA)", alignment="right"
-                            ),
+                    tabela_ganho_fmt, colunas_ganho_fmt = _tabela_formatada_pt_br(
+                        tabela_ganho,
+                        colunas_moeda={
+                            "ganho_nominal": "Ganho nominal",
+                            "ganho_real": "Ganho real (IPCA)",
                         },
+                    )
+                    st.dataframe(
+                        tabela_ganho_fmt,
+                        column_order=["cenario", "ganho_nominal", "ganho_real"],
+                        column_config={"cenario": "Cenário", **colunas_ganho_fmt},
                         hide_index=True,
                         use_container_width=True,
                     )
