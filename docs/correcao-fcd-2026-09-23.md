@@ -126,6 +126,75 @@ tomadas no projeto:
   (`divida_liquida_deduzida=False` no retorno), então silenciar a
   aproximação seria pior do que mostrá-la com um aviso.
 
+> ### Revisão de 2026-09-24 — decisão acima substituída pra bancos
+>
+> A decisão de manter o FCD "aplicável" pra bancos (opção (a) acima) foi
+> revista um dia depois, motivada por uma segunda revisão externa (outra
+> IA, fora desta sessão) — não uma mudança de opinião sem motivo novo,
+> um achado adicional que a decisão original não tinha considerado.
+>
+> **O argumento econômico que faltava**: a decisão de 2026-09-23 tratava
+> o problema como uma lacuna de DADO — "dívida líquida não disponível pra
+> essa empresa" — resolvida com uma aproximação e um aviso, igual a
+> qualquer outro dado faltante no projeto. Mas em bancos o problema não é
+> falta de dado, é a METODOLOGIA não fazer sentido: dívida e depósitos
+> são a própria operação do banco (captação pra emprestar), não
+> financiamento externo à operação como a conta pressupõe, e o fluxo de
+> caixa operacional (CFO, base do FCF neste projeto) oscila com a
+> expansão ou contração da carteira de crédito, não com geração de valor.
+> Não existe "dívida líquida certa" pra deduzir de um banco que resolva
+> isso — mesmo com o dado em mãos, a conta inteira (FCF → WACC →
+> Enterprise Value) não tem interpretação econômica válida nesse setor.
+>
+> **Por que a caption de 2026-09-23 não era a resposta certa aqui**: a
+> caption aprovada no dia anterior ("Dívida líquida indisponível...
+> este valor não desconta a dívida da empresa, então tende a ficar mais
+> alto") passa a mensagem de uma imprecisão LEVE e QUANTIFICÁVEL — como
+> se o número estivesse só um pouco inflado, faltando uma dedução, e
+> ainda fosse útil como referência aproximada. Pior: a caption afirmava a
+> direção ERRADA. Nos dados reais o FCD saía ABAIXO de Graham e Bazin —
+> não acima — em 4 dos 5 bancos com FCD calculável (ITUB4 R$7,27, BPAC11
+> R$0,96, SANB11 negativo em R$-23,33, e BBDC4 R$24,03 — os quatro abaixo
+> dos dois métodos ao mesmo tempo; BBDC3 R$24,79 ficava abaixo só de
+> Graham, acima do Bazin, R$23,53), puxando o valor combinado pra BAIXO
+> em todos os 5, não pra cima (ver "Combinado antes" vs. "Combinado
+> depois" na tabela abaixo — sobe em todos). BBAS3 fica fora dessa
+> contagem, seu FCD já era "não aplicável" antes desta correção, por
+> outro motivo. Pros 6 bancos, isso é enganoso: o número não estava "um
+> pouco alto", não tinha base econômica nenhuma pra começo de conversa
+> (o caso mais extremo, SANB11, chegava a ser NEGATIVO — um resultado
+> sem nenhuma leitura sensata pra um banco lucrativo). Uma caption de
+> aviso não é o remédio certo pra um número que não deveria estar na
+> tela, e menos ainda uma que erra até a direção do problema.
+>
+> **Efeito no valor combinado dos 6 bancos** (valores do screener antes e
+> depois desta correção, ambos rodados via o botão real):
+>
+> | Ticker | Graham | Bazin | FCD (removido) | Combinado antes | Combinado depois |
+> |---|---|---|---|---|---|
+> | BBDC3 | R$29,51 | R$23,53 | R$24,79 | R$25,94 | R$26,52 |
+> | BBDC4 | R$29,51 | R$25,88 | R$24,03 | R$26,47 | R$27,69 |
+> | BBAS3 | R$42,44 | R$10,92 | *(já não aplicável antes, motivo à parte)* | R$26,68 | R$26,68 |
+> | ITUB4 | R$42,33 | R$51,64 | R$7,27 | R$33,75 | **R$46,99** |
+> | SANB11 | R$49,46 | R$38,45 | -R$23,33 | R$21,53 | **R$43,96** |
+> | BPAC11 | R$46,40 | R$23,67 | R$0,96 | R$23,68 | **R$35,04** |
+>
+> O efeito não é sutil — ITUB4 sobe 39%, SANB11 mais que dobra — o
+> tamanho da mudança é, em si, mais uma evidência de que o FCD estava
+> distorcendo a leitura desses 6 papéis, não só "impreciso".
+>
+> **Escopo continua deliberadamente restrito a "Bancos"**: seguradoras
+> (BBSE3, CXSE3, PSSA3) e outras financeiras (B3SA3, ITSA4) permanecem
+> aplicáveis — confirmado, antes de decidir o escopo, que essas 5 empresas
+> TÊM dívida líquida reportada normalmente pelo Fundamentus (diferente
+> dos 6 bancos, que não têm nenhuma), então não compartilham a mesma
+> lacuna de dado nem, necessariamente, a mesma distorção econômica dos
+> bancos. Se o FCD também não faz sentido pra seguradoras (estrutura de
+> reservas técnicas/float é diferente de depósito bancário, mas também
+> não é dívida convencional) é uma questão em aberto, registrada como
+> limitação conhecida — não decidida nesta correção, pra não estender a
+> exclusão além do que a investigação efetivamente confirmou.
+
 ---
 
 ## 5. O que foi implementado
