@@ -70,3 +70,54 @@ def calcular_valor_combinado(
         "valores_por_metodo": valores_por_metodo,
         "motivo_nao_aplicavel": None,
     }
+
+
+def calcular_divergencia_metodos(
+    valores_por_metodo: dict[str, float], preco_atual: float | None
+) -> dict:
+    """Divergência entre os métodos aplicáveis — (maior − menor) ÷ preço
+    atual × 100, expressa em pontos percentuais do preço atual, não do
+    menor valor. Essa escolha é deliberada: dividir pelo menor valor (ou
+    fazer "maior ÷ menor") quebra ou vira um número sem sentido quando o
+    menor valor é negativo ou perto de zero (caso real: FCD de VALE3
+    pode sair negativo) — o preço atual, ao contrário, é sempre positivo
+    quando disponível, então a conta nunca inverte de sinal nem quebra.
+
+    Só calculável com pelo menos 2 métodos aplicáveis (`aplicavel=False`
+    com 0 ou 1 — não existe "divergência" entre um único valor) — usa
+    `valores_por_metodo`, o mesmo dict que `calcular_valor_combinado` já
+    devolve, pra não reimplementar a checagem de aplicabilidade de cada
+    método aqui. `menor`/`maior`/`diferenca` (em R$) vêm preenchidos
+    mesmo sem preço atual disponível — só `divergencia_percentual` (que
+    depende do preço) fica `None` nesse caso, pra quem exibe poder cair
+    num texto alternativo sem o percentual, em vez de esconder tudo.
+
+    Compartilhada entre `app/main.py` (caption do cartão "Valor
+    combinado") e `screener.py` (coluna `divergencia_percentual_
+    metodos`), pra não duplicar a conta nem correr o risco dos dois
+    lugares divergirem entre si sobre o que "divergência" significa.
+    """
+    if len(valores_por_metodo) < 2:
+        return {
+            "aplicavel": False,
+            "menor": None,
+            "maior": None,
+            "diferenca": None,
+            "divergencia_percentual": None,
+        }
+
+    valores = list(valores_por_metodo.values())
+    menor, maior = min(valores), max(valores)
+    diferenca = maior - menor
+
+    divergencia_percentual = None
+    if preco_atual is not None and preco_atual > 0:
+        divergencia_percentual = diferenca / preco_atual * 100
+
+    return {
+        "aplicavel": True,
+        "menor": menor,
+        "maior": maior,
+        "diferenca": diferenca,
+        "divergencia_percentual": divergencia_percentual,
+    }

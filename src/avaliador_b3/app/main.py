@@ -94,7 +94,7 @@ from avaliador_b3.ingest.precos import (
     obter_historico_ibovespa,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
-from avaliador_b3.modelos.combinado import calcular_valor_combinado
+from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 from avaliador_b3.screener import (
@@ -108,6 +108,7 @@ COLUNAS_TABELA_SCREENER = [
     "preco_atual",
     "valor_combinado",
     "desconto_percentual",
+    "divergencia_percentual_metodos",
     "metodos_utilizados",
     "aviso_desconto_extremo",
     "erro",
@@ -555,6 +556,19 @@ def _fmt_bilhoes(valor: float | None) -> str:
     return _pt_br(f"R$ {valor:,.2f}")
 
 
+def _fmt_bilhoes_md(valor: float | None) -> str:
+    """`_fmt_bilhoes` com o "$" escapado (`\\$`) — pra uso dentro de
+    `st.caption`/`st.markdown`, nunca em `st.metric` (que exibe o valor
+    cru, sem markdown — a barra invertida apareceria literalmente na
+    tela). Sem isso, DUAS chamadas de `_fmt_bilhoes` na mesma caption
+    (ex: "de R$ X a R$ Y") criam um par de "$" que o Streamlit interpreta
+    como abre/fecha de fórmula LaTeX — bug real encontrado ao vivo: o
+    trecho entre os dois cifrões virava matemática renderizada, cortando
+    o texto ("R" de um lado, o valor seguinte do outro). Escapar os dois
+    "$" resolve sem precisar reescrever o texto pra evitar o padrão."""
+    return _fmt_bilhoes(valor).replace("$", "\\$")
+
+
 def _fmt_data(valor: pd.Timestamp | str | None, template: str = "%d/%m/%Y") -> str:
     """Formata uma data (Timestamp do pandas, vindo direto da coluna
     `data` dos DataFrames de preço, ou string ISO "aaaa-mm-dd", vinda de
@@ -965,6 +979,26 @@ with aba_analisar:
                 st.caption(
                     "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
                 )
+                divergencia = calcular_divergencia_metodos(
+                    resultado_combinado["valores_por_metodo"], preco_atual
+                )
+                if divergencia["aplicavel"]:
+                    if divergencia["divergencia_percentual"] is not None:
+                        st.caption(
+                            "Os métodos aplicáveis vão de "
+                            f"{_fmt_bilhoes_md(divergencia['menor'])} a "
+                            f"{_fmt_bilhoes_md(divergencia['maior'])}: uma diferença "
+                            f"equivalente a {divergencia['divergencia_percentual']:.0f}% do "
+                            "preço atual. Quanto maior essa diferença, menos os métodos "
+                            "concordam entre si."
+                        )
+                    else:
+                        st.caption(
+                            "Os métodos aplicáveis vão de "
+                            f"{_fmt_bilhoes_md(divergencia['menor'])} a "
+                            f"{_fmt_bilhoes_md(divergencia['maior'])} "
+                            f"({_fmt_bilhoes_md(divergencia['diferenca'])} de diferença)."
+                        )
             else:
                 st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
 
@@ -1041,9 +1075,17 @@ with aba_analisar:
                 "esse caso, é o único dos três que funciona mesmo para empresas sem "
                 "lucro no momento, já que olha geração de caixa futura, não "
                 "resultado contábil passado.\n\n"
-                "**Valor combinado** — média simples apenas dos métodos que se aplicam "
-                "à empresa específica analisada, nunca uma média forçada dos três. Se "
-                "só um método for aplicável, o combinado é igual a esse método sozinho.\n\n"
+                "**Valor combinado** — média simples só dos métodos que se aplicam à "
+                "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
+                "heurística: os pesos são iguais por simplicidade, não porque exista "
+                "evidência de que os três acertam igualmente — definir pesos melhores "
+                "exigiria testar os métodos contra o histórico de preços, o que este "
+                "projeto ainda não faz. Os três também medem coisas diferentes: Graham "
+                "e FCD estimam quanto a ação vale (um pelo lucro e patrimônio, outro "
+                "pelo fluxo de caixa futuro), enquanto o Bazin é um preço teto de "
+                f"compra — o máximo a pagar para receber {YIELD_MINIMO_BAZIN:.0%} ao "
+                "ano em dividendos, não uma estimativa de valor. Por isso, leia o "
+                "combinado junto com os valores individuais, não sozinho.\n\n"
                 "**Limitações conhecidas de cada método**: Graham usa o valor "
                 "patrimonial (VPA) na fórmula, então tende a ficar menos "
                 "representativo para empresas com poucos ativos físicos mas alto "
@@ -1453,8 +1495,11 @@ with aba_analisar:
 
 with aba_screener:
     st.caption(
-        "Ranking de todas as ações do Ibovespa por desconto em relação ao "
-        "valor combinado — Graham, Bazin e FCD, conforme aplicável a cada ação."
+        "Ranking pelo desconto em relação ao valor combinado (média simples de "
+        "Graham, Bazin e FCD aplicáveis, com pesos iguais por simplicidade — veja "
+        "'Como funciona esse cálculo?' na aba Analisar uma ação). A coluna "
+        "Divergência mostra o quanto os métodos discordam entre si. "
+        "Divergência vazia significa que só um método se aplica àquela ação."
     )
 
     if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):
@@ -1526,6 +1571,17 @@ with aba_screener:
             column_config={
                 "ticker": "Ticker",
                 **colunas_screener_fmt,
+                # NUMÉRICA de propósito, não texto pré-formatado como as
+                # demais colunas de `colunas_screener_fmt` acima — sem
+                # casa decimal não existe o problema de vírgula brasileira
+                # que forçou o resto da tabela a virar texto (ver
+                # `_tabela_formatada_pt_br`), então clicar no cabeçalho
+                # continua ordenando numericamente de verdade, que é o
+                # motivo desta coluna existir (filtrar por concordância
+                # entre os métodos).
+                "divergencia_percentual_metodos": st.column_config.NumberColumn(
+                    "Divergência", format="%d%%"
+                ),
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",
                 "erro": "Erro",
@@ -1666,9 +1722,9 @@ with aba_carteira:
                 # vira LaTeX — com 3 "R$" na mesma frase, os dois primeiros
                 # formam um par e o Streamlit tenta renderizar o trecho entre
                 # eles como fórmula matemática. Bug real encontrado testando
-                # essa frase no navegador. _fmt_bilhoes já devolve "R$ ..."
-                # com vírgula decimal — só troca o "R$" pelo "R\$" escapado
-                # depois de formatar, não repete a lógica de conversão.
+                # essa frase no navegador — mesmo motivo, mesma correção
+                # (`_fmt_bilhoes_md`, nível de módulo) da caption de
+                # divergência entre métodos na seção "Valor Justo".
                 #
                 # Base = soma_investida_com_cenario, não soma_investida total
                 # (bug real corrigido em 2026-09-21, mesmo motivo do CAGR
@@ -1678,9 +1734,6 @@ with aba_carteira:
                 # Quando há capital de fora, uma legenda explica o total
                 # real logo abaixo — sem essa nota, o total sumiria da tela
                 # sem explicação nessa frase específica.
-                def _fmt_bilhoes_md(valor: float) -> str:
-                    return _fmt_bilhoes(valor).replace("R$", "R\\$", 1)
-
                 st.write(
                     f"{_fmt_bilhoes_md(soma_investida_com_cenario)} com projeção disponível "
                     f"hoje podem valer entre {_fmt_bilhoes_md(valor_por_cenario['pessimista'])} "
@@ -1721,7 +1774,12 @@ with aba_carteira:
                         "linear, ano a ano, só para comparação visual. A linha de "
                         "inflação projeta o mesmo valor investido corrigido pelo IPCA "
                         "dos últimos 12 meses, mantido constante — não é uma previsão "
-                        "de inflação futura, é uma suposição de referência."
+                        "de inflação futura, é uma suposição de referência.\n\n"
+                        "O cenário base é o valor combinado, a mesma média simples "
+                        "explicada na aba Analisar uma ação. O pessimista e o otimista "
+                        "são o menor e o maior valor entre os métodos aplicáveis — e o "
+                        "menor pode ser o preço teto do Bazin, que não é uma estimativa "
+                        "de valor, e sim o máximo a pagar pelo retorno em dividendos."
                     )
 
                 # IPCA já é buscado (e cacheado por 1h) na aba "Analisar uma

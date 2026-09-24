@@ -1,6 +1,9 @@
 import pytest
 
-from avaliador_b3.modelos.combinado import calcular_valor_combinado
+from avaliador_b3.modelos.combinado import (
+    calcular_divergencia_metodos,
+    calcular_valor_combinado,
+)
 
 
 def _graham(aplicavel=True, valor_justo=100.0):
@@ -101,3 +104,91 @@ def test_soma_valor_negativo_normalmente_sem_filtro_de_sinal():
     assert resultado["valor_combinado"] == pytest.approx((100.0 + -20.0) / 2)
     assert sorted(resultado["metodos_utilizados"]) == ["fcd", "graham"]
     assert resultado["valores_por_metodo"] == {"graham": 100.0, "fcd": -20.0}
+
+
+# --- calcular_divergencia_metodos --------------------------------------
+
+
+def test_divergencia_tres_metodos():
+    resultado = calcular_divergencia_metodos(
+        {"graham": 100.0, "bazin": 60.0, "fcd": 90.0}, preco_atual=80.0
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["menor"] == 60.0
+    assert resultado["maior"] == 100.0
+    assert resultado["diferenca"] == pytest.approx(40.0)
+    assert resultado["divergencia_percentual"] == pytest.approx(40.0 / 80.0 * 100)
+
+
+def test_divergencia_dois_metodos():
+    resultado = calcular_divergencia_metodos({"graham": 100.0, "fcd": 90.0}, preco_atual=80.0)
+
+    assert resultado["aplicavel"] is True
+    assert resultado["menor"] == 90.0
+    assert resultado["maior"] == 100.0
+    assert resultado["diferenca"] == pytest.approx(10.0)
+    assert resultado["divergencia_percentual"] == pytest.approx(10.0 / 80.0 * 100)
+
+
+def test_divergencia_um_metodo_fica_nao_aplicavel():
+    # Não existe "divergência" entre um único valor — não é um caso de
+    # erro, é semanticamente vazio, mesmo padrão de calcular_valor_
+    # combinado devolvendo aplicavel=False explícito em vez de inventar
+    # um número (ex: zero) sem sentido.
+    resultado = calcular_divergencia_metodos({"fcd": 90.0}, preco_atual=80.0)
+
+    assert resultado["aplicavel"] is False
+    assert resultado["menor"] is None
+    assert resultado["maior"] is None
+    assert resultado["diferenca"] is None
+    assert resultado["divergencia_percentual"] is None
+
+
+def test_divergencia_zero_metodos_fica_nao_aplicavel():
+    resultado = calcular_divergencia_metodos({}, preco_atual=80.0)
+
+    assert resultado["aplicavel"] is False
+    assert resultado["divergencia_percentual"] is None
+
+
+def test_divergencia_com_valor_negativo_nao_quebra_nem_inverte():
+    # Caso real: FCD pode sair negativo (ex: VALE3). "maior ÷ menor" ou
+    # "% sobre o menor" quebrariam ou inverteriam de sinal aqui — dividir
+    # pelo preço atual (sempre positivo) evita os dois problemas.
+    resultado = calcular_divergencia_metodos(
+        {"graham": 12.06, "fcd": -8.53}, preco_atual=50.0
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["menor"] == pytest.approx(-8.53)
+    assert resultado["maior"] == pytest.approx(12.06)
+    assert resultado["diferenca"] == pytest.approx(12.06 - -8.53)
+    assert resultado["divergencia_percentual"] == pytest.approx((12.06 - -8.53) / 50.0 * 100)
+    assert resultado["divergencia_percentual"] > 0  # nunca inverte de sinal
+
+
+def test_divergencia_ambos_negativos_diferenca_continua_positiva():
+    resultado = calcular_divergencia_metodos({"graham": -5.0, "fcd": -20.0}, preco_atual=50.0)
+
+    assert resultado["menor"] == -20.0
+    assert resultado["maior"] == -5.0
+    assert resultado["diferenca"] == pytest.approx(15.0)
+    assert resultado["divergencia_percentual"] == pytest.approx(15.0 / 50.0 * 100)
+
+
+@pytest.mark.parametrize("preco_atual", [None, 0.0, -10.0])
+def test_divergencia_sem_preco_atual_valido_fica_sem_percentual_mas_nao_quebra(preco_atual):
+    # preco_atual ausente, zero ou negativo (nunca deveria acontecer na
+    # prática, mas não pode derrubar a conta) -- menor/maior/diferenca
+    # continuam calculáveis, só o percentual (que depende de dividir por
+    # ele) fica None.
+    resultado = calcular_divergencia_metodos(
+        {"graham": 100.0, "fcd": 90.0}, preco_atual=preco_atual
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["menor"] == 90.0
+    assert resultado["maior"] == 100.0
+    assert resultado["diferenca"] == pytest.approx(10.0)
+    assert resultado["divergencia_percentual"] is None

@@ -29,6 +29,7 @@ from streamlit.testing.v1 import AppTest
 from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
     TICKER_PETROLEO_BRENT,
+    YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
@@ -666,6 +667,111 @@ def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatc
         texto_combinado.replace("R$ ", "").replace(".", "").replace(",", ".")
     )
     assert valor_combinado_exibido == pytest.approx(valor_combinado_esperado, abs=0.01)
+
+
+# --- Divergência entre os métodos (caption no cartão "Valor combinado") ---
+
+
+def _preparar_banco_com_graham_e_bazin_aplicaveis(monkeypatch):
+    """Mesmo setup de `test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_
+    so_graham_bazin` acima — FCD não aplicável (banco), Bazin aplicável
+    com histórico de dividendo controlado — reaproveitado aqui porque dá
+    valores EXATOS e conhecidos pros 2 métodos que sobram (Graham ≈
+    47,4342, Bazin ≈ 16,6667), então a divergência esperada também é
+    exata, não precisa de tolerância larga pra um cálculo indireto via
+    FCD (que depende de beta/WACC, mais difícil de prever à mão)."""
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+    ano_atual = pd.Timestamp.now().year
+    dividendos_validos = pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [1.0] * 5,
+        }
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: dividendos_validos,
+    )
+
+
+def test_caption_divergencia_aparece_com_dois_metodos_aplicaveis(monkeypatch):
+    _preparar_banco_com_graham_e_bazin_aplicaveis(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # Graham ≈ 47,4342; Bazin ≈ 16,6667; preço fixado em 50,0 pelo mock de
+    # _preparar_fcd_aplicavel — diferença ≈ 30,7675, ≈ 61,53% do preço.
+    graham = (22.5 * 5 * 20) ** 0.5
+    bazin = 1.0 / 0.06
+    pct_esperado = round((graham - bazin) / 50.0 * 100)
+
+    divergencias = [
+        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
+    ]
+    assert len(divergencias) == 1
+    assert f"{pct_esperado}% do preço atual" in divergencias[0]
+    assert "Quanto maior essa diferença, menos os métodos concordam entre si." in divergencias[0]
+
+
+def test_caption_divergencia_some_com_um_so_metodo_aplicavel(monkeypatch):
+    # Banco (FCD não aplicável) + dividendos indisponíveis (mock padrão de
+    # _bloquear_buscas_de_rede_por_ticker, sem override) -> só Graham
+    # sobra. Sem 2+ métodos, a caption de divergência não faz sentido e
+    # não deve aparecer.
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value == "—"
+    divergencias = [
+        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
+    ]
+    assert divergencias == []
+
+
+def test_caption_divergencia_sem_preco_atual_mostra_variante_sem_percentual(monkeypatch):
+    _preparar_banco_com_graham_e_bazin_aplicaveis(monkeypatch)
+    # Sobrescreve só o período "1d" (Preço atual) pra falhar -- os demais
+    # (usados por Beta/correlação/etc.) continuam OK, então Graham/Bazin
+    # seguem aplicáveis normalmente, só preco_atual vira None.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo({"3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    divergencias = [
+        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
+    ]
+    assert len(divergencias) == 1
+    assert "de diferença)." in divergencias[0]
+    assert "% do preço atual" not in divergencias[0]
+
+
+def test_expander_valor_combinado_usa_yield_da_constante(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "**Valor combinado**" in m.value]
+    assert len(blocos) == 1
+    bloco = blocos[0]
+    assert f"receber {YIELD_MINIMO_BAZIN:.0%} ao ano em dividendos" in bloco
+    assert "não porque exista evidência de que os três acertam igualmente" in bloco
+    assert "leia o combinado junto com os valores individuais, não sozinho." in bloco
 
 
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):

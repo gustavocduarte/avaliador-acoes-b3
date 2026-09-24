@@ -79,7 +79,7 @@ from avaliador_b3.ingest.precos import (
     obter_historico_ibovespa,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
-from avaliador_b3.modelos.combinado import calcular_valor_combinado
+from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 
@@ -104,6 +104,7 @@ COLUNAS_RESULTADO = [
     "preco_atual",
     "valor_combinado",
     "desconto_percentual",
+    "divergencia_percentual_metodos",
     "metodos_utilizados",
     "graham_valor_justo",
     "bazin_preco_teto",
@@ -312,6 +313,10 @@ def _calcular_linha_ticker(
             (resultado_combinado["valor_combinado"] - preco_atual) / preco_atual * 100
         )
 
+    divergencia = calcular_divergencia_metodos(
+        resultado_combinado["valores_por_metodo"], preco_atual
+    )
+
     erro = None if resultado_combinado["aplicavel"] else resultado_combinado["motivo_nao_aplicavel"]
     return {
         "ticker": ticker,
@@ -326,6 +331,7 @@ def _calcular_linha_ticker(
         "fcd_valor_justo": resultado_fcd.get("valor_justo"),
         "ano_referencia_fcd": ano_referencia_fcd if resultado_fcd["aplicavel"] else None,
         "data_balanco_fundamentus": data_balanco_fundamentus,
+        "divergencia_percentual_metodos": divergencia["divergencia_percentual"],
         "beta_utilizado": resultado_fcd.get("beta_utilizado"),
         "aviso_desconto_extremo": _aviso_desconto_extremo(desconto_percentual),
     }

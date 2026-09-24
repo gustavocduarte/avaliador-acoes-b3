@@ -123,6 +123,36 @@ def test_rodar_screener_processa_ticker_com_sucesso(ambiente_feliz, tmp_path):
     assert "fcd" in linha["metodos_utilizados"]
     assert "bazin" not in linha["metodos_utilizados"]
     assert linha["desconto_percentual"] is not None
+    # 2 métodos aplicáveis (Graham + FCD, Bazin não) -> divergência
+    # calculável. Deriva o esperado dos próprios graham/fcd da linha (não
+    # do FCD à mão, que depende de WACC/beta) -- cross-validação
+    # relacional, não um número mágico hardcoded.
+    diferenca_esperada = abs(linha["graham_valor_justo"] - linha["fcd_valor_justo"])
+    divergencia_esperada = diferenca_esperada / linha["preco_atual"] * 100
+    assert linha["divergencia_percentual_metodos"] == pytest.approx(divergencia_esperada)
+
+
+def test_rodar_screener_divergencia_fica_nula_com_um_so_metodo_aplicavel(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # FCD não aplicável (banco) + Bazin não aplicável (dividendos vazios,
+    # padrão de ambiente_feliz) -> só Graham sobra. Não existe
+    # "divergência" entre um único valor.
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: {"cnpj": f"CNPJ-{ticker}", "segmento_setorial": "Bancos"},
+    )
+
+    resultado = screener.rodar_screener(
+        tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+    )
+
+    linha = resultado.iloc[0]
+    assert linha["graham_valor_justo"] is not None
+    assert linha["fcd_valor_justo"] is None
+    assert linha["bazin_preco_teto"] is None
+    assert linha["divergencia_percentual_metodos"] is None
 
 
 def test_rodar_screener_data_balanco_fundamentus_fica_nula_quando_fundamentus_falha(
