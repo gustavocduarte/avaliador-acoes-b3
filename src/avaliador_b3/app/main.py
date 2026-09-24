@@ -451,7 +451,7 @@ def _cartao_metodo(
     `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD
     (ver modelos/fcd.py) — quando presente e `False`, mostra um aviso no
     lugar de "Aplicável": o valor não teve dívida líquida deduzida (dado
-    ausente pra essa empresa específica — desde 2026-09-24, banco nunca
+    ausente pra essa empresa específica — desde 2026-09-23, banco nunca
     chega mais aqui, já é "não aplicável" antes, ver
     config.SEGMENTOS_FCD_NAO_APLICAVEL), então aproxima Enterprise Value
     como Equity Value em vez do valor real por ação."""

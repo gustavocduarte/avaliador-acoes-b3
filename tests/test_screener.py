@@ -5,8 +5,8 @@ from avaliador_b3 import screener
 from avaliador_b3.ingest.precos import TickerInvalido
 
 # Ano fixo usado pelos mocks de FCD abaixo — substitui screener.
-# ANO_REFERENCIA_FCD (removida em 2026-09-24, ver
-# docs/correcao-ano-fcd-2026-09-24.md), já que o ano agora é detectado em
+# ANO_REFERENCIA_FCD (removida em 2026-09-23, ver
+# docs/correcao-ano-fcd-2026-09-23.md), já que o ano agora é detectado em
 # tempo de execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não
 # uma constante.
 ANO_FCD_MOCK = 2025

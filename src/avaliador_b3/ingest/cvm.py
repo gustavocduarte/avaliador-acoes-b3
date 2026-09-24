@@ -121,7 +121,7 @@ def _baixar_zip_ano(
     Cache é permanente pra anos fechados, mas expira pro ano ainda em
     preenchimento depois de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE`
     dias — ver `_cache_zip_expirado` e o comentário em config.py (bug
-    real corrigido em 2026-09-24: sem isso, um zip baixado cedo na
+    real corrigido em 2026-09-23: sem isso, um zip baixado cedo na
     janela jan-mar ficava incompleto pra sempre localmente).
 
     Se o prazo venceu mas o download de atualização falha (CVM fora do

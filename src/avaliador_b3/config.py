@@ -252,7 +252,7 @@ URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_c
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
-# Bug real encontrado em 2026-09-24 (ver docs/correcao-ano-fcd-2026-09-24.md):
+# Bug real encontrado em 2026-09-23 (ver docs/correcao-ano-fcd-2026-09-23.md):
 # ingest.cvm._baixar_zip_ano cacheava o zip anual da CVM pra sempre, sem
 # prazo de validade — "existe no disco?" era a única checagem. Isso é
 # inofensivo pra anos fechados (a CVM não reabre exercícios encerrados,
@@ -371,14 +371,14 @@ ANOS_HISTORICO_MINIMO_BAZIN = 5
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 
-# Correção em 2026-09-24 (segundo achado da mesma revisão externa, um dia
-# depois da correção EV->Equity acima): FCD "não aplicável" pra
-# instituições financeiras, pelo segmento setorial oficial da B3
+# Correção em 2026-09-23 (segundo achado da mesma revisão externa, pouco
+# depois da correção EV->Equity acima, ainda no mesmo dia): FCD "não
+# aplicável" pra instituições financeiras, pelo segmento setorial oficial da B3
 # (`ingest.crosswalk_cnpj`, campo "segment" do catálogo de emissores) —
 # NÃO por `divida_liquida is None`, que é lacuna de UMA fonte de dado
 # (Fundamentus não reporta "Dív. Líquida" pra banco), não uma
 # classificação de tipo de negócio. Os dois coincidiam por acaso no
-# universo do Ibovespa em 2026-09-24 (os 6 tickers com
+# universo do Ibovespa em 2026-09-23 (os 6 tickers com
 # `divida_liquida=None` eram exatamente os 6 do segmento "Bancos"), mas
 # são conceitos diferentes — usar a lacuna de dado como critério
 # quebraria silenciosamente se o Fundamentus passasse a reportar esse
@@ -406,15 +406,16 @@ ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 # conhecida, não decidida aqui.
 SEGMENTOS_FCD_NAO_APLICAVEL = {"Bancos"}
 
-# Correção em 2026-09-24 (terceiro achado da mesma revisão externa): o ano
-# de referência do FCD era uma constante fixa aqui, ANO_REFERENCIA_FCD =
-# 2024, com a justificativa original de que "2025 ainda não estava
-# publicado pela CVM na época em que isso foi escrito (confirmado no
-# adapter da CVM)". Essa premissa ficou desatualizada — confirmado em
-# 2026-09-24 que o zip de 2025 já estava disponível e completo (FCF
-# calculável, comparado ano a ano, pra PETR4/VALE3/WEGE3/RADL3), então o
-# valor fixo defasava o FCD de TODAS as empresas por um exercício inteiro
-# sem nenhum aviso na tela — ver docs/correcao-ano-fcd-2026-09-24.md.
+# Correção em 2026-09-23 (terceiro achado da mesma revisão externa, ainda
+# no mesmo dia das duas correções acima): o ano de referência do FCD era
+# uma constante fixa aqui, ANO_REFERENCIA_FCD = 2024, com a justificativa
+# original de que "2025 ainda não estava publicado pela CVM na época em
+# que isso foi escrito (confirmado no adapter da CVM)". Essa premissa
+# ficou desatualizada — confirmado em 2026-09-23 que o zip de 2025 já
+# estava disponível e completo (FCF calculável, comparado ano a ano, pra
+# PETR4/VALE3/WEGE3/RADL3), então o valor fixo defasava o FCD de TODAS as
+# empresas por um exercício inteiro sem nenhum aviso na tela — ver
+# docs/correcao-ano-fcd-2026-09-23.md.
 #
 # Substituído por detecção automática em dois níveis, sem constante fixa
 # aqui (cada busca resolve o ano em tempo de execução):

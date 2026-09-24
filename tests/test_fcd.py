@@ -352,7 +352,7 @@ def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_dedu
     assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)
 
 
-# --- Correção de 2026-09-24: FCD "não aplicável" pra instituições --------
+# --- Correção de 2026-09-23: FCD "não aplicável" pra instituições --------
 # financeiras (segmento "Bancos") — segundo achado da mesma revisão externa
 # de 2026-09-23. Critério é segmento_setorial (crosswalk_cnpj, campo oficial
 # da B3), não divida_liquida is None — ver justificativa completa em

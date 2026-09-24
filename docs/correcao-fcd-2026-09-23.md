@@ -126,14 +126,15 @@ tomadas no projeto:
   (`divida_liquida_deduzida=False` no retorno), então silenciar a
   aproximação seria pior do que mostrá-la com um aviso.
 
-> ### Revisão de 2026-09-24 — decisão acima substituída pra bancos
+> ### Revisão pouco mais de uma hora depois, ainda no mesmo dia — decisão acima substituída pra bancos
 >
 > A decisão de manter o FCD "aplicável" pra bancos (opção (a) acima) foi
-> revista um dia depois, motivada por uma segunda revisão externa (outra
-> IA, fora desta sessão) — não uma mudança de opinião sem motivo novo,
-> um achado adicional que a decisão original não tinha considerado.
+> revista pouco mais de uma hora depois, ainda em 2026-09-23, motivada por
+> uma segunda revisão externa (outra IA, fora desta sessão) — não uma
+> mudança de opinião sem motivo novo, um achado adicional que a decisão
+> original não tinha considerado.
 >
-> **O argumento econômico que faltava**: a decisão de 2026-09-23 tratava
+> **O argumento econômico que faltava**: a decisão de mais cedo tratava
 > o problema como uma lacuna de DADO — "dívida líquida não disponível pra
 > essa empresa" — resolvida com uma aproximação e um aviso, igual a
 > qualquer outro dado faltante no projeto. Mas em bancos o problema não é

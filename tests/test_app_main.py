@@ -36,7 +36,7 @@ from avaliador_b3.ingest.precos import TickerInvalido
 from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning
 
 # Ano fixo usado pelos mocks de FCD abaixo — substitui ANO_REFERENCIA_FCD
-# (removida em 2026-09-24, ver docs/correcao-ano-fcd-2026-09-24.md), já
+# (removida em 2026-09-23, ver docs/correcao-ano-fcd-2026-09-23.md), já
 # que o ano agora é detectado em tempo de execução
 # (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não uma constante.
 ANO_FCD_MOCK = 2025
@@ -562,7 +562,7 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
 
 
 def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):
-    # Correção de 2026-09-24: segmento "Bancos" -> FCD "não aplicável",
+    # Correção de 2026-09-23: segmento "Bancos" -> FCD "não aplicável",
     # mesmo padrão de Graham/Bazin quando não se aplicam (não é erro nem
     # exceção, é um resultado explícito). Bazin mockado com histórico
     # válido de dividendo (diferente da fixture padrão de
@@ -972,7 +972,7 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
 
 
 def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkeypatch):
-    # Correção de 2026-09-24: warnings.warn dentro de rodar_screener vai só
+    # Correção de 2026-09-23: warnings.warn dentro de rodar_screener vai só
     # pro log do servidor, invisível pra quem clicou no botão — sem essa
     # captura+reexibição em session_state, a coluna do FCD ficaria vazia
     # sem nenhuma explicação na tela. rodar_screener é substituído por um
