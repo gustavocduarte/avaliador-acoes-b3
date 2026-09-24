@@ -23,6 +23,7 @@ def _indicadores(
     numero_acoes=1000.0,
     divida_liquida_sobre_patrimonio=0.3,
     divida_liquida=None,
+    data_balanco_fundamentus="2026-06-30",
 ):
     return {
         "lpa": lpa,
@@ -34,6 +35,7 @@ def _indicadores(
         # correção de 2026-09-23; ver test_fcd.py pra cobertura da
         # dedução em si.
         "divida_liquida": divida_liquida,
+        "data_balanco_fundamentus": data_balanco_fundamentus,
     }
 
 
@@ -115,11 +117,29 @@ def test_rodar_screener_processa_ticker_com_sucesso(ambiente_feliz, tmp_path):
     assert linha["graham_valor_justo"] is not None
     assert linha["fcd_valor_justo"] is not None
     assert linha["ano_referencia_fcd"] == ANO_FCD_MOCK
+    assert linha["data_balanco_fundamentus"] == "2026-06-30"
     assert linha["bazin_preco_teto"] is None  # dividendos vazios -> não aplicável
     assert "graham" in linha["metodos_utilizados"]
     assert "fcd" in linha["metodos_utilizados"]
     assert "bazin" not in linha["metodos_utilizados"]
     assert linha["desconto_percentual"] is not None
+
+
+def test_rodar_screener_data_balanco_fundamentus_fica_nula_quando_fundamentus_falha(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
+
+    def indicadores_falha(ticker, **kwargs):
+        raise TickerNaoEncontrado("simulado")
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores_falha)
+
+    resultado = screener.rodar_screener(
+        tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+    )
+
+    assert resultado.iloc[0]["data_balanco_fundamentus"] is None
 
 
 def test_rodar_screener_ano_referencia_fcd_fica_nulo_quando_fcd_nao_aplicavel(

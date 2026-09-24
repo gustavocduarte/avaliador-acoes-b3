@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -38,6 +39,7 @@ from avaliador_b3.config import (
     CAMPOS_FUNDAMENTUS_OPCIONAIS,
     DATA_RAW_DIR,
     DELAY_FUNDAMENTUS_SEGUNDOS,
+    ROTULO_FUNDAMENTUS_DATA_BALANCO,
     TTL_CACHE_FUNDAMENTUS_SEGUNDOS,
     URL_FUNDAMENTUS_DETALHES,
     VERSAO_SCHEMA_FUNDAMENTUS,
@@ -69,6 +71,22 @@ def _parse_numero(texto: str) -> float | None:
         return None
     texto = texto.replace("%", "").replace(".", "").replace(",", ".")
     return float(texto)
+
+
+def _parse_data(texto: str | None) -> str | None:
+    """Converte uma data no formato do Fundamentus (dd/mm/aaaa) pra ISO
+    (aaaa-mm-dd) — usado só pro campo de "Últ balanço processado"
+    (ROTULO_FUNDAMENTUS_DATA_BALANCO em config.py), que não é numérico,
+    então não passa por `_parse_numero`. Devolve `None` se o campo não
+    veio (`texto is None` — ausente da página) ou não bate no formato
+    esperado, sem levantar erro: um problema nesse campo específico não
+    deveria derrubar a extração dos demais indicadores."""
+    if not texto:
+        return None
+    try:
+        return datetime.strptime(texto.strip(), "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        return None
 
 
 def _extrair_rotulos_valores(html: str) -> dict[str, str]:
@@ -111,6 +129,13 @@ def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
     # a página ter mudado de estrutura.
     for rotulo, nome_campo in CAMPOS_FUNDAMENTUS_OPCIONAIS.items():
         indicadores[nome_campo] = _parse_numero(rotulos_valores.get(rotulo, "-"))
+    # Data do balanço-base dos indicadores acima — parsing próprio (data,
+    # não número), ver ROTULO_FUNDAMENTUS_DATA_BALANCO em config.py.
+    # `.get(...)` sem default (vira None) porque _parse_data já trata
+    # None como "campo ausente", mesmo padrão dos opcionais acima.
+    indicadores["data_balanco_fundamentus"] = _parse_data(
+        rotulos_valores.get(ROTULO_FUNDAMENTUS_DATA_BALANCO)
+    )
     return indicadores
 
 
@@ -158,9 +183,13 @@ def obter_indicadores(
     """Busca os indicadores fundamentalistas de uma ação no Fundamentus:
     ROE, margem líquida, LPA, VPA, liquidez corrente, dívida líquida/
     patrimônio, crescimento de receita em 5 anos, número de ações e
-    patrimônio líquido (ver `CAMPOS_FUNDAMENTUS` em config.py) e dívida
+    patrimônio líquido (ver `CAMPOS_FUNDAMENTUS` em config.py), dívida
     líquida em valor absoluto (`CAMPOS_FUNDAMENTUS_OPCIONAIS` — ausente
-    pra bancos, vira `None`, não erro).
+    pra bancos, vira `None`, não erro), e `data_balanco_fundamentus`
+    (ISO, `aaaa-mm-dd`) — a data-base "Últ balanço processado" que o
+    próprio Fundamentus usa pra todo o resto (ver
+    `ROTULO_FUNDAMENTUS_DATA_BALANCO` em config.py); também vira `None`
+    se ausente ou em formato inesperado, sem derrubar os demais campos.
 
     Levanta `TickerNaoEncontrado` se o papel não existir no Fundamentus, ou
     `EstruturaPaginaMudou` se a página existir mas faltar algum campo

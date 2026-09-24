@@ -191,7 +191,14 @@ DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
 #    suficiente pra nunca segurar um resultado por mais de um dia, sem
 #    tornar o cache inútil (o adapter é batido dezenas de vezes em
 #    sequência pelo screener).
-VERSAO_SCHEMA_FUNDAMENTUS = 2
+#
+# Incrementada pra 3 em 2026-09-24: `data_balanco_fundamentus` (data do
+# campo "Últ balanço processado", ver ROTULO_FUNDAMENTUS_DATA_BALANCO
+# abaixo) virou um campo novo do envelope de indicadores — exatamente o
+# cenário que esse mecanismo existe pra cobrir (campo novo, cache velho
+# sem ele), mesmo caso real do KeyError de "Patrim. Líq/Dív. Líquida"
+# citado acima.
+VERSAO_SCHEMA_FUNDAMENTUS = 3
 TTL_CACHE_FUNDAMENTUS_SEGUNDOS = 24 * 60 * 60
 
 CAMPOS_FUNDAMENTUS = {
@@ -226,6 +233,22 @@ CAMPOS_FUNDAMENTUS = {
 CAMPOS_FUNDAMENTUS_OPCIONAIS = {
     "Dív. Líquida": "divida_liquida",
 }
+
+# Data do balanço usado como base pros indicadores acima — campo próprio
+# (não passa por CAMPOS_FUNDAMENTUS/CAMPOS_FUNDAMENTUS_OPCIONAIS porque o
+# valor é uma DATA, não um número; _parse_numero quebraria em cima de
+# "30/06/2026"). Confirmado direto no HTML de PETR4 em 2026-09-24: rótulo
+# "Últ balanço processado", mesma estrutura <td class="label">/<td> dos
+# demais campos, com um tooltip da própria Fundamentus que confirma a
+# semântica do dado: "Data do último balanço divulgado pela empresa que
+# consta no nosso banco de dados. Todos os indicadores são calculados
+# considerando os últimos 12 meses finalizados na data deste balanço." —
+# ou seja, todo indicador de fluxo (ROE, margem, LPA, crescimento) é TTM
+# terminando nessa data; os de posição (patrimônio, dívida, número de
+# ações) são o valor NESSA data, não "hoje". Tratado como opcional (vira
+# None se ausente), mesmo espírito de CAMPOS_FUNDAMENTUS_OPCIONAIS, mas
+# fora do dict porque o parsing é de data, não de número.
+ROTULO_FUNDAMENTUS_DATA_BALANCO = "Últ balanço processado"
 
 # CVM (Comissão de Valores Mobiliários), Dados Abertos — Demonstrações
 # Financeiras Padronizadas (DFP), anuais. Confirmado em 2026-09-14:

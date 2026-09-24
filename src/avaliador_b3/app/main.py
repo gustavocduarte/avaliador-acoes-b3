@@ -321,9 +321,14 @@ def _buscar_fcf_fcd(
 
 
 @st.cache_data(ttl=3600)
-def _buscar_macro() -> tuple[float | None, float | None, str | None]:
-    """Selic meta (decimal) e IPCA acumulado 12 meses (decimal). Cacheado
-    na sessão do Streamlit por 1h — não depende do ticker buscado."""
+def _buscar_macro() -> tuple[float | None, float | None, pd.Timestamp | None, str | None]:
+    """Selic meta (decimal), IPCA acumulado 12 meses (decimal) e a data do
+    mês mais recente do IPCA usado nesse acumulado (Selic não tem uma
+    data própria informativa pra mostrar — é série diária, a última
+    leitura é sempre "hoje" mesmo sem reunião nova do Copom, ver
+    investigação de 2026-09-24; só o IPCA, mensal e divulgado com atraso,
+    rende uma data-de-referência que vale a pena expor). Cacheado na
+    sessão do Streamlit por 1h — não depende do ticker buscado."""
     hoje = datetime.now()
     try:
         selic_df = obter_serie(
@@ -338,10 +343,12 @@ def _buscar_macro() -> tuple[float | None, float | None, str | None]:
             data_inicial=(hoje - timedelta(days=JANELA_BUSCA_IPCA_DIAS)).strftime("%d/%m/%Y"),
             data_final=hoje.strftime("%d/%m/%Y"),
         )
-        ipca_12m = (1 + ipca_df["valor"].tail(MESES_IPCA_ACUMULADO) / 100).prod() - 1
-        return selic_meta, ipca_12m, None
+        janela_ipca = ipca_df.tail(MESES_IPCA_ACUMULADO)
+        ipca_12m = (1 + janela_ipca["valor"] / 100).prod() - 1
+        data_ipca = janela_ipca["data"].iloc[-1]
+        return selic_meta, ipca_12m, data_ipca, None
     except Exception as erro:
-        return None, None, f"Falha ao buscar Selic/IPCA do Banco Central: {erro}"
+        return None, None, None, f"Falha ao buscar Selic/IPCA do Banco Central: {erro}"
 
 
 def _widget_avancado_tradingview(ticker: str) -> str:
@@ -546,6 +553,21 @@ def _fmt_bilhoes(valor: float | None) -> str:
     if abs(valor) >= 1e6:
         return _pt_br(f"R$ {valor / 1e6:.1f} mi")
     return _pt_br(f"R$ {valor:,.2f}")
+
+
+def _fmt_data(valor: pd.Timestamp | str | None, template: str = "%d/%m/%Y") -> str:
+    """Formata uma data (Timestamp do pandas, vindo direto da coluna
+    `data` dos DataFrames de preço, ou string ISO "aaaa-mm-dd", vinda de
+    `data_balanco_fundamentus`) no padrão brasileiro, ou "N/D" se ausente
+    — mesmo padrão de `_fmt` pra dado faltante. Usado só no bloco "Datas
+    de referência dos dados usados" da seção Valor Justo. `template`
+    customizável pro caso do IPCA, mensal — só faz sentido mostrar mês/
+    ano, não um dia exato que a série não tem."""
+    if valor is None or pd.isna(valor):
+        return "N/D"
+    if isinstance(valor, str):
+        valor = datetime.strptime(valor, "%Y-%m-%d")
+    return pd.Timestamp(valor).strftime(template)
 
 
 def _tabela_formatada_pt_br(
@@ -780,7 +802,7 @@ with aba_analisar:
             # segmento setorial. "Comparação setorial" mais abaixo
             # reaproveita esse mesmo resultado, não busca de novo.
             segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
-            selic_meta, ipca_12m, erro_macro = _buscar_macro()
+            selic_meta, ipca_12m, data_ipca, erro_macro = _buscar_macro()
             ano_fcd_mais_recente, erro_ano_fcd = _buscar_ano_fcd_mais_recente()
             # Pro card "Correlação com fatores externos" mais abaixo — custo
             # parecido com o resto (mais duas séries de 2 anos e uma leitura
@@ -952,6 +974,47 @@ with aba_analisar:
             "reais da empresa — isto não é uma recomendação de compra ou "
             "venda, apenas uma referência de estudo."
         )
+
+        with st.expander("Datas de referência dos dados usados"):
+            # Preço/Beta vêm da coluna "data" que obter_historico já traz
+            # (ver ingest.precos) — só não era extraída até aqui. Balanço
+            # vem de indicadores (Fundamentus, "Últ balanço processado",
+            # ver ingest.fundamentus). FCD reaproveita ano_fcd_utilizado,
+            # já calculado acima pro cartão do FCD. IPCA reaproveita
+            # data_ipca de _buscar_macro. Selic e os dividendos do Bazin
+            # não têm uma data própria pra mostrar — são recalculados com
+            # a data de hoje a cada busca (ver investigação de
+            # 2026-09-24), por isso não aparecem com um valor de data.
+            data_preco_referencia = (
+                None if erro_preco_atual else historico_preco_atual["data"].iloc[-1]
+            )
+            data_beta_referencia = (
+                None if erro_historico_beta else historico_beta["data"].iloc[-1]
+            )
+            data_balanco_referencia = (
+                indicadores["data_balanco_fundamentus"] if indicadores else None
+            )
+            texto_fcd_referencia = (
+                f"demonstração financeira anual de {ano_fcd_utilizado} (CVM)"
+                if resultado_fcd["aplicavel"]
+                else "não aplicável"
+            )
+            st.markdown(
+                "Comparar o preço de hoje com o último balanço disponível é o "
+                "padrão de mercado — cada dado abaixo tem uma data-base "
+                "diferente por natureza (o balanço de uma empresa sempre sai "
+                "com atraso), não por inconsistência:\n\n"
+                f"- **Preço** — último fechamento: {_fmt_data(data_preco_referencia)}.\n"
+                "- **Indicadores fundamentalistas** (Fundamentus) — balanço de "
+                f"{_fmt_data(data_balanco_referencia)}: lucro, receita e margens "
+                "somam os 12 meses até essa data; patrimônio, dívida e número "
+                "de ações são a posição nessa data.\n"
+                f"- **FCD** — {texto_fcd_referencia}.\n"
+                f"- **Beta** — 1 ano de pregões até {_fmt_data(data_beta_referencia)}.\n"
+                f"- **IPCA (12 meses)** — acumulado até {_fmt_data(data_ipca, '%m/%Y')}.\n"
+                "- **Selic** e **dividendos do método Bazin** (últimos 12 "
+                "meses) — sempre calculados com a data de hoje."
+            )
 
         with st.expander("Como funciona esse cálculo?"):
             st.markdown(
@@ -1664,7 +1727,7 @@ with aba_carteira:
                 # IPCA já é buscado (e cacheado por 1h) na aba "Analisar uma
                 # ação" pro WACC do FCD — reaproveita a mesma busca aqui, não
                 # dispara nada novo se já tiver rodado nessa sessão.
-                _, ipca_12m_carteira, erro_macro_carteira = _buscar_macro()
+                _, ipca_12m_carteira, _, erro_macro_carteira = _buscar_macro()
 
                 SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
                 SELECAO_LINEAR = "Sem juros compostos (linear)"

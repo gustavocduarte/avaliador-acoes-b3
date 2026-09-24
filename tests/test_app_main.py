@@ -382,6 +382,7 @@ def _indicadores_falsos_aplicavel_pra_graham() -> dict:
         "crescimento_receita_5a_percentual": 8.0,
         "patrimonio_liquido": 20_000_000.0,
         "divida_liquida": 10_000_000.0,
+        "data_balanco_fundamentus": "2026-06-30",
     }
 
 
@@ -469,6 +470,7 @@ def _preparar_fcd_aplicavel(
             "crescimento_receita_5a_percentual": 8.0,
             "divida_liquida_sobre_patrimonio": 0.5,
             "divida_liquida": divida_liquida,
+            "data_balanco_fundamentus": "2026-06-30",
         },
     )
     monkeypatch.setattr(
@@ -559,6 +561,64 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
         f"FCD calculado com a demonstração financeira anual de {ANO_FCD_MOCK - 1} (CVM) — "
         f"a de {ANO_FCD_MOCK} ainda não foi entregue por essa empresa."
     )
+
+
+# --- Bloco "Datas de referência dos dados usados" (investigação de
+# 2026-09-24: preço/beta/IPCA vêm de datas diferentes entre si e do
+# balanço usado pelos indicadores do Fundamentus — não é bug, é o padrão
+# de mercado, mas ficava invisível na tela até este bloco). Os mocks de
+# `_preparar_fcd_aplicavel` (via `_historico_por_periodo`) fixam a mesma
+# data (2026-09-15) pra preço E beta — não testa datas DIFERENTES entre
+# os dois (isso é conteúdo do próprio yfinance, não da lógica deste
+# bloco), só que cada valor é extraído e mostrado corretamente.
+
+
+def test_bloco_datas_referencia_mostra_as_datas_certas(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "Comparar o preço de hoje" in m.value]
+    assert len(blocos) == 1
+    bloco = blocos[0]
+    assert "último fechamento: 15/09/2026." in bloco
+    assert "balanço de 30/06/2026:" in bloco
+    assert f"demonstração financeira anual de {ANO_FCD_MOCK} (CVM)." in bloco
+    assert "1 ano de pregões até 15/09/2026." in bloco
+    assert "acumulado até 12/2025." in bloco
+    assert "sempre calculados com a data de hoje." in bloco
+
+
+def test_bloco_datas_referencia_mostra_nd_quando_fundamentus_falha(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    def indicadores_falha(*args, **kwargs):
+        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", indicadores_falha)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    bloco = next(m.value for m in at.markdown if "Comparar o preço de hoje" in m.value)
+    assert "balanço de N/D:" in bloco
+    # O resto do bloco não depende do Fundamentus — continua com data real,
+    # a falha não deveria "vazar" pras outras linhas.
+    assert "último fechamento: 15/09/2026." in bloco
+
+
+def test_bloco_datas_referencia_fcd_nao_aplicavel_mostra_nao_aplicavel(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    bloco = next(m.value for m in at.markdown if "Comparar o preço de hoje" in m.value)
+    assert "**FCD** — não aplicável." in bloco
 
 
 def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):
@@ -763,6 +823,7 @@ def _indicadores_falsos_com(numero_acoes: float, divida_liquida: float) -> dict:
         "crescimento_receita_5a_percentual": 8.0,
         "patrimonio_liquido": 20_000_000.0,
         "divida_liquida": divida_liquida,
+        "data_balanco_fundamentus": "2026-06-30",
     }
 
 

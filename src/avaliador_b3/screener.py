@@ -109,6 +109,7 @@ COLUNAS_RESULTADO = [
     "bazin_preco_teto",
     "fcd_valor_justo",
     "ano_referencia_fcd",
+    "data_balanco_fundamentus",
     "beta_utilizado",
     "aviso_desconto_extremo",
 ]
@@ -209,6 +210,15 @@ def _calcular_linha_ticker(
     # converter o FCD de Enterprise Value pra Equity Value, mesmo campo
     # usado em app/main.py (ver modelos/fcd.py).
     divida_liquida = indicadores["divida_liquida"] if indicadores else None
+    # Data-base ("Últ balanço processado") dos indicadores acima — varia
+    # por empresa (balanços trimestrais saem em datas diferentes), por
+    # isso vira coluna própria no Screener. Diferente de preço/beta/IPCA,
+    # que são praticamente a mesma data pra todas as ações da mesma
+    # rodada (buscadas em sequência, minutos de diferença) — não levadas
+    # pro CSV por não variarem o suficiente pra justificar a coluna.
+    data_balanco_fundamentus = (
+        indicadores["data_balanco_fundamentus"] if indicadores else None
+    )
 
     dividendos = None
     try:
@@ -315,6 +325,7 @@ def _calcular_linha_ticker(
         "bazin_preco_teto": resultado_bazin.get("preco_teto"),
         "fcd_valor_justo": resultado_fcd.get("valor_justo"),
         "ano_referencia_fcd": ano_referencia_fcd if resultado_fcd["aplicavel"] else None,
+        "data_balanco_fundamentus": data_balanco_fundamentus,
         "beta_utilizado": resultado_fcd.get("beta_utilizado"),
         "aviso_desconto_extremo": _aviso_desconto_extremo(desconto_percentual),
     }

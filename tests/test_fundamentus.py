@@ -55,6 +55,22 @@ def test_parse_numero(texto, esperado):
     assert fundamentus._parse_numero(texto) == esperado
 
 
+@pytest.mark.parametrize(
+    ("texto", "esperado"),
+    [
+        ("30/06/2026", "2026-06-30"),
+        ("01/01/2020", "2020-01-01"),
+        (None, None),
+        ("-", None),
+        ("", None),
+        ("30-06-2026", None),  # formato errado, não dd/mm/aaaa
+        ("não é uma data", None),
+    ],
+)
+def test_parse_data(texto, esperado):
+    assert fundamentus._parse_data(texto) == esperado
+
+
 def test_extrair_rotulos_valores_contra_pagina_real_petr4():
     html = _html_fixture("fundamentus_petr4.html")
     rotulos_valores = fundamentus._extrair_rotulos_valores(html)
@@ -107,6 +123,7 @@ def _rotulos_valores_completos(**sobrescritas: str) -> dict[str, str]:
         "Nro. Ações": "12.888.700.000",
         "Patrim. Líq": "480.950.000.000",
         "Dív. Líquida": "312.769.000.000",
+        "Últ balanço processado": "30/06/2026",
     }
     base.update(sobrescritas)
     return base
@@ -127,6 +144,7 @@ def test_montar_indicadores_caminho_feliz():
         "numero_acoes": 12888700000.0,
         "patrimonio_liquido": 480950000000.0,
         "divida_liquida": 312769000000.0,
+        "data_balanco_fundamentus": "2026-06-30",
     }
 
 
@@ -296,6 +314,37 @@ def test_obter_indicadores_cache_com_versao_de_schema_antiga_busca_de_novo(tmp_p
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
     assert chamadas["contador"] == 1
+
+
+def test_obter_indicadores_cache_versao_anterior_sem_campo_novo_busca_de_novo_e_traz_o_campo(
+    tmp_path, monkeypatch
+):
+    # Regressão específica do incremento de VERSAO_SCHEMA_FUNDAMENTUS pra 3
+    # (adição de data_balanco_fundamentus): um cache gravado na versão
+    # anterior (sem o campo novo, cenário real de qualquer cache já em
+    # disco antes desta mudança) não pode ser servido faltando o campo —
+    # tem que ser tratado como inválido e rebuscado, mesmo mecanismo do
+    # teste acima, mas confirmando o RESULTADO (campo presente), não só a
+    # contagem de chamadas.
+    caminho = tmp_path / "fundamentus" / "PETR4.json"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "versao_schema": fundamentus.VERSAO_SCHEMA_FUNDAMENTUS - 1,
+                "indicadores": {"ticker": "PETR4", "roe_percentual": 1.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+
+    indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert indicadores["data_balanco_fundamentus"] == "2026-06-30"
 
 
 def test_obter_indicadores_cache_mais_velho_que_ttl_busca_de_novo(tmp_path, monkeypatch):
