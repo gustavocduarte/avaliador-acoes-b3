@@ -401,26 +401,52 @@ def test_calcular_linha_ticker_degrada_graciosamente_quando_fundamentus_falha(
 
 
 @pytest.mark.parametrize(
-    ("desconto", "esperado_aviso"),
+    "desconto",
     [
-        (None, False),
-        (0.0, False),
-        (150.0, False),
-        (-90.0, False),
-        (200.0, False),  # limiar exato -> não sinaliza (checagem é estrita)
-        (-100.0, False),  # limiar exato -> não sinaliza (checagem é estrita)
-        (200.01, True),
-        (-100.01, True),
-        (1730.6, True),  # o caso real da CSNA3 na validação
-        (-405.6, True),  # o caso real da AURE3 na validação
+        None,
+        0.0,
+        150.0,
+        -90.0,
+        200.0,  # limiar exato -> não sinaliza (checagem é estrita)
+        -100.0,  # limiar exato -> não sinaliza (checagem é estrita)
     ],
 )
-def test_aviso_desconto_extremo(desconto, esperado_aviso):
-    aviso = screener._aviso_desconto_extremo(desconto)
-    if esperado_aviso:
-        assert aviso == screener.AVISO_DESCONTO_EXTREMO
-    else:
-        assert aviso == ""
+def test_aviso_desconto_extremo_dentro_do_limiar_fica_vazio(desconto):
+    # metodos_utilizados não importa aqui — dentro do limiar, nenhuma
+    # combinação de sinal/FCD deveria disparar aviso nenhum.
+    assert screener._aviso_desconto_extremo(desconto, ["graham", "fcd"]) == ""
+
+
+def test_aviso_desconto_extremo_positivo_com_fcd():
+    # Caso real da validação: CSNA3 (FCD entre os métodos).
+    aviso = screener._aviso_desconto_extremo(1730.6, ["graham", "fcd"])
+    assert aviso == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD
+
+
+def test_aviso_desconto_extremo_positivo_sem_fcd():
+    # Achado real que motivou a correção: COGN3 dispara o limiar positivo
+    # só com Graham, sem FCD entre os métodos — o texto não pode culpar
+    # a CAGR do FCD nesse caso.
+    aviso = screener._aviso_desconto_extremo(225.68, ["graham"])
+    assert aviso == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
+
+
+def test_aviso_desconto_extremo_negativo_com_fcd():
+    # Caso real da validação: AURE3 (só FCD, que é o único método capaz
+    # de produzir valor combinado negativo).
+    aviso = screener._aviso_desconto_extremo(-405.6, ["fcd"])
+    assert aviso == screener.AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD
+
+
+def test_aviso_desconto_extremo_negativo_sem_fcd_usa_texto_generico():
+    # Combinação hoje INALCANÇÁVEL na prática (Graham é raiz quadrada,
+    # Bazin só fica aplicável com dividendo positivo — nenhum dos dois
+    # produz valor combinado negativo sem o FCD) — mas a função não pode
+    # quebrar nem inventar uma causa específica se isso um dia acontecer
+    # (ex: um dos dois modelos mudar). Cai no texto de reserva genérico,
+    # ver AVISO_DESCONTO_EXTREMO_GENERICO em config.py.
+    aviso = screener._aviso_desconto_extremo(-150.0, ["graham"])
+    assert aviso == screener.AVISO_DESCONTO_EXTREMO_GENERICO
 
 
 def test_calcular_linha_ticker_sinaliza_desconto_extremo_positivo(
@@ -451,7 +477,7 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_positivo(
     )
 
     assert linha["desconto_percentual"] == pytest.approx(900.0)
-    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO
+    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
 
 
 def test_calcular_linha_ticker_sinaliza_desconto_extremo_negativo(
@@ -482,7 +508,7 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_negativo(
     )
 
     assert linha["desconto_percentual"] == pytest.approx(-300.0)
-    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO
+    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD
 
 
 def test_calcular_linha_ticker_nao_sinaliza_desconto_normal(ambiente_feliz, tmp_path, monkeypatch):
@@ -546,5 +572,8 @@ def test_rodar_screener_sinaliza_so_a_acao_com_desconto_extremo(
     linha_extrema = resultado[resultado["ticker"] == "AAAA4"].iloc[0]
     linha_normal = resultado[resultado["ticker"] == "BBBB4"].iloc[0]
 
-    assert linha_extrema["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO
+    assert (
+        linha_extrema["aviso_desconto_extremo"]
+        == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
+    )
     assert linha_normal["aviso_desconto_extremo"] == ""

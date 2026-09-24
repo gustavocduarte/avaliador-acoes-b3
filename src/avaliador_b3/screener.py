@@ -43,7 +43,10 @@ import pandas as pd
 
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
-    AVISO_DESCONTO_EXTREMO,
+    AVISO_DESCONTO_EXTREMO_GENERICO,
+    AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD,
+    AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
+    AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
     DATA_PROCESSED_DIR,
     DATA_RAW_DIR,
     DESCONTO_EXTREMO_LIMITE_INFERIOR,
@@ -116,17 +119,46 @@ COLUNAS_RESULTADO = [
 ]
 
 
-def _aviso_desconto_extremo(desconto_percentual: float | None) -> str:
+def _aviso_desconto_extremo(
+    desconto_percentual: float | None, metodos_utilizados: list[str]
+) -> str:
     """Sinaliza (sem filtrar) descontos fora da faixa considerada
-    confiável — ver a justificativa dos limiares em config.py. A linha
-    continua na tabela normalmente, só ganha esse aviso textual."""
+    confiável — ver a justificativa dos limiares em config.py (esses não
+    mudam aqui). O TEXTO do aviso, por outro lado, depende de quais
+    métodos entraram no valor combinado daquela ação específica — achado
+    real, revisando o Screener publicado (screenshot da aba Screener,
+    2026-09-24): um texto único que sempre citava o FCD ficava errado
+    pra ações como COGN3, onde só Graham disparava o limiar positivo,
+    sem FCD nenhum na conta. Quatro casos, por sinal do
+    desconto × presença de "fcd" em `metodos_utilizados`:
+    - positivo + FCD: taxa de crescimento de 2 pontos do FCD (o caso mais
+      comum, mas não mais o único assumido).
+    - positivo + sem FCD: risco que Graham/Bazin não captam.
+    - negativo + FCD: FCD saiu negativo (único dos três que pode).
+    - negativo + sem FCD: combinação hoje INALCANÇÁVEL — ver comentário
+      completo em `config.AVISO_DESCONTO_EXTREMO_GENERICO` pro porquê
+      (Graham é raiz quadrada, Bazin só aplicável com dividendo
+      positivo) — mantido como reserva genérica, não uma explicação
+      inventada, pra não deixar essa combinação muda se algum dos dois
+      modelos mudar no futuro e passar a permitir negativo.
+
+    A linha continua na tabela normalmente, só ganha esse aviso textual.
+    """
     if desconto_percentual is None:
         return ""
-    if (
-        desconto_percentual > DESCONTO_EXTREMO_LIMITE_SUPERIOR
-        or desconto_percentual < DESCONTO_EXTREMO_LIMITE_INFERIOR
-    ):
-        return AVISO_DESCONTO_EXTREMO
+
+    tem_fcd = "fcd" in metodos_utilizados
+
+    if desconto_percentual > DESCONTO_EXTREMO_LIMITE_SUPERIOR:
+        return (
+            AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD
+            if tem_fcd
+            else AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
+        )
+    if desconto_percentual < DESCONTO_EXTREMO_LIMITE_INFERIOR:
+        return (
+            AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD if tem_fcd else AVISO_DESCONTO_EXTREMO_GENERICO
+        )
     return ""
 
 
@@ -333,7 +365,9 @@ def _calcular_linha_ticker(
         "data_balanco_fundamentus": data_balanco_fundamentus,
         "divergencia_percentual_metodos": divergencia["divergencia_percentual"],
         "beta_utilizado": resultado_fcd.get("beta_utilizado"),
-        "aviso_desconto_extremo": _aviso_desconto_extremo(desconto_percentual),
+        "aviso_desconto_extremo": _aviso_desconto_extremo(
+            desconto_percentual, resultado_combinado["metodos_utilizados"]
+        ),
     }
 
 

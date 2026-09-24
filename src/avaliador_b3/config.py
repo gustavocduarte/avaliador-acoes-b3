@@ -608,10 +608,53 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 #   real — um recorte bem mais seletivo.
 DESCONTO_EXTREMO_LIMITE_SUPERIOR = 200.0
 DESCONTO_EXTREMO_LIMITE_INFERIOR = -100.0
-AVISO_DESCONTO_EXTREMO = (
-    "Desconto extremo — provavelmente reflete sensibilidade da CAGR de 2 "
-    "pontos do FCD (ver nota de validação em config.py), não "
-    "necessariamente uma oportunidade real."
+
+# Correção em 2026-09-24: o aviso era um texto ÚNICO, sempre culpando o
+# FCD, independente de quais métodos realmente entraram no valor
+# combinado daquela ação — achado real, revisando o Screener publicado
+# (screenshot da aba Screener): COGN3 disparava o limiar positivo só com
+# Graham (FCD nem aplicável ali), mas o texto dizia "sensibilidade da
+# CAGR do FCD" mesmo assim. Virou 4 textos, escolhidos em
+# avaliador_b3.screener._aviso_desconto_extremo por sinal do desconto
+# (positivo/negativo) × presença de "fcd" em `metodos_utilizados` — os
+# LIMIARES não mudaram, só qual texto explica cada combinação. Nenhum
+# cita nome de arquivo/código nem jargão técnico (linguagem visível ao
+# usuário).
+AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD = (
+    "Desconto extremo — provavelmente vem da taxa de crescimento "
+    "estimada pelo FCD, que usa só dois anos de dados e pode exagerar o "
+    "resultado. Não é necessariamente uma oportunidade real."
+)
+AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
+    "Desconto extremo — calculado só com Graham e/ou Bazin. Descontos "
+    "desse tamanho costumam indicar que o mercado está precificando um "
+    "risco que essas fórmulas não captam (como dívida alta ou lucro que "
+    "pode não se repetir). Confira os valores individuais antes de "
+    "considerar uma oportunidade real."
+)
+AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD = (
+    "Valor justo zero ou negativo — o FCD saiu negativo, o que acontece "
+    "quando o fluxo de caixa projetado é negativo ou quando a dívida "
+    "líquida supera o valor desse fluxo. Não quer dizer que a ação "
+    "valha menos que zero, mas indica que, pelas premissas do modelo, a "
+    "geração de caixa não sustenta o preço atual. Confira o "
+    "endividamento em 'Saúde financeira'."
+)
+# Reserva pra qualquer combinação não coberta acima — hoje, na prática,
+# só "desconto negativo extremo SEM FCD entre os métodos". Essa
+# combinação é INALCANÇÁVEL com os modelos atuais: Graham é uma raiz
+# quadrada (`modelos.graham`, sempre ≥ 0 quando calculável) e Bazin só
+# fica "aplicável" quando o dividendo dos últimos 12 meses é positivo
+# (`modelos.bazin`, preco_teto sempre > 0 nesse caso) — sem o FCD (o
+# único dos três que pode dar negativo), a média de Graham e/ou Bazin
+# nunca é negativa, então desconto ≤ LIMITE_INFERIOR (que exige
+# valor_combinado ≤ 0) não pode acontecer. Existe mesmo assim, sem
+# inventar uma explicação específica, pra não deixar essa combinação sem
+# texto nenhum se um dos dois modelos mudar no futuro e passar a
+# permitir valor negativo.
+AVISO_DESCONTO_EXTREMO_GENERICO = (
+    "Desconto fora do comum — confira os valores individuais de cada "
+    "método antes de tirar qualquer conclusão."
 )
 
 # --- Painel de correlação com fatores externos (2026-09-15) ---

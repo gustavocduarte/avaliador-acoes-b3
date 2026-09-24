@@ -1554,10 +1554,9 @@ with aba_screener:
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:
             st.warning(
-                f"{linhas_com_aviso} ação(ões) com desconto extremo — ver "
-                "coluna \"aviso_desconto_extremo\" na tabela, provavelmente "
-                "reflete sensibilidade do modelo de FCD, não necessariamente "
-                "uma oportunidade real."
+                f'{linhas_com_aviso} ação(ões) com desconto fora do comum (valor '
+                "justo muito acima ou muito abaixo do preço) — veja a coluna "
+                '"Aviso" na tabela: a causa provável varia de uma ação para outra.'
             )
 
         tabela_screener_fmt, colunas_screener_fmt = _tabela_formatada_pt_br(

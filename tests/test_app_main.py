@@ -1138,6 +1138,53 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
     assert linha_dobr4["desconto_percentual"] == "100,0%"
 
 
+def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(
+    monkeypatch, tmp_path
+):
+    # Bug real: a faixa amarela mandava ver a coluna "aviso_desconto_
+    # extremo" (nome interno do CSV), mas a tabela mostra essa coluna
+    # como "Aviso" (ver column_config em app/main.py) -- quem lesse a
+    # faixa não achava nenhuma coluna com esse nome na tela.
+    import avaliador_b3.screener as screener_mod
+    from avaliador_b3.screener import COLUNAS_RESULTADO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    linha = {c: None for c in COLUNAS_RESULTADO} | {
+        "ticker": "EXTR3",
+        "sucesso": True,
+        "erro": "",
+        "preco_atual": 10.0,
+        "valor_combinado": 30.0,
+        "desconto_percentual": 200.01,
+        "metodos_utilizados": "graham",
+        "graham_valor_justo": 30.0,
+        "aviso_desconto_extremo": screener_mod.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+    }
+    caminho_screener_falso = tmp_path / "screener.csv"
+    pd.DataFrame([linha], columns=COLUNAS_RESULTADO).to_csv(caminho_screener_falso, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        w.value for w in at.warning if "ação(ões) com desconto fora do comum" in w.value
+    ]
+    assert len(avisos) == 1
+    assert avisos[0] == (
+        '1 ação(ões) com desconto fora do comum (valor justo muito acima ou '
+        'muito abaixo do preço) — veja a coluna "Aviso" na tabela: a causa '
+        "provável varia de uma ação para outra."
+    )
+    assert "aviso_desconto_extremo" not in avisos[0]
+
+
 def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkeypatch):
     # Correção de 2026-09-23: warnings.warn dentro de rodar_screener vai só
     # pro log do servidor, invisível pra quem clicou no botão — sem essa
