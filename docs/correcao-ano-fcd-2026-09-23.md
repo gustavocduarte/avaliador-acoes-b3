@@ -264,6 +264,9 @@ causa.
    investigado a fundo — fica registrado como bug preexistente conhecido,
    não resolvido aqui.
 
+   **Atualização (2026-09-25):** investigado e corrigido — não era só o
+   ABEV3, eram 20 das 76 ações. Ver `docs/correcao-cnpj-2026-09-25.md`.
+
 ---
 
 ## 9. Nota: datas erradas corrigidas depois do commit `7a29e7f`
