@@ -1519,7 +1519,9 @@ with aba_screener:
         "Divergência vazia significa que só um método se aplica àquela ação. "
         "Dividendos vs. histórico mostra os dividendos dos últimos 12 meses em "
         "relação à mediana dos 5 anos anteriores; valores bem acima de 100% "
-        "deixam o preço teto do Bazin menos confiável."
+        "deixam o preço teto do Bazin menos confiável. Dividendos vs. histórico "
+        "vazio significa que o Bazin não se aplica àquela ação (ou, raramente, "
+        "que os anos anteriores não têm pagamento para comparar)."
     )
 
     if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):

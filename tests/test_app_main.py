@@ -1316,6 +1316,33 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     assert "CVM fora do ar (simulado)" in avisos[0]
 
 
+def test_caption_screener_explica_dividendos_vs_historico_vazio(monkeypatch):
+    # A coluna "Dividendos vs. histórico" fica vazia tanto quando o Bazin
+    # não se aplica quanto (raramente) quando a mediana dos 5 anos sai
+    # zero — a caption do topo da aba precisa deixar isso claro, sem
+    # deixar a coluna vazia parecendo um dado faltando por erro.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    captions = [
+        c.value
+        for c in at.caption
+        if "Dividendos vs. histórico vazio significa que o Bazin não se aplica" in c.value
+    ]
+    assert len(captions) == 1
+    assert (
+        "ou, raramente, que os anos anteriores não têm pagamento para comparar"
+        in captions[0]
+    )
+
+
 def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tmp_path):
     import avaliador_b3.carteira as carteira_mod
     import avaliador_b3.graficos as graficos_mod
