@@ -111,6 +111,7 @@ COLUNAS_RESULTADO = [
     "metodos_utilizados",
     "graham_valor_justo",
     "bazin_preco_teto",
+    "bazin_razao_dividendos_percentual",
     "fcd_valor_justo",
     "ano_referencia_fcd",
     "data_balanco_fundamentus",
@@ -350,6 +351,7 @@ def _calcular_linha_ticker(
     )
 
     erro = None if resultado_combinado["aplicavel"] else resultado_combinado["motivo_nao_aplicavel"]
+    razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
     return {
         "ticker": ticker,
         "sucesso": True,
@@ -360,6 +362,9 @@ def _calcular_linha_ticker(
         "metodos_utilizados": ",".join(resultado_combinado["metodos_utilizados"]),
         "graham_valor_justo": resultado_graham.get("valor_justo"),
         "bazin_preco_teto": resultado_bazin.get("preco_teto"),
+        "bazin_razao_dividendos_percentual": (
+            razao_dividendos_bazin * 100 if razao_dividendos_bazin is not None else None
+        ),
         "fcd_valor_justo": resultado_fcd.get("valor_justo"),
         "ano_referencia_fcd": ano_referencia_fcd if resultado_fcd["aplicavel"] else None,
         "data_balanco_fundamentus": data_balanco_fundamentus,

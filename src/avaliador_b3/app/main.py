@@ -46,6 +46,7 @@ from avaliador_b3.config import (
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
+    RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
@@ -109,6 +110,7 @@ COLUNAS_TABELA_SCREENER = [
     "valor_combinado",
     "desconto_percentual",
     "divergencia_percentual_metodos",
+    "bazin_razao_dividendos_percentual",
     "metodos_utilizados",
     "aviso_desconto_extremo",
     "erro",
@@ -948,6 +950,18 @@ with aba_analisar:
             _cartao_metodo("Graham", resultado_graham, "valor_justo", preco_atual)
         with coluna_bazin:
             _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto", preco_atual)
+            razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
+            if (
+                razao_dividendos_bazin is not None
+                and razao_dividendos_bazin > RAZAO_DIVIDENDOS_ATIPICA_BAZIN
+            ):
+                st.caption(
+                    "Dividendos dos últimos 12 meses em "
+                    f"{razao_dividendos_bazin * 100:.0f}% da mediana dos 5 anos "
+                    "anteriores. Pode ser crescimento real dos pagamentos ou um "
+                    "pagamento extraordinário — a fonte não permite distinguir. "
+                    "Se for extraordinário, o preço teto está inflado."
+                )
         with coluna_fcd:
             _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
             if resultado_fcd["aplicavel"]:
@@ -1059,7 +1073,10 @@ with aba_analisar:
                 "dividendos: calcula o preço máximo que garantiria um retorno de "
                 f"{YIELD_MINIMO_BAZIN:.0%} ao ano só em dividendos, baseado no histórico "
                 "de pagamento da empresa. Só se aplica a quem tem histórico consistente "
-                "de dividendo.\n\n"
+                "de dividendo. A fonte dos dividendos (Yahoo Finance) não distingue "
+                "pagamentos ordinários de extraordinários: um provento pontual grande "
+                "(como um dividendo especial) entra na mesma soma dos últimos 12 meses "
+                "e pode inflar o preço teto.\n\n"
                 "**FCD (Fluxo de Caixa Descontado)** — projeta os fluxos de caixa "
                 "futuros da empresa e traz isso a valor presente, descontando pelo "
                 "custo de capital (WACC). Esse valor presente é o da empresa como um "
@@ -1499,7 +1516,10 @@ with aba_screener:
         "Graham, Bazin e FCD aplicáveis, com pesos iguais por simplicidade — veja "
         "'Como funciona esse cálculo?' na aba Analisar uma ação). A coluna "
         "Divergência mostra o quanto os métodos discordam entre si. "
-        "Divergência vazia significa que só um método se aplica àquela ação."
+        "Divergência vazia significa que só um método se aplica àquela ação. "
+        "Dividendos vs. histórico mostra os dividendos dos últimos 12 meses em "
+        "relação à mediana dos 5 anos anteriores; valores bem acima de 100% "
+        "deixam o preço teto do Bazin menos confiável."
     )
 
     if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):
@@ -1580,6 +1600,11 @@ with aba_screener:
                 # entre os métodos).
                 "divergencia_percentual_metodos": st.column_config.NumberColumn(
                     "Divergência", format="%d%%"
+                ),
+                # NUMÉRICA pelo mesmo motivo da Divergência acima — ordenar
+                # pelo cabeçalho precisa continuar numérico de verdade.
+                "bazin_razao_dividendos_percentual": st.column_config.NumberColumn(
+                    "Dividendos vs. histórico", format="%d%%"
                 ),
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",

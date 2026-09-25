@@ -115,6 +115,84 @@ def test_aplicavel_com_datas_com_timezone_igual_ao_yfinance():
     assert resultado["preco_teto"] == pytest.approx(1.2 / 0.06)
 
 
+def test_razao_dividendos_acima_do_corte():
+    # 2021-2024: R$1,00/ano (mediana). 2025 (últimos 12 meses): R$3,00 —
+    # razão = 3,00/1,00 = 3,0, acima do corte de 2,0 (config.RAZAO_
+    # DIVIDENDOS_ATIPICA_BAZIN).
+    dividendos = _dividendos(
+        [
+            ("2021-12-01", 1.0),
+            ("2022-12-01", 1.0),
+            ("2023-12-01", 1.0),
+            ("2024-12-01", 1.0),
+            ("2025-12-01", 3.0),
+        ]
+    )
+
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=DATA_REFERENCIA)
+
+    assert resultado["aplicavel"] is True
+    assert resultado["razao_dividendos_12m_vs_mediana_5a"] == pytest.approx(3.0)
+
+
+def test_razao_dividendos_abaixo_do_corte():
+    # Últimos 12 meses (R$1,20) próximo da mediana dos 5 anos anteriores
+    # (R$1,00) — razão = 1,2, abaixo do corte de 2,0.
+    dividendos = _dividendos(
+        [
+            ("2021-12-01", 1.0),
+            ("2022-12-01", 1.0),
+            ("2023-12-01", 1.0),
+            ("2024-12-01", 1.0),
+            ("2025-12-01", 1.2),
+        ]
+    )
+
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=DATA_REFERENCIA)
+
+    assert resultado["aplicavel"] is True
+    assert resultado["razao_dividendos_12m_vs_mediana_5a"] == pytest.approx(1.2)
+
+
+def test_razao_dividendos_nula_quando_bazin_nao_aplicavel():
+    dividendos = _dividendos(
+        [
+            ("2023-12-01", 1.0),
+            ("2024-12-01", 1.0),
+            ("2025-12-01", 1.0),
+        ]
+    )
+
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=DATA_REFERENCIA)
+
+    assert resultado["aplicavel"] is False
+    assert resultado["razao_dividendos_12m_vs_mediana_5a"] is None
+
+
+def test_razao_dividendos_nula_quando_mediana_dos_5_anos_e_zero():
+    # Um pagamento de R$0,00 em cada um dos 5 anos exigidos satisfaz a
+    # regra de "histórico sem lacuna" (_anos_com_dividendo não olha o
+    # valor, só a presença de um registro), mas deixa a mediana dos totais
+    # anuais em zero — a razão não pode dividir por isso, mesmo com o
+    # método aplicável (o único pagamento real, >0, cai fora dessa janela
+    # de 5 anos, dentro dos últimos 12 meses).
+    dividendos = _dividendos(
+        [
+            ("2021-07-01", 0.0),
+            ("2022-07-01", 0.0),
+            ("2023-07-01", 0.0),
+            ("2024-07-01", 0.0),
+            ("2025-07-01", 0.0),
+            ("2026-01-01", 1.0),
+        ]
+    )
+
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=DATA_REFERENCIA)
+
+    assert resultado["aplicavel"] is True
+    assert resultado["razao_dividendos_12m_vs_mediana_5a"] is None
+
+
 def test_nao_aplicavel_quando_historico_bate_mas_nada_pago_nos_ultimos_12_meses():
     # 5 anos consecutivos cobertos (2021-2025), mas o pagamento mais recente
     # (2025-01-01) fica 2 semanas antes da janela de 12 meses terminando em

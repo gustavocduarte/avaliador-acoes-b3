@@ -774,6 +774,96 @@ def test_expander_valor_combinado_usa_yield_da_constante(monkeypatch):
     assert "leia o combinado junto com os valores individuais, não sozinho." in bloco
 
 
+def test_expander_bazin_menciona_que_fonte_nao_distingue_extraordinario(monkeypatch):
+    # Investigação de 2026-09-25 (achado em revisão externa): o preço teto
+    # do Bazin soma os dividendos dos últimos 12 meses sem distinguir
+    # pagamento ordinário de extraordinário — o parágrafo do Bazin no
+    # expander precisa deixar essa limitação da fonte explícita.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "**Valor combinado**" in m.value]
+    assert len(blocos) == 1
+    bloco = blocos[0]
+    assert (
+        "A fonte dos dividendos (Yahoo Finance) não distingue pagamentos "
+        "ordinários de extraordinários" in bloco
+    )
+    assert (
+        "um provento pontual grande (como um dividendo especial) entra na "
+        "mesma soma dos últimos 12 meses e pode inflar o preço teto" in bloco
+    )
+
+
+# --- Sinal de dividendos atípicos no cartão do Bazin (razão 12m vs. mediana) -
+
+
+def _dividendos_com_razao(ano_atual: int, dividendo_12m: float, dividendo_anos_anteriores: float):
+    """5 pagamentos anuais (1/dez), o mais recente com `dividendo_12m`
+    (dentro dos últimos 12 meses a partir de 'hoje') e os 4 anteriores com
+    `dividendo_anos_anteriores` cada — mesmo padrão de tests/test_bazin.py.
+    Como só 1 dos 5 valores difere, a mediana dos totais anuais continua
+    sendo `dividendo_anos_anteriores`, então a razão esperada é sempre
+    `dividendo_12m / dividendo_anos_anteriores`, sem precisar recalcular a
+    mediana à mão em cada teste."""
+    return pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [dividendo_12m] + [dividendo_anos_anteriores] * 4,
+        }
+    )
+
+
+def test_caption_dividendos_atipicos_aparece_acima_do_corte(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+    ano_atual = pd.Timestamp.now().year
+    # Razão = 3,0/1,0 = 3,0 (300%) -- acima do corte de 2,0
+    # (RAZAO_DIVIDENDOS_ATIPICA_BAZIN).
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: _dividendos_com_razao(ano_atual, 3.0, 1.0),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value
+    ]
+    assert len(avisos) == 1
+    assert "Dividendos dos últimos 12 meses em 300% da mediana dos 5 anos anteriores." in avisos[0]
+    assert "Pode ser crescimento real dos pagamentos ou um pagamento extraordinário" in avisos[0]
+    assert "a fonte não permite distinguir" in avisos[0]
+    assert "Se for extraordinário, o preço teto está inflado." in avisos[0]
+
+
+def test_caption_dividendos_atipicos_nao_aparece_abaixo_do_corte(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=None, segmento_setorial="Bancos")
+    ano_atual = pd.Timestamp.now().year
+    # Razão = 1,2/1,0 = 1,2 (120%) -- abaixo do corte de 2,0.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: _dividendos_com_razao(ano_atual, 1.2, 1.0),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value
+    ]
+    assert avisos == []
+
+
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
     # ROE/Margem líquida/LPA/VPA/Liquidez corrente usavam `_fmt()` sem
     # conversão de ponto pra vírgula (ex: "15.0%"/"R$ 5.00" em vez de

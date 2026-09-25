@@ -350,6 +350,31 @@ FATOR_GRAHAM = 22.5
 YIELD_MINIMO_BAZIN = 0.06
 ANOS_HISTORICO_MINIMO_BAZIN = 5
 
+# Corte de "razão de dividendos atípica" (2026-09-25, achado em revisão
+# externa): o preço teto usa a soma dos dividendos dos últimos 12 meses, mas
+# o yfinance (fonte, ver ingest.precos.obter_dividendos) não distingue
+# pagamento ordinário de extraordinário — um provento pontual grande entra
+# na mesma soma e pode inflar o preço teto sem aviso nenhum.
+#
+# Investigado: pra todo o universo Bazin-aplicável do Ibovespa (40 ações),
+# calculada a razão entre os dividendos dos últimos 12 meses e a MEDIANA dos
+# totais anuais dos 5 anos anteriores (mesmos anos que
+# ANOS_HISTORICO_MINIMO_BAZIN já exige). Distribuição contínua de 0,35 a
+# 6,21, sem um único penhasco dramático — mas com um "vale" visível entre
+# 1,9 e 2,6: o maior salto entre valores vizinhos nessa faixa, fora dos 2
+# outliers mais extremos (RDOR3, CURY3), fica entre PSSA3 (2,58) e B3SA3
+# (2,25), com outro salto logo depois entre ITSA4 (2,16) e VIVA3 (1,92).
+#
+# Cogitado um corte estatístico mais formal (regra de outlier de Tukey, Q3 +
+# 1,5×IQR ≈ 3,31) e descartado: pegaria só 4 ações (RDOR3, CURY3, WEGE3,
+# POMO4), deixando de fora ITUB4 (2,79x) e B3SA3 (2,25x), que também estão
+# claramente acima do padrão histórico da própria empresa. 2,0 cai dentro do
+# vale observado, fica logo acima do 3º quartil da distribuição (1,84) e tem
+# leitura direta em linguagem simples ("recebeu mais que o dobro do que
+# pagava tipicamente por ano") — trade-off assumido entre rigor estatístico
+# e um corte explicável na tela.
+RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
+
 # --- Fluxo de Caixa Descontado (FCD) ---
 #
 # Base do fluxo de caixa livre: FCF = Caixa Líquido Atividades Operacionais

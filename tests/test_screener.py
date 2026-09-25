@@ -119,6 +119,7 @@ def test_rodar_screener_processa_ticker_com_sucesso(ambiente_feliz, tmp_path):
     assert linha["ano_referencia_fcd"] == ANO_FCD_MOCK
     assert linha["data_balanco_fundamentus"] == "2026-06-30"
     assert linha["bazin_preco_teto"] is None  # dividendos vazios -> não aplicável
+    assert linha["bazin_razao_dividendos_percentual"] is None
     assert "graham" in linha["metodos_utilizados"]
     assert "fcd" in linha["metodos_utilizados"]
     assert "bazin" not in linha["metodos_utilizados"]
@@ -153,6 +154,40 @@ def test_rodar_screener_divergencia_fica_nula_com_um_so_metodo_aplicavel(
     assert linha["fcd_valor_justo"] is None
     assert linha["bazin_preco_teto"] is None
     assert linha["divergencia_percentual_metodos"] is None
+
+
+def test_calcular_linha_ticker_bazin_razao_dividendos_percentual(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Investigação de 2026-09-25 (achado em revisão externa): o preço teto
+    # do Bazin usa só os últimos 12 meses, sem distinguir provento
+    # ordinário de extraordinário — a razão contra a mediana dos 5 anos
+    # anteriores é o sinal disso. R$3,00 nos últimos 12 meses (ano_atual-1)
+    # contra R$1,00 nos outros 4 anos -> mediana=R$1,00, razão=3,0 (300%).
+    # A coluna grava em PORCENTAGEM (razão × 100), não a razão bruta — ver
+    # config.RAZAO_DIVIDENDOS_ATIPICA_BAZIN.
+    ano_atual = pd.Timestamp.now().year
+    dividendos = pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [3.0, 1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    monkeypatch.setattr(screener, "obter_dividendos", lambda ticker, **kw: dividendos)
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["bazin_preco_teto"] == pytest.approx(3.0 / 0.06)
+    assert linha["bazin_razao_dividendos_percentual"] == pytest.approx(300.0)
 
 
 def test_rodar_screener_data_balanco_fundamentus_fica_nula_quando_fundamentus_falha(
