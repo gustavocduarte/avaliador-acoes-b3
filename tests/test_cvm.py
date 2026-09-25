@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -137,7 +138,7 @@ def test_fcf_do_periodo_escala_desconhecida_levanta_erro_de_fluxo_de_caixa_nao_e
         _linha("6.02", "Caixa Líquido Atividades de Investimento", valor="-20"),
     ]
     with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="Escala monetária"):
-        cvm._fcf_do_periodo(linhas)
+        cvm._cfo_cfi_do_periodo(linhas)
 
 
 def test_linhas_da_empresa_contra_fixture_real_consolidado():
@@ -381,12 +382,19 @@ def test_linha_por_codigo_levanta_erro_quando_nao_encontrada():
         cvm._linha_por_codigo([], "6.01")
 
 
-def test_fcf_do_periodo_soma_cfo_e_cfi():
+def test_cfo_cfi_do_periodo_devolve_os_dois_componentes_separados():
+    # Regressão (2026-09-25): _fcf_do_periodo virou _cfo_cfi_do_periodo —
+    # devolve os dois componentes separados (não só a soma), usados pra
+    # calcular a proporção reinvestida (ver modelos.fcd.calcular_
+    # proporcao_reinvestimento_percentual).
     linhas = [
         {"CD_CONTA": "6.01", "VL_CONTA": "204037000.0000000000", "ESCALA_MOEDA": "MIL"},
         {"CD_CONTA": "6.02", "VL_CONTA": "-72363000.0000000000", "ESCALA_MOEDA": "MIL"},
     ]
-    assert cvm._fcf_do_periodo(linhas) == pytest.approx(131674000000.0)
+    cfo, cfi = cvm._cfo_cfi_do_periodo(linhas)
+    assert cfo == pytest.approx(204037000000.0)
+    assert cfi == pytest.approx(-72363000000.0)
+    assert cfo + cfi == pytest.approx(131674000000.0)
 
 
 def test_linhas_da_empresa_dfc_contra_fixture_real_mi_con():
@@ -463,6 +471,59 @@ def test_obter_fluxo_caixa_livre_levanta_cnpj_nao_encontrado(tmp_path, monkeypat
 
     with pytest.raises(cvm.CnpjNaoEncontrado):
         cvm.obter_fluxo_caixa_livre("11.111.111/1111-11", 2024, diretorio_cache=tmp_path)
+
+
+def test_obter_fluxo_caixa_livre_devolve_cfo_e_cfi_separados(tmp_path, monkeypatch):
+    # 2026-09-25: cfo_atual/cfi_atual expostos separados no resultado, pra
+    # calcular a proporção reinvestida (ver modelos.fcd.calcular_
+    # proporcao_reinvestimento_percentual) — mesmos números que já
+    # compunham fcf_atual em test_obter_fluxo_caixa_livre_prefere_mi_
+    # consolidado (204037000000 + (-72363000000) = 131674000000).
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["cfo_atual"] == pytest.approx(204037000000.0)
+    assert resultado["cfi_atual"] == pytest.approx(-72363000000.0)
+    assert resultado["cfo_atual"] + resultado["cfi_atual"] == pytest.approx(resultado["fcf_atual"])
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_em_formato_antigo_sem_envelope(
+    tmp_path, monkeypatch
+):
+    # Regressão (2026-09-25, mesmo padrão de
+    # fundamentus._ler_cache_com_schema_atual): um cache gravado ANTES da
+    # versão com cfo_atual/cfi_atual (formato antigo, sem o envelope
+    # {"versao_schema": ..., "resultado": ...}) precisa ser tratado como
+    # cache miss, não devolvido sem essas chaves novas.
+    caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text('{"fcf_atual": 999.0}', encoding="utf-8")
+
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    # Buscou de novo (não devolveu o 999.0 do cache antigo) e já regrava
+    # no formato novo, com envelope de versão.
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+    assert resultado["cfo_atual"] == pytest.approx(204037000000.0)
+    envelope = json.loads(caminho_cache.read_text(encoding="utf-8"))
+    assert envelope["versao_schema"] == cvm.VERSAO_SCHEMA_CVM_FCF
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_com_versao_diferente(tmp_path, monkeypatch):
+    caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text(
+        json.dumps({"versao_schema": 0, "resultado": {"fcf_atual": 999.0}}), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
 
 
 def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_path, monkeypatch):
@@ -562,7 +623,9 @@ def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empres
 
     def obter_falso(cnpj, ano, *a, **k):
         chamadas.append(ano)
-        return {"fcf_atual": 100.0 if ano == 2025 else 80.0}
+        if ano == 2025:
+            return {"fcf_atual": 100.0, "cfo_atual": 60.0, "cfi_atual": -30.0}
+        return {"fcf_atual": 80.0}
 
     monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
 
@@ -577,6 +640,8 @@ def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empres
     assert resultado["usou_fallback"] is False
     assert resultado["fcf_atual"] == 100.0
     assert resultado["fcf_ha_n_anos"] == 80.0
+    assert resultado["cfo_atual"] == 60.0
+    assert resultado["cfi_atual"] == -30.0
     assert chamadas == [2025, 2020]  # ano base = 2025 - 5
 
 
@@ -587,7 +652,7 @@ def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
         if ano == 2025:
             raise cvm.CnpjNaoEncontrado("não encontrado em 2025")
         if ano == 2024:
-            return {"fcf_atual": 100.0}
+            return {"fcf_atual": 100.0, "cfo_atual": 70.0, "cfi_atual": -20.0}
         if ano == 2019:
             return {"fcf_atual": 80.0}
         raise AssertionError(f"ano inesperado: {ano}")
@@ -607,6 +672,11 @@ def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
     assert resultado["usou_fallback"] is True
     assert resultado["fcf_atual"] == 100.0
     assert resultado["fcf_ha_n_anos"] == 80.0
+    # cfo_atual/cfi_atual são do ano EFETIVAMENTE usado (2024, pós-
+    # fallback), não do ano_mais_recente original (2025) nem do ano_base
+    # (2019).
+    assert resultado["cfo_atual"] == 70.0
+    assert resultado["cfi_atual"] == -20.0
 
 
 def test_obter_fluxo_caixa_livre_com_fallback_propaga_conta_fluxo_caixa_nao_encontrada_sem_fallback(

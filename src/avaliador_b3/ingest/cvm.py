@@ -48,6 +48,7 @@ from avaliador_b3.config import (
     FATOR_ESCALA_MOEDA_CVM,
     TAMANHO_CNPJ,
     URL_CVM_DFP_ZIP,
+    VERSAO_SCHEMA_CVM_FCF,
 )
 
 TIMEOUT_SEGUNDOS = 60
@@ -343,11 +344,15 @@ def _linha_por_codigo(linhas_periodo: list[dict], codigo: str) -> dict:
     return candidatas[0]
 
 
-def _fcf_do_periodo(linhas_periodo: list[dict]) -> float:
-    """FCF = Caixa Líquido Atividades Operacionais + Caixa Líquido
-    Atividades de Investimento (ver justificativa em config.py). Como o
-    de Investimento normalmente vem negativo, somar os dois já desconta
-    capex e outros investimentos do caixa operacional.
+def _cfo_cfi_do_periodo(linhas_periodo: list[dict]) -> tuple[float, float]:
+    """Caixa Líquido Atividades Operacionais e Caixa Líquido Atividades de
+    Investimento, separados — FCF (ver justificativa em config.py) é a
+    soma dos dois, mas os componentes em si são expostos separadamente
+    (ver `_montar_resultado_fcf`/`obter_fluxo_caixa_livre`) desde
+    2026-09-25, pra dar pra calcular a proporção reinvestida do caixa
+    operacional (`modelos.fcd.calcular_proporcao_reinvestimento_
+    percentual`) — investigação de por que o FCD sai sistematicamente
+    baixo em empresas de investimento pesado, ver config.py.
 
     `_valor_conta` recebe `ContaFluxoCaixaNaoEncontrada` explicitamente —
     sem isso, uma escala monetária desconhecida numa conta CFO/CFI
@@ -359,14 +364,18 @@ def _fcf_do_periodo(linhas_periodo: list[dict]) -> float:
     cfi = _valor_conta(
         _linha_por_codigo(linhas_periodo, CODIGO_CFI_CVM), ContaFluxoCaixaNaoEncontrada
     )
-    return cfo + cfi
+    return cfo, cfi
 
 
 def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
     linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaFluxoCaixaNaoEncontrada)
 
-    fcf_atual = _fcf_do_periodo(linhas_atual)
-    fcf_anterior = _fcf_do_periodo(linhas_anterior) if linhas_anterior else None
+    cfo_atual, cfi_atual = _cfo_cfi_do_periodo(linhas_atual)
+    fcf_atual = cfo_atual + cfi_atual
+    fcf_anterior = None
+    if linhas_anterior:
+        cfo_anterior, cfi_anterior = _cfo_cfi_do_periodo(linhas_anterior)
+        fcf_anterior = cfo_anterior + cfi_anterior
 
     return {
         **_metadados_empresa(linhas[0], tipo),
@@ -374,7 +383,25 @@ def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) 
         "ano_referencia": ano,
         "fcf_atual": fcf_atual,
         "fcf_anterior": fcf_anterior,
+        "cfo_atual": cfo_atual,
+        "cfi_atual": cfi_atual,
     }
+
+
+def _ler_cache_fcf_com_schema_atual(caminho: Path) -> dict | None:
+    """Lê o cache do FCF só se a versão de schema gravada bater com
+    `VERSAO_SCHEMA_CVM_FCF` atual — devolve `None` (tratado como cache
+    miss por `obter_fluxo_caixa_livre`, força busca nova) se a versão não
+    bater ou o arquivo estiver no formato antigo (sem envelope, de antes
+    de 2026-09-25). Mesmo padrão de
+    `ingest.fundamentus._ler_cache_com_schema_atual`, pro mesmo tipo de
+    bug: um cache gravado antes de `cfo_atual`/`cfi_atual` existirem no
+    resultado seria servido sem esses campos, e o primeiro código que
+    tentasse ler uma dessas chaves novas quebraria com `KeyError`."""
+    bruto = json.loads(caminho.read_text(encoding="utf-8"))
+    if bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_FCF:
+        return None
+    return bruto.get("resultado")
 
 
 def obter_fluxo_caixa_livre(
@@ -385,7 +412,11 @@ def obter_fluxo_caixa_livre(
     diretorio_cache: Path = DATA_RAW_DIR,
 ) -> dict:
     """Busca o fluxo de caixa livre (FCF, aproximado por CFO+CFI — ver
-    config.py) de uma empresa para `ano`, mais o valor do ano anterior.
+    config.py) de uma empresa para `ano`, mais o valor do ano anterior, e
+    também os dois componentes (`cfo_atual`/`cfi_atual`) separados do ano
+    atual — usados pra calcular a proporção reinvestida do caixa
+    operacional (ver `modelos.fcd.calcular_proporcao_reinvestimento_
+    percentual`).
 
     Tenta a DFC pelo método indireto (a maioria das empresas) antes do
     direto, e a demonstração consolidada antes da individual. Levanta
@@ -397,7 +428,11 @@ def obter_fluxo_caixa_livre(
     caminho_resultado = diretorio_cache / "cvm" / f"fcf_{cnpj_normalizado}_{ano}.json"
 
     if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
-        return json.loads(caminho_resultado.read_text(encoding="utf-8"))
+        resultado_cache = _ler_cache_fcf_com_schema_atual(caminho_resultado)
+        if resultado_cache is not None:
+            return resultado_cache
+        # Schema mudou desde que esse arquivo foi gravado — ignora o
+        # cache e cai pro fetch novo abaixo, como se fosse cache miss.
 
     caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
 
@@ -417,7 +452,8 @@ def obter_fluxo_caixa_livre(
 
     if usar_cache:
         caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
-        caminho_resultado.write_text(json.dumps(resultado, ensure_ascii=False), encoding="utf-8")
+        envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
+        caminho_resultado.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
 
     return resultado
 
@@ -529,6 +565,12 @@ def obter_fluxo_caixa_livre_com_fallback(
         "ano_referencia_utilizado": ano_utilizado,
         "ano_mais_recente_disponivel": ano_mais_recente,
         "usou_fallback": ano_utilizado != ano_mais_recente,
+        # Componentes do ano EFETIVAMENTE usado (respeitando o fallback
+        # acima), não do ano_base — usados pra calcular a proporção
+        # reinvestida (ver modelos.fcd.calcular_proporcao_
+        # reinvestimento_percentual).
+        "cfo_atual": resultado_atual["cfo_atual"],
+        "cfi_atual": resultado_atual["cfi_atual"],
     }
 
 

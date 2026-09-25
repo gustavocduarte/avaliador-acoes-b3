@@ -302,6 +302,18 @@ DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE = 7
 CODIGO_CFO_CVM = "6.01"  # Caixa Líquido Atividades Operacionais
 CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 
+# Versionamento do cache por (CNPJ, ano) de `ingest.cvm.obter_fluxo_caixa_
+# livre` (`data/raw/cvm/fcf_<cnpj>_<ano>.json`) — mesmo mecanismo e mesmo
+# motivo de `VERSAO_SCHEMA_FUNDAMENTUS` (ver comentário completo mais
+# abaixo, na seção do Fundamentus): quando `cfo_atual`/`cfi_atual` foram
+# adicionados ao resultado (2026-09-25, ver a investigação na seção do FCD
+# abaixo), um cache já gravado antes disso não teria essas chaves — sem
+# essa versão, o primeiro código que tentasse ler `cfo_atual` quebraria com
+# KeyError pra qualquer CNPJ/ano já cacheado. Começa em 1 porque esse cache
+# nunca teve controle de versão antes (diferente do Fundamentus, que já
+# tinha passado por uma mudança de schema sem esse mecanismo).
+VERSAO_SCHEMA_CVM_FCF = 1
+
 # Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
 # ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).
 # Confirmado em 2026-09-14 chamando diretamente:
@@ -449,6 +461,43 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 #
 # Dividido pelo número de ações (Fundamentus, campo "Nro. Ações") pra
 # chegar num valor justo por ação comparável a Graham/Bazin.
+#
+# Investigação em 2026-09-25 (limitação registrada em
+# docs/correcao-cnpj-2026-09-25.md, seção 7 — FCD sistematicamente muito
+# abaixo de Graham/Bazin em empresas de investimento pesado): pra todas as
+# 70 ações com FCD aplicável no Ibovespa, calculada a proporção reinvestida
+# do caixa operacional (-CFI/CFO, ver `modelos.fcd.calcular_proporcao_
+# reinvestimento_percentual`) e comparada com o quanto o FCD diverge de
+# Graham. Correlação de Spearman entre as duas: -0,79 (forte) — ações com
+# reinvestimento acima da mediana (49,7%) têm FCD 130,7% abaixo de Graham
+# na mediana, contra só 28,8% nas de reinvestimento abaixo da mediana. A
+# hipótese se sustenta como padrão geral: o modelo trata TODO investimento
+# como saída de caixa que reduz o valor presente, sem diferenciar
+# investimento de manutenção (só repõe o que já existe) de expansão (gera
+# crescimento futuro que o FCD não capta na CAGR de 2 pontos). Efeito
+# concentrado, mas não exclusivo, em energia elétrica (10 de 11 ações do
+# setor com FCD negativo) e saneamento (2 de 2).
+#
+# Dívida líquida alta amplia o efeito e, num caso (AXIA3: FCD 91% abaixo de
+# Graham com reinvestimento de só 38%, abaixo da mediana), é o fator
+# dominante sozinho — a dedução da dívida líquida (correção de 2026-09-23
+# acima) pesa mais que o reinvestimento nesse caso específico. Reinvestimento
+# não explica tudo sozinho, por isso a decisão foi mostrar a proporção
+# reinvestida como contexto (ver `_cartao_metodo`/coluna "Reinvestimento" no
+# Screener), não excluir setores nem ajustar o cálculo do FCF.
+#
+# Opção cogitada e descartada por enquanto: usar a conta de Depreciação e
+# Amortização da DFC (reconciliação dentro de 6.01, método indireto) como
+# proxy de investimento de manutenção, pra separar do que é expansão. Só
+# existe pro método indireto (a maioria das empresas, mas não todas) E o
+# código da subconta NÃO é fixo entre empresas — testado contra CPFE3
+# (D&A no código 6.01.01.02) e EQTL3 (D&A no código 6.01.01.19, código
+# totalmente diferente) — mesmo problema já documentado pra
+# `CONTA_LUCRO_POR_ACAO_CVM` (a conta de Lucro Líquido da DRE também não é
+# fixa). Extrair de forma confiável exigiria busca por descrição (texto
+# contendo "epreciaç"/"mortiza"), o mesmo tipo de heurística frágil já usado
+# pro Lucro Líquido — fica registrado como evolução futura possível, não
+# implementado agora.
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 

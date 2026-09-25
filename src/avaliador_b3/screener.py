@@ -83,7 +83,10 @@ from avaliador_b3.ingest.precos import (
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
-from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
+from avaliador_b3.modelos.fcd import (
+    calcular_proporcao_reinvestimento_percentual,
+    calcular_valor_justo_fcd,
+)
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 
 CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
@@ -113,6 +116,7 @@ COLUNAS_RESULTADO = [
     "bazin_preco_teto",
     "bazin_razao_dividendos_percentual",
     "fcd_valor_justo",
+    "proporcao_reinvestimento_percentual",
     "ano_referencia_fcd",
     "data_balanco_fundamentus",
     "beta_utilizado",
@@ -280,6 +284,7 @@ def _calcular_linha_ticker(
     # ano-base do crescimento andando junto. Ver
     # ingest.cvm.obter_fluxo_caixa_livre_com_fallback.
     fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
+    proporcao_reinvestimento_percentual = None
     if cnpj and ano_mais_recente_fcd is not None:
         try:
             resultado_fcf = obter_fluxo_caixa_livre_com_fallback(
@@ -291,6 +296,9 @@ def _calcular_linha_ticker(
             fcf_atual = resultado_fcf["fcf_atual"]
             fcf_ha_n_anos = resultado_fcf["fcf_ha_n_anos"]
             ano_referencia_fcd = resultado_fcf["ano_referencia_utilizado"]
+            proporcao_reinvestimento_percentual = calcular_proporcao_reinvestimento_percentual(
+                resultado_fcf["cfo_atual"], resultado_fcf["cfi_atual"]
+            )
         except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
             fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
 
@@ -366,6 +374,9 @@ def _calcular_linha_ticker(
             razao_dividendos_bazin * 100 if razao_dividendos_bazin is not None else None
         ),
         "fcd_valor_justo": resultado_fcd.get("valor_justo"),
+        "proporcao_reinvestimento_percentual": (
+            proporcao_reinvestimento_percentual if resultado_fcd["aplicavel"] else None
+        ),
         "ano_referencia_fcd": ano_referencia_fcd if resultado_fcd["aplicavel"] else None,
         "data_balanco_fundamentus": data_balanco_fundamentus,
         "divergencia_percentual_metodos": divergencia["divergencia_percentual"],

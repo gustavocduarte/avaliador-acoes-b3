@@ -95,6 +95,8 @@ def ambiente_feliz(monkeypatch):
             "ano_referencia_utilizado": ano_mais_recente,
             "ano_mais_recente_disponivel": ano_mais_recente,
             "usou_fallback": False,
+            "cfo_atual": 1_200_000.0,
+            "cfi_atual": -200_000.0,
         },
     )
     monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: (0.10, 0.04))
@@ -188,6 +190,51 @@ def test_calcular_linha_ticker_bazin_razao_dividendos_percentual(
 
     assert linha["bazin_preco_teto"] == pytest.approx(3.0 / 0.06)
     assert linha["bazin_razao_dividendos_percentual"] == pytest.approx(300.0)
+
+
+def test_calcular_linha_ticker_proporcao_reinvestimento_percentual(ambiente_feliz, tmp_path):
+    # ambiente_feliz mocka cfo_atual=1.200.000, cfi_atual=-200.000 ->
+    # 200.000/1.200.000 = 16,67% reinvestido.
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["fcd_valor_justo"] is not None
+    assert linha["proporcao_reinvestimento_percentual"] == pytest.approx(200_000 / 1_200_000 * 100)
+
+
+def test_calcular_linha_ticker_proporcao_reinvestimento_nula_quando_fcd_nao_aplicavel(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Banco -> FCD não aplicável (config.SEGMENTOS_FCD_NAO_APLICAVEL) — a
+    # proporção reinvestida não deve aparecer pra uma linha cujo FCD nem
+    # foi usado, mesmo que o dado de CFO/CFI tenha sido buscado.
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: {"cnpj": f"CNPJ-{ticker}", "segmento_setorial": "Bancos"},
+    )
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["fcd_valor_justo"] is None
+    assert linha["proporcao_reinvestimento_percentual"] is None
 
 
 def test_rodar_screener_data_balanco_fundamentus_fica_nula_quando_fundamentus_falha(

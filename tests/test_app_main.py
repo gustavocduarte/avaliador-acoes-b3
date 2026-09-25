@@ -491,9 +491,11 @@ def _preparar_fcd_aplicavel(
     )
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
-        lambda cnpj, ano, *a, **kw: {
-            "fcf_atual": 1_000_000.0 if ano == ANO_FCD_MOCK else 800_000.0
-        },
+        lambda cnpj, ano, *a, **kw: (
+            {"fcf_atual": 1_000_000.0, "cfo_atual": 1_200_000.0, "cfi_atual": -200_000.0}
+            if ano == ANO_FCD_MOCK
+            else {"fcf_atual": 800_000.0}
+        ),
     )
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
 
@@ -546,7 +548,7 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
     def obter_fluxo_caixa_livre_com_fallback(cnpj, ano, *args, **kwargs):
         if ano == ANO_FCD_MOCK:
             raise CnpjNaoEncontrado("não encontrado no ano mais recente")
-        return {"fcf_atual": 800_000.0}
+        return {"fcf_atual": 800_000.0, "cfo_atual": 900_000.0, "cfi_atual": -100_000.0}
 
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre", obter_fluxo_caixa_livre_com_fallback
@@ -561,6 +563,127 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
     assert rotulos_ano[0] == (
         f"FCD calculado com a demonstração financeira anual de {ANO_FCD_MOCK - 1} (CVM) — "
         f"a de {ANO_FCD_MOCK} ainda não foi entregue por essa empresa."
+    )
+
+
+# --- Proporção reinvestida no cartão do FCD (investigação de 2026-09-25:
+# FCD sistematicamente baixo em empresas de investimento pesado, ver
+# docs/correcao-cnpj-2026-09-25.md, seção 7) ------------------------------
+
+
+def _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual: float, cfi_atual: float) -> None:
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
+        lambda cnpj, ano, *a, **kw: (
+            {"fcf_atual": cfo_atual + cfi_atual, "cfo_atual": cfo_atual, "cfi_atual": cfi_atual}
+            if ano == ANO_FCD_MOCK
+            else {"fcf_atual": 800_000.0}
+        ),
+    )
+
+
+def test_caption_reinvestimento_caso_normal(monkeypatch):
+    # CFO=1.000.000, CFI=-300.000 -> reinvestiu 30% do caixa operacional.
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    captions = [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+    assert len(captions) == 1
+    assert captions[0] == (
+        f"Em {ANO_FCD_MOCK}, a empresa reinvestiu 30% do caixa gerado pela operação. "
+        "Quanto maior essa parcela, menor tende a ser o FCD: o modelo trata o "
+        "investimento como saída de caixa, sem contar o crescimento que ele pode "
+        "gerar no futuro."
+    )
+
+
+def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=-500_000.0, cfi_atual=-100_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    captions = [
+        c.value
+        for c in at.caption
+        if "o caixa gerado pela operação foi negativo" in c.value
+    ]
+    assert len(captions) == 1
+    assert captions[0] == (
+        f"Em {ANO_FCD_MOCK}, o caixa gerado pela operação foi negativo, o que por "
+        "si só leva o FCD para baixo."
+    )
+    # Não mostra a caption de "reinvestiu X%" nesse caso.
+    assert not [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+
+
+def test_caption_reinvestimento_ausente_quando_caixa_de_investimento_positivo(monkeypatch):
+    # Empresa desinvestindo (vendeu mais ativos do que comprou) — nenhuma
+    # das duas captions de reinvestimento deve aparecer, por design.
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=200_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+    assert not [
+        c.value
+        for c in at.caption
+        if "o caixa gerado pela operação foi negativo" in c.value
+    ]
+
+
+def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "**Valor combinado**" in m.value]
+    assert len(blocos) == 1
+    bloco = blocos[0]
+    assert (
+        "O fluxo de caixa usado é o caixa gerado pela operação menos o que foi "
+        "investido no ano." in bloco
+    )
+    assert (
+        "empresas em fase de investimento pesado (comuns em energia e "
+        "saneamento) ou com dívida muito alta tendem a ter FCD bem abaixo dos "
+        "outros métodos" in bloco
+    )
+
+
+def test_caption_screener_explica_coluna_reinvestimento(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    captions = [
+        c.value
+        for c in at.caption
+        if "Reinvestimento mostra quanto do caixa gerado pela operação" in c.value
+    ]
+    assert len(captions) == 1
+    assert (
+        "Vazio quando o FCD não se aplica, o caixa operacional foi negativo ou "
+        "a empresa vendeu mais ativos do que comprou." in captions[0]
     )
 
 

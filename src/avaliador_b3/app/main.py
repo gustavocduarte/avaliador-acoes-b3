@@ -96,7 +96,10 @@ from avaliador_b3.ingest.precos import (
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
-from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
+from avaliador_b3.modelos.fcd import (
+    calcular_proporcao_reinvestimento_percentual,
+    calcular_valor_justo_fcd,
+)
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
@@ -111,6 +114,7 @@ COLUNAS_TABELA_SCREENER = [
     "desconto_percentual",
     "divergencia_percentual_metodos",
     "bazin_razao_dividendos_percentual",
+    "proporcao_reinvestimento_percentual",
     "metodos_utilizados",
     "aviso_desconto_extremo",
     "erro",
@@ -294,7 +298,9 @@ def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
 
 def _buscar_fcf_fcd(
     cnpj: str, ano_mais_recente: int
-) -> tuple[float | None, float | None, int | None, bool, str | None]:
+) -> tuple[
+    float | None, float | None, int | None, bool, float | None, float | None, str | None
+]:
     """FCF do FCD com detecção automática de ano POR EMPRESA
     (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`) — uma chamada só
     que já resolve tanto o ano atual (`ano_mais_recente`, caindo um ano
@@ -302,9 +308,13 @@ def _buscar_fcf_fcd(
     do crescimento (que anda junto do ano efetivamente usado, não fica
     preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
 
-    Devolve (fcf_atual, fcf_ha_n_anos, ano_utilizado, usou_fallback, erro).
-    Erro aqui não é mostrado à parte na tela — já aparece embutido no
-    motivo de "não aplicável" do próprio card do FCD (`calcular_valor_
+    Devolve (fcf_atual, fcf_ha_n_anos, ano_utilizado, usou_fallback,
+    cfo_atual, cfi_atual, erro) — os dois últimos antes do erro
+    (`cfo_atual`/`cfi_atual`, do ano efetivamente usado) alimentam a
+    caption de proporção reinvestida no cartão do FCD (ver
+    `modelos.fcd.calcular_proporcao_reinvestimento_percentual`). Erro
+    aqui não é mostrado à parte na tela — já aparece embutido no motivo
+    de "não aplicável" do próprio card do FCD (`calcular_valor_
     justo_fcd` trata `fcf_atual=None` internamente)."""
     try:
         resultado = obter_fluxo_caixa_livre_com_fallback(
@@ -315,12 +325,14 @@ def _buscar_fcf_fcd(
             resultado["fcf_ha_n_anos"],
             resultado["ano_referencia_utilizado"],
             resultado["usou_fallback"],
+            resultado["cfo_atual"],
+            resultado["cfi_atual"],
             None,
         )
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
-        return None, None, None, False, str(erro)
+        return None, None, None, False, None, None, str(erro)
     except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
-        return None, None, None, False, f"Falha ao buscar dados da CVM: {erro}"
+        return None, None, None, False, None, None, f"Falha ao buscar dados da CVM: {erro}"
 
 
 @st.cache_data(ttl=3600)
@@ -838,10 +850,17 @@ with aba_analisar:
             # "não aplicável" do jeito de sempre, sem aviso à parte.
             fcf_atual = fcf_ha_n_anos = ano_fcd_utilizado = None
             fcd_usou_fallback = False
+            cfo_fcd_utilizado = cfi_fcd_utilizado = None
             if cnpj and ano_fcd_mais_recente is not None:
-                fcf_atual, fcf_ha_n_anos, ano_fcd_utilizado, fcd_usou_fallback, _ = _buscar_fcf_fcd(
-                    cnpj, ano_fcd_mais_recente
-                )
+                (
+                    fcf_atual,
+                    fcf_ha_n_anos,
+                    ano_fcd_utilizado,
+                    fcd_usou_fallback,
+                    cfo_fcd_utilizado,
+                    cfi_fcd_utilizado,
+                    _,
+                ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
 
         st.subheader(ticker)
 
@@ -981,6 +1000,26 @@ with aba_analisar:
                         f"FCD calculado com a demonstração financeira anual de "
                         f"{ano_fcd_utilizado} (CVM)."
                     )
+                if cfo_fcd_utilizado is not None and cfo_fcd_utilizado <= 0:
+                    st.caption(
+                        f"Em {ano_fcd_utilizado}, o caixa gerado pela operação foi "
+                        "negativo, o que por si só leva o FCD para baixo."
+                    )
+                elif cfo_fcd_utilizado is not None and cfi_fcd_utilizado is not None:
+                    proporcao_reinvestimento = calcular_proporcao_reinvestimento_percentual(
+                        cfo_fcd_utilizado, cfi_fcd_utilizado
+                    )
+                    if proporcao_reinvestimento is not None:
+                        st.caption(
+                            f"Em {ano_fcd_utilizado}, a empresa reinvestiu "
+                            f"{proporcao_reinvestimento:.0f}% do caixa gerado pela "
+                            "operação. Quanto maior essa parcela, menor tende a ser "
+                            "o FCD: o modelo trata o investimento como saída de "
+                            "caixa, sem contar o crescimento que ele pode gerar no "
+                            "futuro."
+                        )
+                    # else: caixa de investimento positivo (desinvestindo) — sem
+                    # caption, por design (não é "reinvestimento" nenhum).
         with coluna_combinado:
             if resultado_combinado["aplicavel"]:
                 st.metric(
@@ -1091,7 +1130,14 @@ with aba_analisar:
                 "válida aí (Graham e Bazin continuam funcionando normalmente). Fora "
                 "esse caso, é o único dos três que funciona mesmo para empresas sem "
                 "lucro no momento, já que olha geração de caixa futura, não "
-                "resultado contábil passado.\n\n"
+                "resultado contábil passado. O fluxo de caixa usado é o caixa "
+                "gerado pela operação menos o que foi investido no ano. Por isso, "
+                "empresas em fase de investimento pesado (comuns em energia e "
+                "saneamento) ou com dívida muito alta tendem a ter FCD bem abaixo "
+                "dos outros métodos, mesmo quando são saudáveis. Separar o "
+                "investimento que só mantém a empresa do que a faz crescer "
+                "exigiria um dado que a fonte não informa de forma "
+                "padronizada.\n\n"
                 "**Valor combinado** — média simples só dos métodos que se aplicam à "
                 "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
                 "heurística: os pesos são iguais por simplicidade, não porque exista "
@@ -1521,7 +1567,11 @@ with aba_screener:
         "relação à mediana dos 5 anos anteriores; valores bem acima de 100% "
         "deixam o preço teto do Bazin menos confiável. Dividendos vs. histórico "
         "vazio significa que o Bazin não se aplica àquela ação (ou, raramente, "
-        "que os anos anteriores não têm pagamento para comparar)."
+        "que os anos anteriores não têm pagamento para comparar). Reinvestimento "
+        "mostra quanto do caixa gerado pela operação a empresa investiu no ano; "
+        "valores altos puxam o FCD para baixo. Vazio quando o FCD não se aplica, "
+        "o caixa operacional foi negativo ou a empresa vendeu mais ativos do que "
+        "comprou."
     )
 
     if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):
@@ -1607,6 +1657,10 @@ with aba_screener:
                 # pelo cabeçalho precisa continuar numérico de verdade.
                 "bazin_razao_dividendos_percentual": st.column_config.NumberColumn(
                     "Dividendos vs. histórico", format="%d%%"
+                ),
+                # NUMÉRICA pelo mesmo motivo acima.
+                "proporcao_reinvestimento_percentual": st.column_config.NumberColumn(
+                    "Reinvestimento", format="%d%%"
                 ),
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",
