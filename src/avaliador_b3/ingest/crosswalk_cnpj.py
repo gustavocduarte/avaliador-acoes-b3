@@ -43,6 +43,8 @@ import pandas as pd
 from avaliador_b3.config import (
     DATA_RAW_DIR,
     DELAY_PAGINACAO_B3_SEGUNDOS,
+    TAMANHO_CNPJ,
+    TAMANHO_CODIGO_CVM,
     TAMANHO_PAGINA_API_B3_CATALOGO,
     URL_B3_CATALOGO_EMISSORES,
 )
@@ -73,6 +75,22 @@ def _montar_url(pagina: int, tamanho_pagina: int) -> str:
     return URL_B3_CATALOGO_EMISSORES.format(parametros_base64=parametros_base64(parametros))
 
 
+def _completar_zeros(valor, tamanho: int) -> str:
+    """Completa `valor` (str ou int) com zeros à esquerda até `tamanho`
+    dígitos. Bug real encontrado em 2026-09-25 (ver o comentário completo em
+    config.py, junto de TAMANHO_CNPJ/TAMANHO_CODIGO_CVM): a API
+    "GetInitialCompanies" devolve "cnpj" e "codeCVM" como NÚMERO JSON, e um
+    literal numérico JSON não pode ter zero à esquerda — o dígito já se
+    perde na resposta da API, antes de qualquer código deste projeto rodar.
+    `str()` sozinho (usado antes aqui só pra "codigo_cvm") corrige o TIPO
+    (int -> str) mas não restaura o zero perdido — só `.zfill` faz isso.
+    Seguro porque CNPJ e código CVM têm largura FIXA e conhecida (14 e 6
+    dígitos respectivamente, confirmado contra os zips da CVM): completar
+    com zero só restaura um dígito que sabemos que existia, nunca cria
+    ambiguidade com outra empresa."""
+    return str(valor).zfill(tamanho)
+
+
 def _registro_para_linha(registro: dict) -> dict:
     faltando = CAMPOS_OBRIGATORIOS_REGISTRO - registro.keys()
     if faltando:
@@ -82,15 +100,8 @@ def _registro_para_linha(registro: dict) -> dict:
         )
     return {
         "codigo_emissor": registro["issuingCompany"],
-        # str() explícito: a leitura do cache já força dtype=str (linha
-        # abaixo em obter_catalogo_emissores), mas o JSON bruto da API
-        # devolve "codeCVM" como número — sem essa conversão aqui,
-        # resolver_cnpj() devolvia um "codigo_cvm" com tipo diferente
-        # (int vs. str) dependendo de a busca ter vindo de cache ou de
-        # requisição nova, uma inconsistência latente sem consumidor
-        # afetado hoje, mas frágil a mudanças futuras.
-        "codigo_cvm": str(registro["codeCVM"]),
-        "cnpj": registro["cnpj"],
+        "codigo_cvm": _completar_zeros(registro["codeCVM"], TAMANHO_CODIGO_CVM),
+        "cnpj": _completar_zeros(registro["cnpj"], TAMANHO_CNPJ),
         "nome_empresa": registro["companyName"],
         "segmento_setorial": registro["segment"],
     }
@@ -122,7 +133,17 @@ def obter_catalogo_emissores(
     caminho = _caminho_cache_catalogo(diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho.exists():
-        return pd.read_csv(caminho, dtype=str)
+        # A normalização de zeros à esquerda (ver _completar_zeros) é
+        # aplicada aqui de novo, não só em _registro_para_linha — cache já
+        # em disco de ANTES da correção (2026-09-25) ainda tem "cnpj"/
+        # "codigo_cvm" sem o(s) zero(s) perdido(s), e o cache não tem TTL
+        # (não expira sozinho). Reaplicar na leitura corrige qualquer cache
+        # antigo automaticamente, sem precisar apagar o arquivo nem baixar
+        # de novo (~36 páginas da API) só por causa desse bug específico.
+        df = pd.read_csv(caminho, dtype=str)
+        df["cnpj"] = df["cnpj"].apply(lambda v: _completar_zeros(v, TAMANHO_CNPJ))
+        df["codigo_cvm"] = df["codigo_cvm"].apply(lambda v: _completar_zeros(v, TAMANHO_CODIGO_CVM))
+        return df
 
     registros = buscar_registros_paginados(
         montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),

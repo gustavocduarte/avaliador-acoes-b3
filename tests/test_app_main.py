@@ -480,7 +480,7 @@ def _preparar_fcd_aplicavel(
             "ticker": ticker,
             "codigo_emissor": "PETR",
             "cnpj": "33000167000101",
-            "codigo_cvm": "9512",
+            "codigo_cvm": "009512",
             "nome_empresa": "PETROBRAS",
             "segmento_setorial": segmento_setorial,
         },

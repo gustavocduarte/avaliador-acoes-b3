@@ -334,6 +334,39 @@ URL_B3_CATALOGO_EMISSORES = (
 )
 TAMANHO_PAGINA_API_B3_CATALOGO = 100
 
+# Bug real encontrado em 2026-09-25 (achado em revisão externa, investigando
+# por que o FCD do ABEV3 sempre falhava com CnpjNaoEncontrado): a validação
+# manual acima (2026-09-14) só testou Petrobras/Vale/Itaú, três empresas cujo
+# CNPJ NÃO começa com zero — por isso não pegou o defeito. A API
+# "GetInitialCompanies" devolve "cnpj" e "codeCVM" como NÚMERO JSON, não como
+# texto; um literal numérico JSON não pode ter zero à esquerda (inválido pela
+# própria especificação do formato), então o dígito já se perde na resposta
+# da API, antes de qualquer código deste projeto rodar — não é um bug de
+# normalização nosso, é um defeito de tipagem na origem que precisa ser
+# compensado. Confirmado sistêmico: 954 dos ~3523 registros do catálogo
+# completo (27%) têm "cnpj" com menos de 14 dígitos; 906 têm "codigo_cvm" com
+# menos de 6. Caso confirmado contra a CVM: ABEV3 (AMBEV S.A.) — catálogo da
+# B3 trazia cnpj="7526557000100" (13 dígitos) e codigo_cvm="23264" (5), CVM
+# tem CNPJ_CIA="07.526.557/0001-00" (14) e CD_CVM="023264" (6) pra essa
+# mesma empresa — mesmo CNPJ, só faltando o(s) zero(s) à esquerda. ENGI11
+# (Energisa) confirma que pode faltar mais de um zero: CVM tem
+# CNPJ_CIA="00.864.214/0001-06" (dois zeros), catálogo da B3 trazia
+# "864214000106" (12 dígitos, os dois sumiram).
+#
+# Correção: completar com zeros à esquerda até a largura fixa de cada campo
+# — CNPJ sempre tem 14 dígitos (formato brasileiro) e CD_CVM sempre tem 6
+# (confirmado em todos os registros dos zips da CVM lidos por este projeto).
+# Largura fixa e conhecida elimina qualquer ambiguidade: completar com zeros
+# só restaura dígitos que sabemos que existiam, nunca cria colisão com outra
+# empresa. Aplicado em TRÊS camadas (ver docs/correcao-cnpj-2026-09-25.md):
+# na origem (crosswalk_cnpj._registro_para_linha, pra dado novo vindo da
+# API), na leitura do cache (crosswalk_cnpj.obter_catalogo_emissores, pra
+# qualquer cache antigo já salvo em disco ficar correto sem novo download) e
+# como camada defensiva em cvm._normalizar_cnpj (protege contra qualquer
+# outra fonte futura com o mesmo defeito).
+TAMANHO_CNPJ = 14
+TAMANHO_CODIGO_CVM = 6
+
 # Fórmula de Benjamin Graham ("Graham Number"): VI = sqrt(22,5 × LPA × VPA).
 # 22,5 = 15 (P/L máximo considerado razoável por Graham) × 1,5 (P/VP máximo
 # razoável). Fonte: The Intelligent Investor (Graham). Só aplicável com

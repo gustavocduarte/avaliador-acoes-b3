@@ -46,6 +46,7 @@ from avaliador_b3.config import (
     DATA_RAW_DIR,
     DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE,
     FATOR_ESCALA_MOEDA_CVM,
+    TAMANHO_CNPJ,
     URL_CVM_DFP_ZIP,
 )
 
@@ -85,7 +86,16 @@ class ContaFluxoCaixaNaoEncontrada(ErroCVM):
 
 
 def _normalizar_cnpj(cnpj: str) -> str:
-    return "".join(c for c in cnpj if c.isdigit())
+    """Remove pontuação e completa com zeros à esquerda até
+    `TAMANHO_CNPJ` (14) dígitos — camada DEFENSIVA (ver a correção
+    completa em `crosswalk_cnpj._completar_zeros`/config.py, 2026-09-25):
+    o crosswalk da B3 já corrige o zero perdido na origem e na leitura do
+    cache, então esse `.zfill` aqui normalmente não faz nada. Existe pra
+    proteger contra qualquer OUTRA fonte futura de CNPJ com o mesmo
+    defeito (número JSON sem zero à esquerda) que venha a chamar
+    `obter_fluxo_caixa_livre*`/`obter_lucro_liquido` diretamente, sem
+    passar pelo crosswalk."""
+    return "".join(c for c in cnpj if c.isdigit()).zfill(TAMANHO_CNPJ)
 
 
 def _caminho_zip_ano(ano: int, diretorio_cache: Path) -> Path:

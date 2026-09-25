@@ -56,6 +56,17 @@ def test_normalizar_cnpj():
     assert cvm._normalizar_cnpj("33000167000101") == "33000167000101"
 
 
+def test_normalizar_cnpj_completa_zero_a_esquerda_perdido():
+    # Camada defensiva (2026-09-25, ver config.py/crosswalk_cnpj.py): o
+    # crosswalk da B3 já corrige o zero perdido antes de chamar o adapter
+    # da CVM, mas _normalizar_cnpj completa de novo aqui — protege contra
+    # qualquer outra fonte futura de CNPJ com o mesmo defeito (número JSON
+    # sem zero à esquerda) que chame obter_fluxo_caixa_livre*/
+    # obter_lucro_liquido direto, sem passar pelo crosswalk.
+    assert cvm._normalizar_cnpj("7526557000100") == "07526557000100"  # AMBEV, 1 zero
+    assert cvm._normalizar_cnpj("864214000106") == "00864214000106"  # Energisa, 2 zeros
+
+
 def test_linha_lucro_liquido_localiza_conta_correta_estilo_nao_financeira():
     linhas = [
         _linha("3.01", "Receita de Venda de Bens e/ou Serviços"),

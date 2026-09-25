@@ -23,7 +23,7 @@ class _RespostaFalsa:
 
 def _linha_catalogo(
     emissor="PETR",
-    codigo_cvm="9512",
+    codigo_cvm="009512",
     cnpj="33000167000101",
     nome="PETROBRAS",
     segmento_setorial="Exploração. Refino e Distribuição",
@@ -88,7 +88,7 @@ def test_registro_para_linha_caminho_feliz():
     linha = crosswalk_cnpj._registro_para_linha(_registro())
     assert linha == {
         "codigo_emissor": "PETR",
-        "codigo_cvm": "9512",
+        "codigo_cvm": "009512",
         "cnpj": "33000167000101",
         "nome_empresa": "PETROBRAS",
         "segmento_setorial": "Exploração",
@@ -102,8 +102,35 @@ def test_registro_para_linha_forca_codigo_cvm_pra_string_mesmo_vindo_como_numero
     # dtype=str explicitamente, ver obter_catalogo_emissores), uma
     # inconsistência de tipo latente entre execução fresca e com cache.
     linha = crosswalk_cnpj._registro_para_linha(_registro(code_cvm=9512))
-    assert linha["codigo_cvm"] == "9512"
+    assert linha["codigo_cvm"] == "009512"
     assert isinstance(linha["codigo_cvm"], str)
+
+
+def test_registro_para_linha_completa_codigo_cvm_com_zeros_a_esquerda():
+    # Bug real encontrado em 2026-09-25 (ver config.py, TAMANHO_CODIGO_CVM):
+    # str() sozinho (teste acima) corrige o TIPO mas não devolve o zero que
+    # a API já tinha perdido ao mandar "codeCVM" como número JSON — um
+    # código CVM sempre tem 6 dígitos, então precisa completar com zero.
+    linha = crosswalk_cnpj._registro_para_linha(_registro(code_cvm=9512))
+    assert linha["codigo_cvm"] == "009512"
+
+
+def test_registro_para_linha_completa_cnpj_com_um_zero_a_esquerda_caso_ambev():
+    # Achado real investigando o FCD do ABEV3 (2026-09-25): a API da B3
+    # devolvia cnpj=7526557000100 (13 dígitos, número JSON) pro CNPJ real
+    # da AMBEV S.A., 07.526.557/0001-00 (confirmado contra a CVM) — o zero
+    # à esquerda já se perde na resposta da API, antes de qualquer
+    # normalização nossa rodar.
+    linha = crosswalk_cnpj._registro_para_linha(_registro(cnpj=7526557000100))
+    assert linha["cnpj"] == "07526557000100"
+
+
+def test_registro_para_linha_completa_cnpj_com_dois_zeros_a_esquerda_caso_energisa():
+    # Mesmo bug, confirmando que pode faltar mais de um zero: CNPJ real da
+    # Energisa S.A. é 00.864.214/0001-06 (dois zeros); a API da B3 devolvia
+    # 864214000106 (12 dígitos).
+    linha = crosswalk_cnpj._registro_para_linha(_registro(cnpj=864214000106))
+    assert linha["cnpj"] == "00864214000106"
 
 
 def test_registro_para_linha_levanta_erro_quando_campo_falta():
@@ -212,6 +239,32 @@ def test_obter_catalogo_emissores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path,
     assert chamadas["contador"] == 1
 
 
+def test_obter_catalogo_emissores_corrige_cache_antigo_sem_zero_a_esquerda(tmp_path, monkeypatch):
+    # O cache não tem TTL (comentário no docstring da função) — um arquivo
+    # salvo em disco ANTES da correção de 2026-09-25 continuaria com
+    # "cnpj"/"codigo_cvm" sem o(s) zero(s) perdido(s) pra sempre, sem essa
+    # normalização também na leitura. Escreve o CSV já no formato "sujo"
+    # (como um cache real gravado antes da correção) e confirma que a
+    # leitura devolve os valores já corrigidos — SEM bater na rede de novo
+    # (get_falso levantaria se fosse chamado), já que o objetivo é corrigir
+    # o cache existente sem precisar re-baixar as ~36 páginas da API.
+    caminho_cache = tmp_path / "b3" / "catalogo_emissores.csv"
+    caminho_cache.parent.mkdir(parents=True)
+    pd.DataFrame(
+        [_linha_catalogo(codigo_cvm="23264", cnpj="7526557000100", nome="AMBEV S.A.")]
+    ).to_csv(caminho_cache, index=False)
+
+    def get_falso(url, timeout):
+        raise AssertionError("não deveria bater na rede pra corrigir um cache já em disco")
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+
+    df = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+    assert df.iloc[0]["cnpj"] == "07526557000100"
+    assert df.iloc[0]["codigo_cvm"] == "023264"
+
+
 def test_obter_catalogo_emissores_propaga_erro_http(tmp_path, monkeypatch):
     monkeypatch.setattr(
         _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
@@ -227,7 +280,7 @@ def test_resolver_cnpj_caminho_feliz():
         "ticker": "PETR4",
         "codigo_emissor": "PETR",
         "cnpj": "33000167000101",
-        "codigo_cvm": "9512",
+        "codigo_cvm": "009512",
         "nome_empresa": "PETROBRAS",
         "segmento_setorial": "Exploração. Refino e Distribuição",
     }
