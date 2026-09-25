@@ -203,6 +203,25 @@ consistente com a concentração observada — mas essa é uma hipótese, não
 uma conclusão: não foi feita nenhuma análise adicional (ex.: comparar
 FCF/dívida líquida por setor além destes 20 casos) pra confirmá-la.
 
+**Atualização (2026-09-25, mesmo dia):** hipótese investigada a fundo pra
+todas as 70 ações com FCD aplicável do Ibovespa, não só as 20 desta
+correção — ver o comentário completo junto da definição do FCF em
+`config.py`. Confirmado: o fator principal é a intensidade de
+reinvestimento de cada empresa (correlação de Spearman de -0,79 entre a
+proporção reinvestida do caixa operacional e o quanto o FCD diverge de
+Graham), não o setor em si — energia elétrica e saneamento só concentram
+casos porque a maioria das empresas desses setores reinveste pesado, mas
+há exceções nos dois sentidos dentro do mesmo setor (ex.: FLRY3, mesmo
+setor de RDOR3, reinveste pouco e não sofre o efeito). Dívida líquida alta
+é um segundo fator que amplia o efeito e, num caso (AXIA3), é o fator
+dominante sozinho, com reinvestimento baixo. Decisão: mostrar a proporção
+reinvestida como contexto (legenda no cartão do FCD e coluna
+"Reinvestimento" no Screener), sem excluir setores nem mudar o cálculo do
+FCF. A separação entre investimento de manutenção e de expansão (cogitada
+via conta de Depreciação e Amortização da DFC) ficou registrada como
+evolução futura possível, não implementada — o código da subconta não é
+fixo entre empresas.
+
 ---
 
 ## 8. Testes e verificação
