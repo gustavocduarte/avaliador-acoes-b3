@@ -102,6 +102,21 @@ def test_alinhamento_funciona_com_fusos_e_resolucoes_diferentes():
     assert resultado["observacoes"] == 3
 
 
+def test_mesma_serie_em_calendarios_diferentes_tem_correlacao_um():
+    # Achado de auditoria (docs/auditoria-tecnica-2026-09-27.md, P05):
+    # calcular retorno em cada calendário próprio e só depois alinhar
+    # pelas datas em comum compara variações de períodos diferentes
+    # sempre que os dois calendários não batem dia a dia — mesmo
+    # movimento, calendário diferente, tinha que dar 1,0 e não dava.
+    df_diaria = _serie_ondulada(n=60)
+    df_dias_uteis = df_diaria[df_diaria["data"].dt.weekday < 5].reset_index(drop=True)
+
+    resultado = correlacao.calcular_correlacao(df_diaria, "valor", df_dias_uteis, "valor")
+
+    assert resultado["aplicavel"] is True
+    assert resultado["correlacao"] == pytest.approx(1.0)
+
+
 # --- overlap insuficiente ----------------------------------------------------
 
 

@@ -40,23 +40,20 @@ def _normalizar_data(coluna_data: pd.Series) -> pd.Series:
     return coluna_data.dt.normalize().astype("datetime64[ns]")
 
 
-def _retornos_diarios(df: pd.DataFrame, coluna_valor: str) -> pd.DataFrame:
-    """Variação percentual dia a dia de `coluna_valor`, com a coluna
-    `data` correspondente (normalizada — ver `_normalizar_data`). A
-    primeira linha (sem retorno anterior pra comparar) e quaisquer linhas
-    sem valor são descartadas.
-
-    Um nível exatamente zero num único dia (ex: GPR já teve uma leitura
-    de 0.0 num dia isolado, 2025-02-09) faz o retorno do dia seguinte
-    virar ±infinito (divisão por zero) — um valor `inf` sozinho contamina
-    a média/desvio padrão da série inteira e derruba a correlação inteira
-    com um "NaN" enganoso. Tratado como dado ausente daquele dia
-    específico (não da série toda), igual a um NaN comum."""
+def _niveis_por_data(df: pd.DataFrame, coluna_valor: str, sufixo: str) -> pd.DataFrame:
+    """Níveis de `coluna_valor` com a coluna `data` normalizada (ver
+    `_normalizar_data`) e renomeada pra `valor_{sufixo}`, pronta pra
+    alinhar com outra série pela data ANTES de calcular retorno — mesmo
+    cuidado de `empresa.comportamento.calcular_beta`, que junta os
+    preços primeiro. Calcular o retorno em cada série no seu próprio
+    calendário e só depois juntar pela data (como este módulo fazia
+    antes) compara variações de períodos diferentes sempre que os dois
+    calendários não batem dia a dia — o GPR tem leitura em fins de
+    semana, por exemplo."""
     ordenado = df[["data", coluna_valor]].dropna().sort_values("data")
-    data_normalizada = _normalizar_data(ordenado["data"])
-    retorno = ordenado[coluna_valor].pct_change()
-    retorno = retorno.replace([float("inf"), float("-inf")], float("nan"))
-    return pd.DataFrame({"data": data_normalizada, "retorno": retorno}).dropna()
+    return pd.DataFrame(
+        {"data": _normalizar_data(ordenado["data"]), f"valor_{sufixo}": ordenado[coluna_valor]}
+    )
 
 
 def calcular_correlacao(
@@ -66,10 +63,13 @@ def calcular_correlacao(
     coluna_b: str,
     minimo_observacoes: int = MINIMO_OBSERVACOES_CORRELACAO,
 ) -> dict:
-    """Correlação de Pearson entre os retornos diários de duas séries,
-    alinhadas pelas datas em comum (mesmo cuidado já aplicado no cálculo
-    de Beta — nem todo calendário de negociação/publicação bate
-    exatamente entre duas fontes diferentes).
+    """Correlação de Pearson entre os retornos diários de duas séries. Os
+    NÍVEIS são alinhados pela data em comum primeiro, e o retorno
+    percentual é calculado só depois, sobre as séries já pareadas — mesmo
+    cuidado de `empresa.comportamento.calcular_beta` (ver
+    `_niveis_por_data`): calcular o retorno em cada calendário próprio e
+    juntar depois compararia variações de períodos diferentes sempre que
+    os dois calendários não batem dia a dia.
 
     Devolve `aplicavel=False` (com `motivo_nao_aplicavel`) se o overlap
     de datas for menor que `minimo_observacoes`, ou se alguma das duas
@@ -77,28 +77,39 @@ def calcular_correlacao(
     matematicamente indefinida) — nunca um número calculado sobre uma
     amostra pequena ou degenerada demais pra significar algo.
     """
-    retornos_a = _retornos_diarios(df_a, coluna_a)
-    retornos_b = _retornos_diarios(df_b, coluna_b)
+    niveis_a = _niveis_por_data(df_a, coluna_a, "a")
+    niveis_b = _niveis_por_data(df_b, coluna_b, "b")
+    combinado = niveis_a.merge(niveis_b, on="data").sort_values("data")
 
-    alinhado = retornos_a.merge(retornos_b, on="data", suffixes=("_a", "_b"))
+    retornos = pd.DataFrame(
+        {
+            "retorno_a": combinado["valor_a"].pct_change(),
+            "retorno_b": combinado["valor_b"].pct_change(),
+        }
+    )
+    # Nível exatamente zero num dia isolado faz o retorno do dia seguinte
+    # virar ±infinito (divisão por zero) — tratado como dado ausente
+    # daquele dia específico, igual a um NaN comum, em vez de contaminar
+    # a média/desvio padrão da série inteira.
+    retornos = retornos.replace([float("inf"), float("-inf")], float("nan")).dropna()
 
-    if len(alinhado) < minimo_observacoes:
+    if len(retornos) < minimo_observacoes:
         return {
             "aplicavel": False,
             "correlacao": None,
-            "observacoes": len(alinhado),
+            "observacoes": len(retornos),
             "motivo_nao_aplicavel": (
                 f"Overlap de datas insuficiente pra uma correlação confiável "
-                f"({len(alinhado)} pontos em comum, mínimo {minimo_observacoes})."
+                f"({len(retornos)} pontos em comum, mínimo {minimo_observacoes})."
             ),
         }
 
-    correlacao = alinhado["retorno_a"].corr(alinhado["retorno_b"])
+    correlacao = retornos["retorno_a"].corr(retornos["retorno_b"])
     if pd.isna(correlacao):
         return {
             "aplicavel": False,
             "correlacao": None,
-            "observacoes": len(alinhado),
+            "observacoes": len(retornos),
             "motivo_nao_aplicavel": (
                 "Uma das séries não varia no período (desvio padrão zero) — "
                 "correlação indefinida."
@@ -108,7 +119,7 @@ def calcular_correlacao(
     return {
         "aplicavel": True,
         "correlacao": float(correlacao),
-        "observacoes": len(alinhado),
+        "observacoes": len(retornos),
         "motivo_nao_aplicavel": None,
     }
 
