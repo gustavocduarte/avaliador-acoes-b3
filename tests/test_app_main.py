@@ -527,7 +527,12 @@ def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
     assert "tende a ficar mais alto" in avisos_divida[0]
 
 
-def test_fcd_mostra_rotulo_do_ano_normal_quando_empresa_esta_no_ano_mais_recente(monkeypatch):
+def test_fcd_nao_mostra_rotulo_do_ano_no_caso_normal_sem_fallback(monkeypatch):
+    # Ajuste de 2026-09-26: a legenda "FCD calculado com a demonstração
+    # financeira anual de X (CVM)" saiu do cartão no caso SEM fallback —
+    # essa informação já aparece no bloco "Datas de referência dos dados
+    # usados", texto repetido. Só a variante de fallback (que diz algo
+    # específico dessa ação) continua no cartão — ver o teste seguinte.
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
 
     at = AppTest.from_file(CAMINHO_APP)
@@ -535,11 +540,7 @@ def test_fcd_mostra_rotulo_do_ano_normal_quando_empresa_esta_no_ano_mais_recente
 
     assert not at.exception
     rotulos_ano = [c.value for c in at.caption if "demonstração financeira anual de" in c.value]
-    assert len(rotulos_ano) == 1
-    assert (
-        rotulos_ano[0]
-        == f"FCD calculado com a demonstração financeira anual de {ANO_FCD_MOCK} (CVM)."
-    )
+    assert rotulos_ano == []
 
 
 def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recente(monkeypatch):
@@ -585,20 +586,18 @@ def _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual: float, cfi_atual: float) -
 
 def test_caption_reinvestimento_caso_normal(monkeypatch):
     # CFO=1.000.000, CFI=-300.000 -> reinvestiu 30% do caixa operacional.
+    # Texto curto (2026-09-26): a explicação de por que isso reduz o FCD
+    # ficou só no expander "Como funciona esse cálculo?", não repetida
+    # aqui no cartão.
     _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
-    captions = [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+    captions = [c.value for c in at.caption if "reinvestiu" in c.value]
     assert len(captions) == 1
-    assert captions[0] == (
-        f"Em {ANO_FCD_MOCK}, a empresa reinvestiu 30% do caixa gerado pela operação. "
-        "Quanto maior essa parcela, menor tende a ser o FCD: o modelo trata o "
-        "investimento como saída de caixa, sem contar o crescimento que ele pode "
-        "gerar no futuro."
-    )
+    assert captions[0] == f"Em {ANO_FCD_MOCK}, reinvestiu 30% do caixa gerado pela operação."
 
 
 def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
@@ -619,7 +618,7 @@ def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
         "si só leva o FCD para baixo."
     )
     # Não mostra a caption de "reinvestiu X%" nesse caso.
-    assert not [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+    assert not [c.value for c in at.caption if "reinvestiu" in c.value]
 
 
 def test_caption_reinvestimento_ausente_quando_caixa_de_investimento_positivo(monkeypatch):
@@ -631,7 +630,7 @@ def test_caption_reinvestimento_ausente_quando_caixa_de_investimento_positivo(mo
     at.run(timeout=60)
 
     assert not at.exception
-    assert not [c.value for c in at.caption if "a empresa reinvestiu" in c.value]
+    assert not [c.value for c in at.caption if "reinvestiu" in c.value]
     assert not [
         c.value
         for c in at.caption
@@ -661,6 +660,10 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
         "empresas em fase de investimento pesado (comuns em energia e "
         "saneamento) ou com dívida muito alta tendem a ter FCD bem abaixo dos "
         "outros métodos" in bloco
+    )
+    assert (
+        "No cartão do FCD, a porcentagem reinvestida no ano aparece logo "
+        "abaixo do valor." in bloco
     )
 
 

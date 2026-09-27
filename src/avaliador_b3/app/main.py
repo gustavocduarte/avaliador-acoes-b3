@@ -989,16 +989,16 @@ with aba_analisar:
                 # Rótulo específico do FCD (não da página toda) — só o FCD vem
                 # da DFP anual da CVM; "Saúde financeira" abaixo vem do
                 # Fundamentus (últimos 12 meses), sem relação com esse ano.
+                # Caso normal (sem fallback) não tem legenda própria aqui —
+                # o ano já aparece no bloco "Datas de referência dos dados
+                # usados" (2026-09-26, pra reduzir texto repetido); a
+                # variante de fallback fica, porque diz algo específico
+                # dessa ação que não está em lugar nenhum.
                 if fcd_usou_fallback:
                     st.caption(
                         f"FCD calculado com a demonstração financeira anual de "
                         f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
                         "ainda não foi entregue por essa empresa."
-                    )
-                else:
-                    st.caption(
-                        f"FCD calculado com a demonstração financeira anual de "
-                        f"{ano_fcd_utilizado} (CVM)."
                     )
                 if cfo_fcd_utilizado is not None and cfo_fcd_utilizado <= 0:
                     st.caption(
@@ -1011,12 +1011,9 @@ with aba_analisar:
                     )
                     if proporcao_reinvestimento is not None:
                         st.caption(
-                            f"Em {ano_fcd_utilizado}, a empresa reinvestiu "
+                            f"Em {ano_fcd_utilizado}, reinvestiu "
                             f"{proporcao_reinvestimento:.0f}% do caixa gerado pela "
-                            "operação. Quanto maior essa parcela, menor tende a ser "
-                            "o FCD: o modelo trata o investimento como saída de "
-                            "caixa, sem contar o crescimento que ele pode gerar no "
-                            "futuro."
+                            "operação."
                         )
                     # else: caixa de investimento positivo (desinvestindo) — sem
                     # caption, por design (não é "reinvestimento" nenhum).
@@ -1137,7 +1134,8 @@ with aba_analisar:
                 "dos outros métodos, mesmo quando são saudáveis. Separar o "
                 "investimento que só mantém a empresa do que a faz crescer "
                 "exigiria um dado que a fonte não informa de forma "
-                "padronizada.\n\n"
+                "padronizada. No cartão do FCD, a porcentagem reinvestida no "
+                "ano aparece logo abaixo do valor.\n\n"
                 "**Valor combinado** — média simples só dos métodos que se aplicam à "
                 "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
                 "heurística: os pesos são iguais por simplicidade, não porque exista "
