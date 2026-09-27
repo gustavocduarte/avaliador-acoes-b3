@@ -1556,21 +1556,36 @@ with aba_analisar:
 
 with aba_screener:
     st.caption(
-        "Ranking pelo desconto em relação ao valor combinado (média simples de "
-        "Graham, Bazin e FCD aplicáveis, com pesos iguais por simplicidade — veja "
-        "'Como funciona esse cálculo?' na aba Analisar uma ação). A coluna "
-        "Divergência mostra o quanto os métodos discordam entre si. "
-        "Divergência vazia significa que só um método se aplica àquela ação. "
-        "Dividendos vs. histórico mostra os dividendos dos últimos 12 meses em "
-        "relação à mediana dos 5 anos anteriores; valores bem acima de 100% "
-        "deixam o preço teto do Bazin menos confiável. Dividendos vs. histórico "
-        "vazio significa que o Bazin não se aplica àquela ação (ou, raramente, "
-        "que os anos anteriores não têm pagamento para comparar). Reinvestimento "
-        "mostra quanto do caixa gerado pela operação a empresa investiu no ano; "
-        "valores altos puxam o FCD para baixo. Vazio quando o FCD não se aplica, "
-        "o caixa operacional foi negativo ou a empresa vendeu mais ativos do que "
-        "comprou."
+        "Ranking pelo desconto em relação ao valor combinado (média simples "
+        "dos métodos aplicáveis a cada ação). Veja abaixo como ler cada "
+        "coluna."
     )
+    with st.expander("Como ler esta tabela"):
+        st.markdown(
+            "- **Desconto** — ranking pelo desconto em relação ao valor "
+            "combinado (média simples de Graham, Bazin e FCD aplicáveis, com "
+            "pesos iguais por simplicidade — veja 'Como funciona esse "
+            "cálculo?' na aba Analisar uma ação).\n"
+            "- **Divergência** — mostra o quanto os métodos discordam entre "
+            "si. Divergência vazia significa que só um método se aplica "
+            "àquela ação.\n"
+            "- **Dividendos vs. histórico** — mostra os dividendos dos "
+            "últimos 12 meses em relação à mediana dos 5 anos anteriores; "
+            "valores bem acima de 100% deixam o preço teto do Bazin menos "
+            "confiável. Dividendos vs. histórico vazio significa que o Bazin "
+            "não se aplica àquela ação (ou, raramente, que os anos "
+            "anteriores não têm pagamento para comparar).\n"
+            "- **Reinvestimento** — mostra quanto do caixa gerado pela "
+            "operação a empresa investiu no ano; valores altos puxam o FCD "
+            "para baixo. Vazio quando o FCD não se aplica, o caixa "
+            "operacional foi negativo ou a empresa vendeu mais ativos do que "
+            "comprou.\n"
+            "- **Aviso** — aparece quando o desconto está fora da faixa "
+            "considerada confiável (valor justo muito acima ou muito abaixo "
+            "do preço); a causa provável varia de uma ação para outra, "
+            "conforme o texto de cada aviso. Vazio significa desconto dentro "
+            "da faixa normal."
+        )
 
     if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):
         st.warning(

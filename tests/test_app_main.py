@@ -667,7 +667,10 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
     )
 
 
-def test_caption_screener_explica_coluna_reinvestimento(monkeypatch):
+def test_caption_screener_topo_e_curta(monkeypatch):
+    # Ajuste de 2026-09-27: a legenda do topo virou um parágrafo curto —
+    # o detalhe de cada coluna foi pro expander "Como ler esta tabela"
+    # (ver testes abaixo), pra não crescer sem limite a cada coluna nova.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -681,12 +684,89 @@ def test_caption_screener_explica_coluna_reinvestimento(monkeypatch):
     captions = [
         c.value
         for c in at.caption
-        if "Reinvestimento mostra quanto do caixa gerado pela operação" in c.value
+        if "Ranking pelo desconto em relação ao valor combinado" in c.value
     ]
     assert len(captions) == 1
+    assert captions[0] == (
+        "Ranking pelo desconto em relação ao valor combinado (média simples "
+        "dos métodos aplicáveis a cada ação). Veja abaixo como ler cada "
+        "coluna."
+    )
+
+
+def test_expander_como_ler_tabela_existe(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    rotulos_expander = [e.label for e in at.expander]
+    assert "Como ler esta tabela" in rotulos_expander
+
+
+def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
+    # Desconto e Aviso não tinham texto próprio na legenda antiga (o
+    # parágrafo só citava Divergência/Dividendos vs. histórico/
+    # Reinvestimento) — reaproveita o texto já usado em outro lugar da
+    # tela (o parágrafo original pro Desconto, o aviso dinâmico da
+    # tabela pro Aviso), agora como item próprio no expander.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [
+        m.value
+        for m in at.markdown
+        if "**Desconto**" in m.value and "**Aviso**" in m.value
+    ]
+    assert len(blocos) == 1
+    bloco = blocos[0]
+    assert (
+        "**Desconto** — ranking pelo desconto em relação ao valor combinado "
+        "(média simples de Graham, Bazin e FCD aplicáveis, com pesos iguais "
+        "por simplicidade — veja 'Como funciona esse cálculo?' na aba "
+        "Analisar uma ação)." in bloco
+    )
+    assert (
+        "**Aviso** — aparece quando o desconto está fora da faixa "
+        "considerada confiável (valor justo muito acima ou muito abaixo do "
+        "preço); a causa provável varia de uma ação para outra, conforme o "
+        "texto de cada aviso. Vazio significa desconto dentro da faixa "
+        "normal." in bloco
+    )
+
+
+def test_expander_como_ler_tabela_explica_coluna_reinvestimento(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [
+        m.value
+        for m in at.markdown
+        if "**Reinvestimento** — mostra quanto do caixa gerado pela operação" in m.value
+    ]
+    assert len(blocos) == 1
     assert (
         "Vazio quando o FCD não se aplica, o caixa operacional foi negativo ou "
-        "a empresa vendeu mais ativos do que comprou." in captions[0]
+        "a empresa vendeu mais ativos do que comprou." in blocos[0]
     )
 
 
@@ -1442,11 +1522,13 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     assert "CVM fora do ar (simulado)" in avisos[0]
 
 
-def test_caption_screener_explica_dividendos_vs_historico_vazio(monkeypatch):
+def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypatch):
     # A coluna "Dividendos vs. histórico" fica vazia tanto quando o Bazin
     # não se aplica quanto (raramente) quando a mediana dos 5 anos sai
-    # zero — a caption do topo da aba precisa deixar isso claro, sem
-    # deixar a coluna vazia parecendo um dado faltando por erro.
+    # zero — o item do expander "Como ler esta tabela" precisa deixar
+    # isso claro, sem deixar a coluna vazia parecendo um dado faltando
+    # por erro. Movido de `st.caption` (legenda antiga) pra `st.markdown`
+    # dentro do expander em 2026-09-27.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -1457,15 +1539,15 @@ def test_caption_screener_explica_dividendos_vs_historico_vazio(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    captions = [
-        c.value
-        for c in at.caption
-        if "Dividendos vs. histórico vazio significa que o Bazin não se aplica" in c.value
+    blocos = [
+        m.value
+        for m in at.markdown
+        if "Dividendos vs. histórico vazio significa que o Bazin não se aplica" in m.value
     ]
-    assert len(captions) == 1
+    assert len(blocos) == 1
     assert (
         "ou, raramente, que os anos anteriores não têm pagamento para comparar"
-        in captions[0]
+        in blocos[0]
     )
 
 
