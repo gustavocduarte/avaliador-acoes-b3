@@ -139,6 +139,35 @@ def test_simular_investimento_sem_preco_atual_nao_projeta_nada():
     assert resultado["projecao_base"] is None
 
 
+def test_simular_investimento_fcd_negativo_limita_pessimista_a_perda_total():
+    # Caso real SBSP3: FCD negativo é o menor método, e também está tão
+    # abaixo do preço atual que arrastaria o valor_combinado (base) pra
+    # negativo também — os dois cenários viram perda total, não um saldo
+    # negativo.
+    linha = _linha_screener(
+        preco_atual=26.98, valor_combinado=-0.55, graham=25.64, fcd=-26.74
+    )
+
+    resultado = carteira.simular_investimento_ticker(linha, valor_investido=1000.0)
+
+    assert resultado["projecao_pessimista"] == pytest.approx(0.0)
+    assert resultado["retorno_pessimista_percentual"] == pytest.approx(-100.0)
+    assert resultado["projecao_base"] == pytest.approx(0.0)
+    assert resultado["retorno_base_percentual"] == pytest.approx(-100.0)
+    assert set(resultado["cenarios_limitados_perda_total"]) == {"pessimista", "base"}
+    # Otimista (Graham, positivo e bem acima de zero) não é afetado.
+    assert resultado["projecao_otimista"] > 0
+    assert "otimista" not in resultado["cenarios_limitados_perda_total"]
+
+
+def test_simular_investimento_metodo_positivo_nao_e_limitado():
+    linha = _linha_screener(preco_atual=40.0, valor_combinado=50.0, graham=30.0, fcd=70.0)
+
+    resultado = carteira.simular_investimento_ticker(linha, valor_investido=1000.0)
+
+    assert resultado["cenarios_limitados_perda_total"] == []
+
+
 # --- montar_tabela_carteira / calcular_totais_carteira ----------------------
 
 

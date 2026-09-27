@@ -1764,6 +1764,22 @@ with aba_carteira:
                     f"investidos, mas sem cenário — {linha_sem_cenario['motivo_nao_aplicavel']}"
                 )
 
+            # Cenário com valor de método ≤ 0 (ex: FCD negativo) é limitado a
+            # perda total (R$0, -100%) em vez de projeção negativa — ver
+            # carteira.simular_investimento_ticker. Avisa qual(is) cenário(s)
+            # de cada ação foram limitados, pra não esconder que o número
+            # exibido não é a conta "crua".
+            for _, linha_com_cenario in tabela_carteira[tabela_carteira["aplicavel"]].iterrows():
+                cenarios_limitados = linha_com_cenario["cenarios_limitados_perda_total"]
+                if cenarios_limitados:
+                    rotulos = ", ".join(c.capitalize() for c in cenarios_limitados)
+                    st.caption(
+                        f"{linha_com_cenario['ticker']}: cenário(s) {rotulos} limitado(s) a "
+                        "perda total (R$ 0, -100%) — o método correspondente deu um valor "
+                        "abaixo do preço atual o bastante pra projetar uma perda maior que "
+                        "100%, o que não existe economicamente."
+                    )
+
             tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
             if not tabela_carteira_aplicavel.empty:
                 tc_fmt, colunas_tc_fmt = _tabela_formatada_pt_br(

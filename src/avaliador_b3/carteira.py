@@ -72,6 +72,13 @@ def simular_investimento_ticker(linha_screener: dict, valor_investido: float) ->
     não tem preço atual disponível, devolve `aplicavel=False` com o motivo
     — as colunas de projeção/retorno ficam `None`, nunca um valor
     projetado a partir de um cenário inexistente.
+
+    Retorno de cada cenário nunca passa de −100%: o piso econômico de uma
+    ação é zero (responsabilidade limitada), então um valor de método ≤
+    preço atual × 0 (ex: FCD negativo) vira perda total, não uma
+    projeção negativa. `cenarios_limitados_perda_total` lista os nomes
+    dos cenários (`"otimista"`/`"base"`/`"pessimista"`) que bateram nesse
+    piso, pra quem exibe avisar que aquele valor foi limitado.
     """
     ticker = linha_screener["ticker"]
     preco_atual = linha_screener.get("preco_atual")
@@ -91,14 +98,21 @@ def simular_investimento_ticker(linha_screener: dict, valor_investido: float) ->
         for cenario in CENARIOS:
             linha[f"projecao_{cenario}"] = None
             linha[f"retorno_{cenario}_percentual"] = None
+        linha["cenarios_limitados_perda_total"] = []
         return linha
 
     linha["aplicavel"] = True
     linha["motivo_nao_aplicavel"] = None
+    cenarios_limitados = []
     for cenario in CENARIOS:
         valor_cenario = cenarios[cenario]
-        linha[f"projecao_{cenario}"] = valor_investido * (valor_cenario / preco_atual)
-        linha[f"retorno_{cenario}_percentual"] = (valor_cenario / preco_atual - 1) * 100
+        retorno_percentual = (valor_cenario / preco_atual - 1) * 100
+        if retorno_percentual < -100.0:
+            retorno_percentual = -100.0
+            cenarios_limitados.append(cenario)
+        linha[f"projecao_{cenario}"] = valor_investido * (1 + retorno_percentual / 100)
+        linha[f"retorno_{cenario}_percentual"] = retorno_percentual
+    linha["cenarios_limitados_perda_total"] = cenarios_limitados
 
     return linha
 
