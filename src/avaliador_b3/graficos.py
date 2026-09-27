@@ -85,8 +85,24 @@ def normalizar_base_100(serie: pd.Series) -> pd.Series:
     uma ação de R$ 30 e o Ibovespa em ~130.000 pontos) no mesmo eixo:
     plotadas em escala bruta, a ação ficaria uma linha reta ilegível ao
     lado do índice.
-    """
-    primeiro_valor = serie.dropna().iloc[0]
+
+    Três casos sem um "desempenho relativo" bem definido, tratados
+    explicitamente:
+    - Série vazia: devolve a própria série vazia — nada pra normalizar.
+    - Série sem nenhum valor não-nulo: não há primeiro valor pra servir
+      de base.
+    - Primeiro valor não-nulo igual a zero: base zero tornaria a divisão
+      indefinida.
+
+    Nos dois últimos casos, devolve uma série de `NaN` do mesmo índice —
+    nunca a série original sem normalizar, pra esta função nunca
+    devolver algo que pareça "base 100" sem ser de verdade."""
+    if serie.empty:
+        return serie
+    valores_validos = serie.dropna()
+    if valores_validos.empty or valores_validos.iloc[0] == 0:
+        return pd.Series(float("nan"), index=serie.index)
+    primeiro_valor = valores_validos.iloc[0]
     return serie / primeiro_valor * 100
 
 

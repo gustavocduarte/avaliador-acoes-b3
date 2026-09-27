@@ -1205,6 +1205,105 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
         assert not re.search(r"\d\.\d\d\b", texto), f"rótulo com ponto decimal: {texto!r}"
 
 
+# --- Gráfico "Preço vs. Ibovespa" sem dados válidos ------------------------
+
+
+def _historico_beta_falso(close_acao: list[float]):
+    """Fake de `obter_historico` com Close configurável pro histórico de
+    1 ano (PERIODO_BETA, usado no gráfico "Preço vs. Ibovespa") — os
+    demais períodos devolvem um valor válido fixo, sem relação com o
+    caso testado."""
+
+    def historico_falso(ticker, periodo="3mo", auto_adjust=True, **kwargs):
+        if periodo == "1y":
+            return pd.DataFrame(
+                {
+                    "data": pd.to_datetime(
+                        [f"2025-09-{15 + i:02d}" for i in range(len(close_acao))], utc=True
+                    ),
+                    "Close": close_acao,
+                    "Volume": [1000] * len(close_acao),
+                }
+            )
+        return pd.DataFrame(
+            {
+                "data": pd.to_datetime(["2026-09-15"], utc=True),
+                "Close": [50.0],
+                "Volume": [30_000_000],
+            }
+        )
+
+    return historico_falso
+
+
+def _historico_ibovespa_falso(close_ibovespa: list[float]):
+    def historico_falso(periodo="3mo", **kwargs):
+        return pd.DataFrame(
+            {
+                "data": pd.to_datetime(
+                    [f"2025-09-{15 + i:02d}" for i in range(len(close_ibovespa))], utc=True
+                ),
+                "Close": close_ibovespa,
+                "Volume": [0] * len(close_ibovespa),
+            }
+        )
+
+    return historico_falso
+
+
+def test_grafico_preco_vs_ibovespa_nomeia_a_serie_sem_dados_quando_so_uma_falha(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_beta_falso([float("nan"), float("nan")]),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico_ibovespa",
+        _historico_ibovespa_falso([130_000.0, 131_000.0]),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        i.value
+        for i in at.info
+        if "Sem dados suficientes de" in i.value and "para montar este gráfico." in i.value
+    ]
+    assert len(avisos) == 1
+    assert avisos[0] == "Sem dados suficientes de PETR4 para montar este gráfico."
+
+
+def test_grafico_preco_vs_ibovespa_mensagem_generica_quando_as_duas_series_falham(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_beta_falso([float("nan"), float("nan")]),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico_ibovespa",
+        _historico_ibovespa_falso([float("nan"), float("nan")]),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        i.value for i in at.info if i.value == "Sem dados suficientes para montar este gráfico."
+    ]
+    assert len(avisos) == 1
+
+
 # --- Formatação abreviada de Valor de mercado/Dívida líquida/Valor de firma --
 #
 # Regressão: sem abreviação, o valor por extenso (ex: "R$ 625,10 bi") ficava

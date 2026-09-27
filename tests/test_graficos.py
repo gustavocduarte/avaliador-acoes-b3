@@ -130,6 +130,43 @@ def test_normalizar_base_100_ignora_nulos_iniciais_pro_primeiro_valor():
     assert normalizada.iloc[2] == pytest.approx(110.0)
 
 
+def test_normalizar_base_100_serie_vazia_devolve_serie_vazia():
+    serie = pd.Series([], dtype=float)
+
+    normalizada = graficos.normalizar_base_100(serie)
+
+    assert normalizada.empty
+
+
+def test_normalizar_base_100_serie_toda_nan_devolve_nan_no_mesmo_indice():
+    serie = pd.Series([float("nan"), float("nan"), float("nan")], index=[10, 20, 30])
+
+    normalizada = graficos.normalizar_base_100(serie)
+
+    assert normalizada.index.equals(serie.index)
+    assert normalizada.isna().all()
+
+
+def test_normalizar_base_100_primeiro_valor_zero_devolve_nan_no_mesmo_indice():
+    serie = pd.Series([0.0, 10.0, 20.0])
+
+    normalizada = graficos.normalizar_base_100(serie)
+
+    assert normalizada.index.equals(serie.index)
+    assert normalizada.isna().all()
+
+
+def test_normalizar_base_100_zero_nao_lider_ainda_conta_como_primeiro_valor_valido():
+    # O zero em si (não um NaN) é o primeiro valor NÃO-NULO da série —
+    # ainda dispara o mesmo caso acima, mesmo vindo depois de um NaN
+    # líder.
+    serie = pd.Series([None, 0.0, 10.0])
+
+    normalizada = graficos.normalizar_base_100(serie)
+
+    assert normalizada.isna().all()
+
+
 # --- projetar_curva_composta / projetar_curva_linear / projetar_curva_inflacao
 
 

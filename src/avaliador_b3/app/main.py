@@ -400,19 +400,36 @@ def _widget_avancado_tradingview(ticker: str) -> str:
 
 def _grafico_comparacao_normalizada(
     serie_a: pd.DataFrame, nome_a: str, serie_b: pd.DataFrame, nome_b: str
-) -> go.Figure:
+) -> tuple[go.Figure | None, list[str]]:
     """Gráfico de linha com duas séries de preço normalizadas pra base 100
     (`graficos.normalizar_base_100`) — necessário pra sobrepor séries de
     escala bruta muito diferente (ação em R$ dezenas vs. Ibovespa em
     ~130 mil pontos, ou vs. petróleo Brent em US$ dezenas) no mesmo eixo
     sem uma delas virar uma linha reta ilegível. Compartilhado entre
     "Preço vs. Ibovespa" e "Comparando com Petróleo (Brent)", que só
-    diferem nas séries/nomes passados."""
+    diferem nas séries/nomes passados.
+
+    Devolve `(figura, nomes_sem_dados)`. `nomes_sem_dados` lista
+    `nome_a`/`nome_b` cuja série não teve "base 100" calculável (ver
+    `graficos.normalizar_base_100`); `figura` vem `None` sempre que essa
+    lista não for vazia — mesmo com a outra série ainda válida, uma
+    figura com uma das linhas invisível não é útil sem dizer por quê, e
+    quem chama decide a mensagem a partir de `nomes_sem_dados`."""
+    normalizado_a = normalizar_base_100(serie_a["Close"])
+    normalizado_b = normalizar_base_100(serie_b["Close"])
+    nomes_sem_dados = [
+        nome
+        for nome, normalizado in ((nome_a, normalizado_a), (nome_b, normalizado_b))
+        if normalizado.isna().all()
+    ]
+    if nomes_sem_dados:
+        return None, nomes_sem_dados
+
     figura = go.Figure()
     figura.add_trace(
         go.Scatter(
             x=serie_a["data"],
-            y=normalizar_base_100(serie_a["Close"]),
+            y=normalizado_a,
             name=nome_a,
             line={"color": COR_GRAFICO_PROTAGONISTA},
         )
@@ -420,7 +437,7 @@ def _grafico_comparacao_normalizada(
     figura.add_trace(
         go.Scatter(
             x=serie_b["data"],
-            y=normalizar_base_100(serie_b["Close"]),
+            y=normalizado_b,
             name=nome_b,
             line={"color": COR_GRAFICO_CONTEXTO},
         )
@@ -439,7 +456,16 @@ def _grafico_comparacao_normalizada(
         gridcolor=COR_GRAFICO_GRADE, tickmode="array", tickvals=tickvals, ticktext=ticktext
     )
     figura.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
-    return figura
+    return figura, []
+
+
+def _mensagem_grafico_comparacao_sem_dados(nomes_sem_dados: list[str]) -> str:
+    """Mensagem mostrada no lugar do gráfico quando `_grafico_comparacao_
+    normalizada` devolve `figura=None` — nomeia a série sem dados quando
+    só uma falhou, pra não esconder que a outra está ok."""
+    if len(nomes_sem_dados) == 1:
+        return f"Sem dados suficientes de {nomes_sem_dados[0]} para montar este gráfico."
+    return "Sem dados suficientes para montar este gráfico."
 
 
 def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | None:
@@ -1280,10 +1306,13 @@ with aba_analisar:
                 # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
                 # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
                 # ação uma linha reta ilegível.
-                figura_preco = _grafico_comparacao_normalizada(
+                figura_preco, nomes_sem_dados_preco = _grafico_comparacao_normalizada(
                     historico_beta, ticker, historico_ibovespa_beta, "Ibovespa"
                 )
-                st.plotly_chart(figura_preco, use_container_width=True)
+                if figura_preco is None:
+                    st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
+                else:
+                    st.plotly_chart(figura_preco, use_container_width=True)
 
         st.divider()
         st.subheader("Comparando com Petróleo (Brent)")
@@ -1313,10 +1342,13 @@ with aba_analisar:
             elif erro_petroleo_janela:
                 st.error(f"Petróleo (Brent): {erro_petroleo_janela}")
             else:
-                figura_petroleo = _grafico_comparacao_normalizada(
+                figura_petroleo, nomes_sem_dados_petroleo = _grafico_comparacao_normalizada(
                     historico_acao_petroleo, ticker, historico_petroleo_janela, "Petróleo (Brent)"
                 )
-                st.plotly_chart(figura_petroleo, use_container_width=True)
+                if figura_petroleo is None:
+                    st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
+                else:
+                    st.plotly_chart(figura_petroleo, use_container_width=True)
 
         st.divider()
         st.subheader("Gráfico avançado (TradingView)")
