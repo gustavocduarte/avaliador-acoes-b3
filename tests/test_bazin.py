@@ -213,3 +213,22 @@ def test_nao_aplicavel_quando_historico_bate_mas_nada_pago_nos_ultimos_12_meses(
     assert resultado["aplicavel"] is False
     assert resultado["preco_teto"] is None
     assert "últimos 12 meses" in resultado["motivo_nao_aplicavel"]
+
+
+@pytest.mark.parametrize(
+    "data_referencia",
+    ["2026-09-27", "2026-01-15", "2026-06-15", "2026-12-15"],
+)
+def test_aplicavel_independente_do_mes_da_data_referencia(data_referencia):
+    # Pagadora regular todo 15/05 — filtrar por data exata (em vez de ano
+    # civil) cortaria o ano mais antigo exigido sempre que a referência
+    # caísse depois de maio, fazendo o resultado depender do mês em que o
+    # app roda pra uma empresa com o mesmo histórico.
+    dividendos = _dividendos([(f"{ano}-05-15", 1.0) for ano in range(2021, 2027)])
+
+    resultado = calcular_preco_teto_bazin(
+        dividendos, data_referencia=pd.Timestamp(data_referencia)
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["preco_teto"] == pytest.approx(1.0 / 0.06)

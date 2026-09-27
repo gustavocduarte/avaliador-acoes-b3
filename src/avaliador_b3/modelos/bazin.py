@@ -28,9 +28,23 @@ import pandas as pd
 from avaliador_b3.config import ANOS_HISTORICO_MINIMO_BAZIN, YIELD_MINIMO_BAZIN
 
 
+def _anos_exigidos(data_referencia: pd.Timestamp) -> set[int]:
+    """Os `ANOS_HISTORICO_MINIMO_BAZIN` anos civis anteriores ao ano de
+    `data_referencia` — o mesmo conjunto de anos usado por
+    `_tem_historico_relevante`, `_anos_com_dividendo` e
+    `_razao_dividendos_12m_vs_mediana`, pra as três nunca divergirem
+    sobre o que são "os últimos 5 anos"."""
+    return {data_referencia.year - i for i in range(1, ANOS_HISTORICO_MINIMO_BAZIN + 1)}
+
+
 def _anos_com_dividendo(dividendos: pd.DataFrame, data_referencia: pd.Timestamp) -> set[int]:
-    limite = data_referencia - pd.DateOffset(years=ANOS_HISTORICO_MINIMO_BAZIN)
-    recentes = dividendos[dividendos["data"] >= limite]
+    """Anos civis (dentro dos `_anos_exigidos`) em que houve pelo menos
+    um pagamento — filtra por ANO, não por data exata: um pagamento em
+    15/05 do ano mais antigo exigido precisa contar mesmo com
+    `data_referencia` em setembro, quando a data exata já ficaria antes
+    de `data_referencia - 5 anos`."""
+    anos_exigidos = _anos_exigidos(data_referencia)
+    recentes = dividendos[dividendos["data"].dt.year.isin(anos_exigidos)]
     return set(recentes["data"].dt.year.unique())
 
 
@@ -39,8 +53,9 @@ def _tem_historico_relevante(dividendos: pd.DataFrame, data_referencia: pd.Times
     `ANOS_HISTORICO_MINIMO_BAZIN` anos civis — sem lacuna."""
     if dividendos.empty:
         return False
-    anos_esperados = {data_referencia.year - i for i in range(1, ANOS_HISTORICO_MINIMO_BAZIN + 1)}
-    return anos_esperados.issubset(_anos_com_dividendo(dividendos, data_referencia))
+    return _anos_exigidos(data_referencia).issubset(
+        _anos_com_dividendo(dividendos, data_referencia)
+    )
 
 
 def _dividendos_ultimos_12_meses(dividendos: pd.DataFrame, data_referencia: pd.Timestamp) -> float:
@@ -61,10 +76,9 @@ def _razao_dividendos_12m_vs_mediana(
     sai zero (evita divisão por zero) — na prática só ocorre se algum dos 5
     anos tiver dividendo registrado com valor 0, já que `_tem_historico_
     relevante` já garante pelo menos um pagamento em cada ano."""
-    anos_esperados = {data_referencia.year - i for i in range(1, ANOS_HISTORICO_MINIMO_BAZIN + 1)}
     totais_anuais = [
         float(dividendos[dividendos["data"].dt.year == ano]["dividendo"].sum())
-        for ano in anos_esperados
+        for ano in _anos_exigidos(data_referencia)
     ]
     mediana = float(pd.Series(totais_anuais).median())
     if mediana <= 0:
