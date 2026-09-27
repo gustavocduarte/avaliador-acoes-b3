@@ -104,6 +104,7 @@ from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
+    MacroIndisponivelWarning,
     rodar_screener,
 )
 
@@ -1640,20 +1641,23 @@ with aba_screener:
                 rodar_screener()
         for aviso in avisos_capturados:
             warnings.warn_explicit(aviso.message, aviso.category, aviso.filename, aviso.lineno)
-        avisos_deteccao_ano = [
+        # Mesmo tratamento pros dois avisos "globais" (afetam a rodada
+        # inteira, não uma linha) que rodar_screener pode emitir: detecção
+        # do ano da CVM e busca de Selic/IPCA do BCB.
+        avisos_globais = [
             str(aviso.message)
             for aviso in avisos_capturados
-            if issubclass(aviso.category, DeteccaoAnoCvmFalhouWarning)
+            if issubclass(aviso.category, (DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning))
         ]
-        if avisos_deteccao_ano:
+        if avisos_globais:
             # st.rerun() logo abaixo descarta qualquer coisa renderizada
             # nesta mesma execução — guarda em session_state pra mostrar
             # DEPOIS do rerun, não aqui.
-            st.session_state["avisos_screener_deteccao_ano"] = avisos_deteccao_ano
+            st.session_state["avisos_screener_globais"] = avisos_globais
         st.success("Screener concluído — resultado salvo em disco.")
         st.rerun()
 
-    for aviso in st.session_state.pop("avisos_screener_deteccao_ano", []):
+    for aviso in st.session_state.pop("avisos_screener_globais", []):
         st.warning(aviso)
 
     tabela_screener = _carregar_screener_ou_avisar(

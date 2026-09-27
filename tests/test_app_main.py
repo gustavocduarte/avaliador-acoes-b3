@@ -34,7 +34,7 @@ from avaliador_b3.config import (
 from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
-from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning
+from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning
 
 # Ano fixo usado pelos mocks de FCD abaixo — substitui ANO_REFERENCIA_FCD
 # (removida em 2026-09-23, ver docs/correcao-ano-fcd-2026-09-23.md), já
@@ -1619,6 +1619,44 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     ]
     assert len(avisos) == 1
     assert "CVM fora do ar (simulado)" in avisos[0]
+
+
+def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
+    # P07 (docs/auditoria-tecnica-2026-09-27.md): _buscar_macro (Selic/
+    # IPCA do BCB) falhando dentro de rodar_screener era engolido em
+    # silêncio (except Exception: selic_meta = ipca_12m = None, sem
+    # aviso nenhum) — o FCD de todas as ações da rodada sumia sem
+    # explicação em lugar nenhum visível. Mesmo padrão do teste acima
+    # pra detecção do ano da CVM: rodar_screener é substituído por um
+    # fake que só emite o aviso (o comportamento real de emiti-lo
+    # quando _buscar_macro falha já é coberto em tests/test_screener.py).
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    def rodar_screener_falso(*args, **kwargs):
+        warnings.warn(
+            "Selic/IPCA indisponíveis — o FCD de todas as ações desta rodada "
+            "ficará indisponível: BCB fora do ar (simulado)",
+            category=MacroIndisponivelWarning,
+            stacklevel=2,
+        )
+
+    monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    at.button[1].click().run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        aviso.value for aviso in at.warning if "Selic/IPCA indisponíveis" in aviso.value
+    ]
+    assert len(avisos) == 1
+    assert "BCB fora do ar (simulado)" in avisos[0]
 
 
 def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypatch):

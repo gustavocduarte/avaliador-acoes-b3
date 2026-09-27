@@ -103,6 +103,14 @@ class DeteccaoAnoCvmFalhouWarning(UserWarning):
     continuar indo só pro log, sem mudança de comportamento."""
 
 
+class MacroIndisponivelWarning(UserWarning):
+    """Mesmo padrão de `DeteccaoAnoCvmFalhouWarning`, pro aviso que
+    `rodar_screener` emite quando `_buscar_macro` (Selic/IPCA do BCB)
+    falha — sem isso, o FCD de todas as ações da rodada ficava "não
+    aplicável" e a causa não chegava à coluna "erro" do CSV nem a lugar
+    nenhum visível, indistinguível de uma falha silenciosa."""
+
+
 COLUNAS_RESULTADO = [
     "ticker",
     "sucesso",
@@ -430,10 +438,20 @@ def rodar_screener(
     except (TickerInvalido, FalhaFontePreco):
         historico_ibovespa_beta = None
 
+    # Falha aqui também é global, mesmo caso da detecção do ano da CVM
+    # logo abaixo — sem o aviso, o FCD de todas as ações da rodada vira
+    # "não aplicável" com a Selic/IPCA indisponíveis como causa, sem
+    # aparecer em lugar nenhum visível.
     try:
         selic_meta, ipca_12m = _buscar_macro(diretorio_cache)
-    except Exception:
+    except Exception as erro:
         selic_meta = ipca_12m = None
+        warnings.warn(
+            f"Selic/IPCA indisponíveis — o FCD de todas as ações desta rodada "
+            f"ficará indisponível: {erro}",
+            category=MacroIndisponivelWarning,
+            stacklevel=2,
+        )
 
     # Falha aqui é global (afeta o FCD de TODAS as ações da rodada, não uma
     # linha específica) — por isso o aviso é emitido uma vez aqui, não por

@@ -301,6 +301,29 @@ def test_rodar_screener_avisa_globalmente_quando_deteccao_do_ano_falha(
     assert linha["graham_valor_justo"] is not None
 
 
+def test_rodar_screener_avisa_globalmente_quando_bcb_falha(ambiente_feliz, tmp_path, monkeypatch):
+    # P07 (docs/auditoria-tecnica-2026-09-27.md): antes desta correção,
+    # a falha do BCB era engolida em silêncio (except Exception: selic_
+    # meta = ipca_12m = None, sem warnings.warn nenhum) — mesmo problema
+    # que a detecção do ano da CVM já tinha, corrigido acima com o
+    # mesmo padrão de aviso global.
+    def buscar_macro_falso(diretorio_cache):
+        raise RuntimeError("BCB fora do ar (simulado)")
+
+    monkeypatch.setattr(screener, "_buscar_macro", buscar_macro_falso)
+
+    with pytest.warns(screener.MacroIndisponivelWarning, match="Selic/IPCA indisponíveis"):
+        resultado = screener.rodar_screener(
+            tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+        )
+
+    linha = resultado.iloc[0]
+    assert linha["fcd_valor_justo"] is None
+    # Nada derrubou a rodada -- o resto da linha continua calculado.
+    assert linha["sucesso"]
+    assert linha["graham_valor_justo"] is not None
+
+
 def test_calcular_linha_ticker_erro_deteccao_ano_fcd_nao_derruba_o_calculo(
     ambiente_feliz, tmp_path
 ):
