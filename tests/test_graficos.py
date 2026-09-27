@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -241,6 +242,54 @@ def test_curva_inflacao_e_composta_com_a_taxa_do_ipca():
     curva_composta_equivalente = graficos.projetar_curva_composta(1000.0, 0.05, 5)
 
     pd.testing.assert_frame_equal(curva_inflacao, curva_composta_equivalente)
+
+
+# --- validação de `anos` nas três funções de projeção ------------------------
+
+_FUNCOES_PROJECAO = [
+    (graficos.projetar_curva_composta, (1000.0, 0.10)),
+    (graficos.projetar_curva_linear, (1000.0, 2000.0)),
+    (graficos.projetar_curva_inflacao, (1000.0, 0.04)),
+]
+
+
+@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
+def test_projecao_anos_zero_continua_valido(funcao, args):
+    curva = funcao(*args, 0)
+
+    assert list(curva["ano"]) == [0]
+    assert curva["valor"].iloc[0] == pytest.approx(args[0])
+
+
+@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
+def test_projecao_anos_negativo_levanta_value_error(funcao, args):
+    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
+        funcao(*args, -5)
+
+
+@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
+def test_projecao_anos_nao_inteiro_levanta_value_error(funcao, args):
+    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
+        funcao(*args, 2.5)
+
+
+@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
+def test_projecao_aceita_inteiro_do_numpy(funcao, args):
+    # numpy.int64 (ex: valor vindo de uma coluna do pandas) não é
+    # instância de `int`, mas é de `numbers.Integral` — precisa ser
+    # aceito, não só o `int` nativo do Python.
+    curva = funcao(*args, np.int64(3))
+
+    assert list(curva["ano"]) == [0, 1, 2, 3]
+
+
+@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
+def test_projecao_recusa_bool_mesmo_sendo_subclasse_de_int(funcao, args):
+    # bool é subclasse de int em Python (isinstance(True, int) é True) —
+    # True não é um número de anos válido, precisa ser recusado mesmo
+    # assim.
+    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
+        funcao(*args, True)
 
 
 # --- agregar_dividendos_por_ano ----------------------------------------------
