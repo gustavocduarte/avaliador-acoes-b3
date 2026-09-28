@@ -19,6 +19,7 @@ continuarem rápidos e determinísticos, sem rede de verdade — ver
 import json
 import re
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -115,6 +116,11 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
         raise RuntimeError(MENSAGEM_ERRO_MOCK)
 
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_macro)
+    # Sem isso, obter_selic_e_ipca cairia pro ultimo_macro.json real do
+    # projeto (diretorio_cache default) se ele existir em disco nesta
+    # máquina — tornando o teste dependente de estado externo (idade do
+    # arquivo) em vez de determinístico.
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs._carregar_ultimo_macro", lambda *a: None)
     monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
 
 
@@ -145,7 +151,13 @@ def test_dropdown_lista_acoes_do_ibovespa_quando_universo_disponivel(monkeypatch
     assert len(at.selectbox) == 1
     assert at.selectbox[0].label == "Ação (Ibovespa)"
     assert any("PETR4" in opcao and "PETROBRAS" in opcao for opcao in at.selectbox[0].options)
-    assert not any("indispon" in aviso.value.lower() for aviso in at.warning)
+    # Universo disponível -> dropdown não deveria cair pro aviso de
+    # fallback (esse aviso específico é o foco deste teste; Selic/IPCA
+    # segue indisponível nesta simulação e mostra o aviso próprio dele,
+    # sem relação com o dropdown).
+    assert not any(
+        "Lista de ações do Ibovespa indisponível" in aviso.value for aviso in at.warning
+    )
 
 
 def test_cai_pro_campo_de_texto_livre_quando_universo_falha(monkeypatch):
@@ -826,6 +838,67 @@ def test_bloco_datas_referencia_fcd_nao_aplicavel_mostra_nao_aplicavel(monkeypat
     assert not at.exception
     bloco = next(m.value for m in at.markdown if "Comparar o preço de hoje" in m.value)
     assert "**FCD** — não aplicável." in bloco
+
+
+def test_aviso_e_datas_referencia_mostram_valor_macro_guardado_quando_bcb_falha(monkeypatch):
+    # BCB fora do ar mas com valor guardado recente o bastante (ver
+    # ingest.bcb_sgs.obter_selic_e_ipca) — a tela precisa avisar que o
+    # valor é o último obtido, não fingir que é "de hoje" como o resto
+    # da Selic normalmente é.
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    def obter_serie_falha(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", obter_serie_falha)
+    data_busca_guardada = datetime(2026, 9, 20, 10, 0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.bcb_sgs._carregar_ultimo_macro",
+        lambda diretorio_cache: {
+            "selic_meta": 0.1375,
+            "ipca_12m": 0.045,
+            "data_ipca": pd.Timestamp("2026-08-01"),
+            "data_busca": pd.Timestamp(data_busca_guardada),
+        },
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = [
+        aviso.value for aviso in at.warning if "Banco Central indisponível agora" in aviso.value
+    ]
+    assert len(avisos) == 1
+    assert "20/09/2026" in avisos[0]
+
+    bloco = next(m.value for m in at.markdown if "Comparar o preço de hoje" in m.value)
+    assert "último valor obtido em 20/09/2026 (Banco Central indisponível agora)." in bloco
+
+
+def test_buscar_macro_nao_cacheia_erro_e_funciona_na_segunda_chamada(monkeypatch):
+    # st.cache_data não pode guardar uma falha temporária do BCB por 1h
+    # inteira — primeira chamada falha, segunda (mesmo processo, sem
+    # limpar o cache) já usa o valor novo.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at1 = AppTest.from_file(CAMINHO_APP)
+    at1.run(timeout=60)
+    assert not at1.exception
+    bloco1 = next(m.value for m in at1.markdown if "Comparar o preço de hoje" in m.value)
+    assert "acumulado até N/D." in bloco1
+
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
+
+    at2 = AppTest.from_file(CAMINHO_APP)
+    at2.run(timeout=60)
+    assert not at2.exception
+    bloco2 = next(m.value for m in at2.markdown if "Comparar o preço de hoje" in m.value)
+    assert "acumulado até 12/2025." in bloco2
 
 
 def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):

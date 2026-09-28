@@ -1,5 +1,9 @@
+import json
+from datetime import datetime, timedelta
+
 import pandas as pd
 import pytest
+import requests
 
 from avaliador_b3.ingest import bcb_sgs
 
@@ -140,3 +144,168 @@ def test_obter_serie_forcar_atualizacao_ignora_cache(tmp_path, monkeypatch):
     bcb_sgs.obter_serie(432, diretorio_cache=tmp_path, forcar_atualizacao=True)
 
     assert chamadas["contador"] == 2
+
+
+# --- _get_com_retry: nova tentativa em falha temporária ---------------------
+
+
+class _Resposta:
+    def __init__(self, status_code, texto=""):
+        self.status_code = status_code
+        self.text = texto
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"erro {self.status_code}", response=self)
+
+
+def test_get_com_retry_502_depois_sucesso_usa_o_valor_novo(monkeypatch):
+    chamadas = {"n": 0}
+
+    def get_falso(url, timeout):
+        chamadas["n"] += 1
+        if chamadas["n"] == 1:
+            return _Resposta(502)
+        return _Resposta(200, '[{"data":"01/01/2024","valor":"11.75"}]')
+
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: None)
+
+    resposta = bcb_sgs._get_com_retry("https://exemplo")
+
+    assert chamadas["n"] == 2
+    assert resposta.status_code == 200
+
+
+def test_get_com_retry_502_persistente_espera_2_e_5_segundos_e_desiste(monkeypatch):
+    chamadas = {"n": 0}
+    pausas = []
+
+    def get_falso(url, timeout):
+        chamadas["n"] += 1
+        return _Resposta(502)
+
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: pausas.append(segundos))
+
+    with pytest.raises(requests.HTTPError):
+        bcb_sgs._get_com_retry("https://exemplo")
+
+    assert chamadas["n"] == 3  # tentativa original + 2 novas
+    assert pausas == [2, 5]
+
+
+def test_get_com_retry_404_nao_tenta_de_novo(monkeypatch):
+    chamadas = {"n": 0}
+
+    def get_falso(url, timeout):
+        chamadas["n"] += 1
+        return _Resposta(404)
+
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: None)
+
+    with pytest.raises(requests.HTTPError):
+        bcb_sgs._get_com_retry("https://exemplo")
+
+    assert chamadas["n"] == 1
+
+
+# --- obter_selic_e_ipca: valor guardado como último recurso -----------------
+
+
+def _bcb_falho(*args, **kwargs):
+    raise RuntimeError("BCB fora do ar (simulado)")
+
+
+def _semear_ultimo_macro(diretorio_cache, dias_atras: int) -> None:
+    caminho = diretorio_cache / "bcb" / "ultimo_macro.json"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    data_busca = datetime.now() - timedelta(days=dias_atras)
+    caminho.write_text(
+        json.dumps(
+            {
+                "selic_meta": 0.1375,
+                "ipca_12m": 0.045,
+                "data_ipca": "2026-08-01",
+                "data_busca": data_busca.isoformat(),
+            }
+        )
+    )
+
+
+def test_salvar_e_carregar_ultimo_macro_ida_e_volta(tmp_path):
+    data_busca = datetime(2026, 9, 15, 14, 30)
+    bcb_sgs._salvar_ultimo_macro(tmp_path, 0.1375, 0.045, pd.Timestamp("2026-08-01"), data_busca)
+
+    carregado = bcb_sgs._carregar_ultimo_macro(tmp_path)
+
+    assert carregado["selic_meta"] == pytest.approx(0.1375)
+    assert carregado["ipca_12m"] == pytest.approx(0.045)
+    assert carregado["data_ipca"] == pd.Timestamp("2026-08-01")
+    assert carregado["data_busca"] == pd.Timestamp(data_busca)
+
+
+def test_obter_selic_e_ipca_usa_valor_guardado_recente_quando_bcb_falha(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+    _semear_ultimo_macro(tmp_path, dias_atras=10)
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+    assert resultado.selic_meta == pytest.approx(0.1375)
+    assert resultado.ipca_12m == pytest.approx(0.045)
+
+
+def test_obter_selic_e_ipca_ignora_valor_guardado_com_mais_de_45_dias(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+    _semear_ultimo_macro(tmp_path, dias_atras=46)
+
+    with pytest.raises(bcb_sgs.MacroIndisponivelError):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+
+def test_obter_selic_e_ipca_sem_valor_guardado_mensagem_amigavel(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+
+    with pytest.raises(bcb_sgs.MacroIndisponivelError) as excinfo:
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    mensagem = str(excinfo.value)
+    assert mensagem == bcb_sgs.MENSAGEM_MACRO_INDISPONIVEL
+    assert "api.bcb.gov.br" not in mensagem
+
+
+def test_ipca_com_menos_de_12_meses_levanta_erro(tmp_path, monkeypatch):
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-08-01")], "valor": [13.75]})
+    ipca_df = pd.DataFrame(
+        {"data": pd.date_range("2026-01-01", periods=5, freq="MS"), "valor": [0.3] * 5}
+    )
+
+    def obter_serie_falso(codigo, **kwargs):
+        return selic_df if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"] else ipca_df
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+
+    with pytest.raises(bcb_sgs.DadosMacroInsuficientesError, match="5 leitura"):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+
+def test_ipca_incompleto_nao_cai_pro_valor_guardado(tmp_path, monkeypatch):
+    # Dado insuficiente não é falha de rede — não deve usar o valor
+    # guardado mesmo que exista um recente (ver docstring de
+    # DadosMacroInsuficientesError).
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-08-01")], "valor": [13.75]})
+    ipca_df = pd.DataFrame(
+        {"data": pd.date_range("2026-01-01", periods=5, freq="MS"), "valor": [0.3] * 5}
+    )
+
+    def obter_serie_falso(codigo, **kwargs):
+        return selic_df if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"] else ipca_df
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+    _semear_ultimo_macro(tmp_path, dias_atras=1)
+
+    with pytest.raises(bcb_sgs.DadosMacroInsuficientesError):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)

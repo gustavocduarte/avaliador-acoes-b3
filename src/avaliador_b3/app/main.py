@@ -39,10 +39,7 @@ from avaliador_b3.config import (
     COR_GRAFICO_TEXTO,
     CORES_CENARIO,
     HORIZONTE_PROJECAO_FCD_ANOS,
-    JANELA_BUSCA_IPCA_DIAS,
-    JANELA_BUSCA_SELIC_DIAS,
     JANELAS_COMPARACAO_PETROLEO,
-    MESES_IPCA_ACUMULADO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
@@ -68,7 +65,7 @@ from avaliador_b3.graficos import (
     ticks_mensais_pt_br,
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
-from avaliador_b3.ingest.bcb_sgs import obter_serie
+from avaliador_b3.ingest.bcb_sgs import ResultadoMacro, obter_selic_e_ipca, obter_serie
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
     obter_catalogo_emissores,
@@ -158,12 +155,18 @@ def _buscar_historico(
     erro" implica "tem pelo menos uma linha", sem precisar checar
     `.empty` em cada um deles separadamente."""
     try:
-        historico = obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust)
+        return _buscar_historico_ou_levanta(ticker, periodo, auto_adjust), None
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
+
+
+def _buscar_historico_ou_levanta(
+    ticker: str, periodo: str, auto_adjust: bool = True
+) -> pd.DataFrame:
+    historico = obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust)
     if historico.empty:
-        return None, f"Histórico de {ticker!r} veio vazio — tente de novo mais tarde."
-    return historico, None
+        raise FalhaFontePreco(f"Histórico de {ticker!r} veio vazio — tente de novo mais tarde.")
+    return historico
 
 
 def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str | None]:
@@ -180,55 +183,80 @@ def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str |
 
 
 @st.cache_data(ttl=3600)
+def _buscar_historico_petroleo_cacheado(periodo: str) -> pd.DataFrame:
+    return _buscar_historico_ou_levanta(TICKER_PETROLEO_BRENT, periodo=periodo)
+
+
 def _buscar_historico_petroleo(
     periodo: str = f"{ANOS_JANELA_CORRELACAO}y",
 ) -> tuple[pd.DataFrame | None, str | None]:
     """Histórico do petróleo Brent (BZ=F) — cacheado na sessão por 1h
     (por período: `st.cache_data` já cacheia por combinação de
     argumentos, mesmo padrão de `ingest.precos.obter_historico`), não
-    depende da ação buscada (mesmo padrão de
-    _buscar_universo_ibovespa/_buscar_macro). Período padrão é a mesma
-    janela de correlação (2 anos); a seção "Comparando com Petróleo
-    (Brent)" passa períodos maiores (5/10 anos) explicitamente."""
-    return _buscar_historico(TICKER_PETROLEO_BRENT, periodo=periodo)
+    depende da ação buscada. Período padrão é a mesma janela de
+    correlação (2 anos); a seção "Comparando com Petróleo (Brent)" passa
+    períodos maiores (5/10 anos) explicitamente. A parte cacheada levanta
+    em vez de devolver `(None, erro)` — `st.cache_data` guardaria esse
+    par por 1h inteira, inclusive quando o erro é transitório."""
+    try:
+        return _buscar_historico_petroleo_cacheado(periodo), None
+    except (TickerInvalido, FalhaFontePreco) as erro:
+        return None, str(erro)
 
 
 @st.cache_data(ttl=3600)
+def _buscar_cambio_correlacao_cacheado() -> pd.DataFrame:
+    hoje = datetime.now()
+    return obter_serie(
+        SERIES_BCB_SGS["cambio_usd_venda"],
+        data_inicial=(hoje - timedelta(days=365 * ANOS_JANELA_CORRELACAO)).strftime("%d/%m/%Y"),
+        data_final=hoje.strftime("%d/%m/%Y"),
+    )
+
+
 def _buscar_cambio_correlacao() -> tuple[pd.DataFrame | None, str | None]:
     """Série de câmbio USD/BRL (PTAX venda) na janela de correlação —
-    cacheada na sessão por 1h, não depende da ação buscada."""
-    hoje = datetime.now()
+    cacheada na sessão por 1h, não depende da ação buscada. A parte
+    cacheada levanta em vez de devolver `(None, erro)`, senão um erro
+    transitório ficaria preso em cache pela 1h inteira."""
     try:
-        serie = obter_serie(
-            SERIES_BCB_SGS["cambio_usd_venda"],
-            data_inicial=(hoje - timedelta(days=365 * ANOS_JANELA_CORRELACAO)).strftime("%d/%m/%Y"),
-            data_final=hoje.strftime("%d/%m/%Y"),
-        )
-        return serie, None
+        return _buscar_cambio_correlacao_cacheado(), None
     except Exception as erro:
         return None, f"Falha ao buscar câmbio USD/BRL do Banco Central: {erro}"
 
 
 @st.cache_data(ttl=3600)
+def _buscar_gpr_diaria_cacheado() -> pd.DataFrame:
+    return obter_gpr(serie="diaria")
+
+
 def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
     """Série diária do índice GPR — cacheada na sessão por 1h, não
     depende da ação buscada. `obter_gpr` já cacheia em disco sem TTL por
     baixo (o arquivo raramente muda), isso só evita reler/reparsear o CSV
-    a cada busca dentro da mesma sessão do Streamlit."""
+    a cada busca dentro da mesma sessão do Streamlit. A parte cacheada
+    levanta em vez de devolver `(None, erro)`, senão um erro transitório
+    ficaria preso em cache pela 1h inteira."""
     try:
-        return obter_gpr(serie="diaria"), None
+        return _buscar_gpr_diaria_cacheado(), None
     except Exception as erro:
         return None, f"Falha ao buscar índice GPR: {erro}"
 
 
 @st.cache_data(ttl=3600)
+def _buscar_universo_ibovespa_cacheado() -> pd.DataFrame:
+    return obter_universo_ibovespa()
+
+
 def _buscar_universo_ibovespa() -> tuple[pd.DataFrame | None, str | None]:
     """Universo do Ibovespa (ticker/nome/segmento de listagem/peso) —
     cacheado na sessão do Streamlit, não depende do ticker buscado. Um
     ticker fora do Ibovespa simplesmente não aparece nesse universo — não
-    é um erro de busca."""
+    é um erro de busca. A parte cacheada levanta em vez de devolver
+    `(None, erro)`, senão um erro transitório ficaria preso em cache pela
+    1h inteira."""
     try:
-        return obter_universo_ibovespa(), None
+        return _buscar_universo_ibovespa_cacheado(), None
     except Exception as erro:
         return None, f"Falha ao buscar universo do Ibovespa: {erro}"
 
@@ -284,15 +312,20 @@ def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
 
 
 @st.cache_data(ttl=3600)
+def _buscar_ano_fcd_mais_recente_cacheado() -> int:
+    return resolver_ano_mais_recente_disponivel()
+
+
 def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
     """Ano mais recente do DFP da CVM disponível pra download — nível
     ARQUIVO (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não
-    depende do ticker buscado. Cacheado na sessão do Streamlit por 1h,
-    mesmo padrão de `_buscar_macro`/`_buscar_universo_ibovespa` — sem
-    isso, cada busca de ticker checaria de novo se o zip do ano corrente
-    existe."""
+    depende do ticker buscado. Cacheado na sessão do Streamlit por 1h —
+    sem isso, cada busca de ticker checaria de novo se o zip do ano
+    corrente existe. A parte cacheada levanta em vez de devolver `(None,
+    erro)`, senão um erro transitório ficaria preso em cache pela 1h
+    inteira."""
     try:
-        return resolver_ano_mais_recente_disponivel(), None
+        return _buscar_ano_fcd_mais_recente_cacheado(), None
     except Exception as erro:
         return None, f"Falha ao detectar o ano mais recente do DFP da CVM: {erro}"
 
@@ -337,34 +370,22 @@ def _buscar_fcf_fcd(
 
 
 @st.cache_data(ttl=3600)
-def _buscar_macro() -> tuple[float | None, float | None, pd.Timestamp | None, str | None]:
-    """Selic meta (decimal), IPCA acumulado 12 meses (decimal) e a data do
-    mês mais recente do IPCA usado nesse acumulado (Selic não tem uma
-    data própria informativa pra mostrar — é série diária, a última
-    leitura é sempre "hoje" mesmo sem reunião nova do Copom, ver
-    investigação de 2026-09-24; só o IPCA, mensal e divulgado com atraso,
-    rende uma data-de-referência que vale a pena expor). Cacheado na
-    sessão do Streamlit por 1h — não depende do ticker buscado."""
-    hoje = datetime.now()
-    try:
-        selic_df = obter_serie(
-            SERIES_BCB_SGS["selic_meta"],
-            data_inicial=(hoje - timedelta(days=JANELA_BUSCA_SELIC_DIAS)).strftime("%d/%m/%Y"),
-            data_final=hoje.strftime("%d/%m/%Y"),
-        )
-        selic_meta = float(selic_df.iloc[-1]["valor"]) / 100
+def _buscar_macro_cacheado() -> ResultadoMacro:
+    return obter_selic_e_ipca()
 
-        ipca_df = obter_serie(
-            SERIES_BCB_SGS["ipca_mensal"],
-            data_inicial=(hoje - timedelta(days=JANELA_BUSCA_IPCA_DIAS)).strftime("%d/%m/%Y"),
-            data_final=hoje.strftime("%d/%m/%Y"),
-        )
-        janela_ipca = ipca_df.tail(MESES_IPCA_ACUMULADO)
-        ipca_12m = (1 + janela_ipca["valor"] / 100).prod() - 1
-        data_ipca = janela_ipca["data"].iloc[-1]
-        return selic_meta, ipca_12m, data_ipca, None
+
+def _buscar_macro() -> tuple[ResultadoMacro | None, str | None]:
+    """Selic meta, IPCA acumulado 12 meses e a proveniência dos dois (ver
+    `ResultadoMacro`), via a função única de `ingest.bcb_sgs`. Cacheado na
+    sessão do Streamlit por 1h — não depende do ticker buscado. A parte
+    cacheada levanta em vez de devolver `(None, erro)`, senão um erro
+    transitório do Banco Central ficaria preso em cache pela 1h inteira,
+    contradizendo a própria mensagem de erro ("tente de novo em alguns
+    minutos")."""
+    try:
+        return _buscar_macro_cacheado(), None
     except Exception as erro:
-        return None, None, None, f"Falha ao buscar Selic/IPCA do Banco Central: {erro}"
+        return None, str(erro)
 
 
 def _widget_avancado_tradingview(ticker: str) -> str:
@@ -857,7 +878,12 @@ with aba_analisar:
             # segmento setorial. "Comparação setorial" mais abaixo
             # reaproveita esse mesmo resultado, não busca de novo.
             segmento_setorial, erro_segmento_setorial = _buscar_segmento_setorial(ticker)
-            selic_meta, ipca_12m, data_ipca, erro_macro = _buscar_macro()
+            macro, erro_macro = _buscar_macro()
+            selic_meta = macro.selic_meta if macro else None
+            ipca_12m = macro.ipca_12m if macro else None
+            data_ipca = macro.data_ipca if macro else None
+            macro_usou_valor_guardado = macro.usou_valor_guardado if macro else False
+            macro_data_busca = macro.data_busca if macro else None
             ano_fcd_mais_recente, erro_ano_fcd = _buscar_ano_fcd_mais_recente()
             # Pro card "Correlação com fatores externos" mais abaixo — custo
             # parecido com o resto (mais duas séries de 2 anos e uma leitura
@@ -918,6 +944,11 @@ with aba_analisar:
             st.warning(f"CNPJ (CVM): {erro_cnpj}")
         if erro_macro:
             st.warning(erro_macro)
+        elif macro_usou_valor_guardado:
+            st.warning(
+                "Banco Central indisponível agora. Usando a Selic e o IPCA "
+                f"obtidos em {_fmt_data(macro_data_busca)}."
+            )
         if erro_ano_fcd:
             st.warning(erro_ano_fcd)
 
@@ -1092,10 +1123,19 @@ with aba_analisar:
             # vem de indicadores (Fundamentus, "Últ balanço processado",
             # ver ingest.fundamentus). FCD reaproveita ano_fcd_utilizado,
             # já calculado acima pro cartão do FCD. IPCA reaproveita
-            # data_ipca de _buscar_macro. Selic e os dividendos do Bazin
-            # não têm uma data própria pra mostrar — são recalculados com
-            # a data de hoje a cada busca (ver investigação de
-            # 2026-09-24), por isso não aparecem com um valor de data.
+            # data_ipca de _buscar_macro. Selic normalmente não tem uma
+            # data própria pra mostrar — é recalculada com a data de hoje
+            # a cada busca (ver investigação de 2026-09-24) — exceto
+            # quando o Banco Central está fora do ar e o valor guardado
+            # entra em uso: aí a data que importa é a da última busca com
+            # sucesso, não a de hoje. Dividendos do Bazin continuam
+            # sempre com a data de hoje.
+            texto_selic_referencia = (
+                f"último valor obtido em {_fmt_data(macro_data_busca)} "
+                "(Banco Central indisponível agora)"
+                if macro_usou_valor_guardado
+                else "calculada com a data de hoje"
+            )
             data_preco_referencia = (
                 None if erro_preco_atual else historico_preco_atual["data"].iloc[-1]
             )
@@ -1123,8 +1163,9 @@ with aba_analisar:
                 f"- **FCD** — {texto_fcd_referencia}.\n"
                 f"- **Beta** — 1 ano de pregões até {_fmt_data(data_beta_referencia)}.\n"
                 f"- **IPCA (12 meses)** — acumulado até {_fmt_data(data_ipca, '%m/%Y')}.\n"
-                "- **Selic** e **dividendos do método Bazin** (últimos 12 "
-                "meses) — sempre calculados com a data de hoje."
+                f"- **Selic** — {texto_selic_referencia}.\n"
+                "- **Dividendos do método Bazin** (últimos 12 meses) — sempre "
+                "calculados com a data de hoje."
             )
 
         with st.expander("Como funciona esse cálculo?"):
@@ -1930,7 +1971,8 @@ with aba_carteira:
                 # IPCA já é buscado (e cacheado por 1h) na aba "Analisar uma
                 # ação" pro WACC do FCD — reaproveita a mesma busca aqui, não
                 # dispara nada novo se já tiver rodado nessa sessão.
-                _, ipca_12m_carteira, _, erro_macro_carteira = _buscar_macro()
+                macro_carteira, erro_macro_carteira = _buscar_macro()
+                ipca_12m_carteira = macro_carteira.ipca_12m if macro_carteira else None
 
                 SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
                 SELECAO_LINEAR = "Sem juros compostos (linear)"

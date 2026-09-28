@@ -12,15 +12,48 @@ Por isso a resposta é sempre validada como JSON antes de virar DataFrame.
 from __future__ import annotations
 
 import json
+import time
+import warnings
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 import requests
 
-from avaliador_b3.config import DATA_RAW_DIR
+from avaliador_b3.config import (
+    DATA_RAW_DIR,
+    JANELA_BUSCA_IPCA_DIAS,
+    JANELA_BUSCA_SELIC_DIAS,
+    MESES_IPCA_ACUMULADO,
+    PAUSAS_RETRY_SEGUNDOS_BCB_SGS,
+    SERIES_BCB_SGS,
+    TIMEOUT_SEGUNDOS_BCB_SGS,
+    VALIDADE_MACRO_GUARDADO_DIAS,
+)
 
 BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados"
-TIMEOUT_SEGUNDOS = 30
+
+MENSAGEM_MACRO_INDISPONIVEL = (
+    "O Banco Central não respondeu agora (erro temporário do serviço "
+    "deles). O FCD depende da Selic e do IPCA e ficou indisponível; tente "
+    "de novo em alguns minutos."
+)
+
+
+class MacroIndisponivelError(Exception):
+    """BCB fora do ar (mesmo após as novas tentativas) e sem valor guardado
+    recente o bastante (ver VALIDADE_MACRO_GUARDADO_DIAS) pra usar como
+    último recurso. Mensagem já pronta pra tela — sem endereço da API; o
+    erro técnico original fica só num warnings.warn (vai pro log, não pra
+    UI) e encadeado via `raise ... from erro`."""
+
+
+class DadosMacroInsuficientesError(Exception):
+    """IPCA voltou com menos leituras que MESES_IPCA_ACUMULADO — não é
+    falha de rede (a API respondeu), por isso não tenta de novo nem cai
+    pro valor guardado: o acumulado sairia subestimado em silêncio
+    (menos meses multiplicados), então é melhor recusar o cálculo."""
 
 
 def _montar_url(codigo: int, data_inicial: str | None, data_final: str | None) -> str:
@@ -31,6 +64,28 @@ def _montar_url(codigo: int, data_inicial: str | None, data_final: str | None) -
     if data_final:
         url += f"&dataFinal={data_final}"
     return url
+
+
+def _get_com_retry(url: str) -> requests.Response:
+    """GET com nova tentativa em falha temporária — erro 5xx, timeout ou
+    falha de conexão — até 2 tentativas extras, com pausa curta entre
+    elas (`PAUSAS_RETRY_SEGUNDOS_BCB_SGS`). Erro 4xx (ex: código de série
+    inexistente) não repete, é definitivo."""
+    ultimo_erro: Exception | None = None
+    for pausa in (0, *PAUSAS_RETRY_SEGUNDOS_BCB_SGS):
+        if pausa:
+            time.sleep(pausa)
+        try:
+            resposta = requests.get(url, timeout=TIMEOUT_SEGUNDOS_BCB_SGS)
+            resposta.raise_for_status()
+            return resposta
+        except requests.HTTPError as erro:
+            if erro.response is not None and erro.response.status_code < 500:
+                raise
+            ultimo_erro = erro
+        except (requests.Timeout, requests.ConnectionError) as erro:
+            ultimo_erro = erro
+    raise ultimo_erro
 
 
 def _parsear_resposta(texto: str, codigo: int) -> list[dict]:
@@ -107,8 +162,7 @@ def obter_serie(
         return pd.read_csv(caminho, parse_dates=["data"])
 
     url = _montar_url(codigo, data_inicial, data_final)
-    resposta = requests.get(url, timeout=TIMEOUT_SEGUNDOS)
-    resposta.raise_for_status()
+    resposta = _get_com_retry(url)
     registros = _parsear_resposta(resposta.text, codigo)
     df = _registros_para_dataframe(registros)
 
@@ -117,3 +171,125 @@ def obter_serie(
         df.to_csv(caminho, index=False)
 
     return df
+
+
+@dataclass
+class ResultadoMacro:
+    """Selic meta e IPCA acumulado 12 meses, com a proveniência do dado —
+    ver `obter_selic_e_ipca`."""
+
+    selic_meta: float
+    ipca_12m: float
+    data_ipca: pd.Timestamp
+    usou_valor_guardado: bool
+    data_busca: pd.Timestamp
+
+
+def _caminho_ultimo_macro(diretorio_cache: Path) -> Path:
+    return diretorio_cache / "bcb" / "ultimo_macro.json"
+
+
+def _salvar_ultimo_macro(
+    diretorio_cache: Path,
+    selic_meta: float,
+    ipca_12m: float,
+    data_ipca: pd.Timestamp,
+    data_busca: datetime,
+) -> None:
+    caminho = _caminho_ultimo_macro(diretorio_cache)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "selic_meta": selic_meta,
+                "ipca_12m": ipca_12m,
+                "data_ipca": data_ipca.strftime("%Y-%m-%d"),
+                "data_busca": data_busca.isoformat(),
+            }
+        )
+    )
+
+
+def _carregar_ultimo_macro(diretorio_cache: Path) -> dict | None:
+    caminho = _caminho_ultimo_macro(diretorio_cache)
+    if not caminho.exists():
+        return None
+    try:
+        dados = json.loads(caminho.read_text())
+        return {
+            "selic_meta": float(dados["selic_meta"]),
+            "ipca_12m": float(dados["ipca_12m"]),
+            "data_ipca": pd.Timestamp(dados["data_ipca"]),
+            "data_busca": pd.Timestamp(dados["data_busca"]),
+        }
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+
+def _buscar_selic_e_ipca_do_bcb(
+    hoje: datetime, diretorio_cache: Path
+) -> tuple[float, float, pd.Timestamp]:
+    selic_df = obter_serie(
+        SERIES_BCB_SGS["selic_meta"],
+        data_inicial=(hoje - timedelta(days=JANELA_BUSCA_SELIC_DIAS)).strftime("%d/%m/%Y"),
+        data_final=hoje.strftime("%d/%m/%Y"),
+        diretorio_cache=diretorio_cache,
+    )
+    selic_meta = float(selic_df.iloc[-1]["valor"]) / 100
+
+    ipca_df = obter_serie(
+        SERIES_BCB_SGS["ipca_mensal"],
+        data_inicial=(hoje - timedelta(days=JANELA_BUSCA_IPCA_DIAS)).strftime("%d/%m/%Y"),
+        data_final=hoje.strftime("%d/%m/%Y"),
+        diretorio_cache=diretorio_cache,
+    )
+    if len(ipca_df) < MESES_IPCA_ACUMULADO:
+        raise DadosMacroInsuficientesError(
+            f"IPCA voltou com {len(ipca_df)} leitura(s), precisa de pelo "
+            f"menos {MESES_IPCA_ACUMULADO} pra acumular 12 meses."
+        )
+    janela_ipca = ipca_df.tail(MESES_IPCA_ACUMULADO)
+    ipca_12m = float((1 + janela_ipca["valor"] / 100).prod() - 1)
+    data_ipca = janela_ipca["data"].iloc[-1]
+    return selic_meta, ipca_12m, data_ipca
+
+
+def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
+    """Selic meta (decimal) e IPCA acumulado 12 meses (decimal) — função
+    única usada tanto pelo app quanto pelo screener.
+
+    Em falha temporária (5xx, timeout, conexão — `obter_serie` já tenta de
+    novo sozinha, ver `_get_com_retry`) ou com o IPCA vindo incompleto,
+    cai pro último valor com sucesso guardado em disco
+    (`_caminho_ultimo_macro`), contanto que tenha no máximo
+    `VALIDADE_MACRO_GUARDADO_DIAS`. Sem valor guardado recente o bastante,
+    levanta `MacroIndisponivelError` com mensagem já pronta pra tela.
+    """
+    hoje = datetime.now()
+    try:
+        selic_meta, ipca_12m, data_ipca = _buscar_selic_e_ipca_do_bcb(hoje, diretorio_cache)
+    except DadosMacroInsuficientesError:
+        raise
+    except Exception as erro:
+        warnings.warn(f"Falha ao buscar Selic/IPCA do BCB: {erro}", stacklevel=2)
+        guardado = _carregar_ultimo_macro(diretorio_cache)
+        if guardado is not None:
+            idade_dias = (pd.Timestamp(hoje) - guardado["data_busca"]).days
+            if idade_dias <= VALIDADE_MACRO_GUARDADO_DIAS:
+                return ResultadoMacro(
+                    selic_meta=guardado["selic_meta"],
+                    ipca_12m=guardado["ipca_12m"],
+                    data_ipca=guardado["data_ipca"],
+                    usou_valor_guardado=True,
+                    data_busca=guardado["data_busca"],
+                )
+        raise MacroIndisponivelError(MENSAGEM_MACRO_INDISPONIVEL) from erro
+
+    _salvar_ultimo_macro(diretorio_cache, selic_meta, ipca_12m, data_ipca, hoje)
+    return ResultadoMacro(
+        selic_meta=selic_meta,
+        ipca_12m=ipca_12m,
+        data_ipca=data_ipca,
+        usou_valor_guardado=False,
+        data_busca=pd.Timestamp(hoje),
+    )

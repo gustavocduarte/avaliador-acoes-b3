@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from avaliador_b3 import screener
+from avaliador_b3.ingest import bcb_sgs
 from avaliador_b3.ingest.precos import TickerInvalido
 
 # Ano fixo usado pelos mocks de FCD abaixo — substitui screener.
@@ -322,6 +323,29 @@ def test_rodar_screener_avisa_globalmente_quando_bcb_falha(ambiente_feliz, tmp_p
     # Nada derrubou a rodada -- o resto da linha continua calculado.
     assert linha["sucesso"]
     assert linha["graham_valor_justo"] is not None
+
+
+def test_buscar_macro_avisa_quando_usa_valor_guardado(tmp_path, monkeypatch):
+    # BCB fora do ar mas com valor guardado recente o bastante (ver
+    # ingest.bcb_sgs.obter_selic_e_ipca) — o screener não pode usar o
+    # valor sem avisar, mesmo mecanismo de aviso global já usado pra
+    # falha total.
+    resultado_guardado = bcb_sgs.ResultadoMacro(
+        selic_meta=0.1375,
+        ipca_12m=0.045,
+        data_ipca=pd.Timestamp("2026-08-01"),
+        usou_valor_guardado=True,
+        data_busca=pd.Timestamp("2026-09-20"),
+    )
+    monkeypatch.setattr(
+        screener, "obter_selic_e_ipca", lambda diretorio_cache: resultado_guardado
+    )
+
+    with pytest.warns(screener.MacroIndisponivelWarning, match="Banco Central indisponível agora"):
+        selic_meta, ipca_12m = screener._buscar_macro(tmp_path)
+
+    assert selic_meta == pytest.approx(0.1375)
+    assert ipca_12m == pytest.approx(0.045)
 
 
 def test_calcular_linha_ticker_erro_deteccao_ano_fcd_nao_derruba_o_calculo(

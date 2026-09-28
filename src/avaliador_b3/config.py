@@ -817,6 +817,24 @@ MESES_IPCA_ACUMULADO = 12
 JANELA_BUSCA_SELIC_DIAS = 90
 JANELA_BUSCA_IPCA_DIAS = 730
 
+# Validade (em dias) do último valor de Selic/IPCA guardado em disco
+# (data/raw/bcb/ultimo_macro.json), usado como último recurso quando o BCB
+# está fora do ar mesmo depois das novas tentativas — 45 dias porque a
+# Selic só muda nas reuniões do Copom (~45 dias de intervalo, mesma
+# margem do comentário acima sobre JANELA_BUSCA_SELIC_DIAS), então um
+# valor guardado dentro desse prazo ainda é a meta vigente na grande
+# maioria dos casos.
+VALIDADE_MACRO_GUARDADO_DIAS = 45
+
+# Timeout de cada tentativa de requisição ao SGS do BCB, e pausas entre
+# novas tentativas em erro temporário (ver ingest.bcb_sgs._get_com_retry)
+# — buscar Selic e IPCA faz 2 séries em sequência, cada uma com até 3
+# tentativas (a original + 2 novas): pior caso = 2 × (3 × 10 + 2 + 5) =
+# 74s, contra os ~194s que um timeout de 30s daria — 10s já é folgado
+# pra uma API que historicamente responde em menos de 1s.
+TIMEOUT_SEGUNDOS_BCB_SGS = 10
+PAUSAS_RETRY_SEGUNDOS_BCB_SGS = (2, 5)
+
 # Opções do seletor de janela da seção "Comparando com Petróleo (Brent)"
 # — mesmas strings de período aceitas por `ingest.precos.obter_historico`
 # (convenção do yfinance: "2y"/"5y"/"10y").

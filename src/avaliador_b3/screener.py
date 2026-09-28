@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import csv
 import warnings
-from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -53,11 +52,10 @@ from avaliador_b3.config import (
     DESCONTO_EXTREMO_LIMITE_SUPERIOR,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
-    SERIES_BCB_SGS,
 )
 from avaliador_b3.empresa.comportamento import calcular_beta
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
-from avaliador_b3.ingest.bcb_sgs import obter_serie
+from avaliador_b3.ingest.bcb_sgs import obter_selic_e_ipca
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
     obter_catalogo_emissores,
@@ -185,26 +183,19 @@ def _linha_erro(ticker: str, mensagem: str) -> dict:
     return linha
 
 
-def _buscar_macro(diretorio_cache: Path) -> tuple[float | None, float | None]:
-    """Selic meta (decimal) e IPCA acumulado 12 meses (decimal). Buscado
-    uma vez só, fora do loop por ação — é dado macro, não por empresa."""
-    hoje = datetime.now()
-    selic_df = obter_serie(
-        SERIES_BCB_SGS["selic_meta"],
-        data_inicial=(hoje - timedelta(days=90)).strftime("%d/%m/%Y"),
-        data_final=hoje.strftime("%d/%m/%Y"),
-        diretorio_cache=diretorio_cache,
-    )
-    selic_meta = float(selic_df.iloc[-1]["valor"]) / 100
-
-    ipca_df = obter_serie(
-        SERIES_BCB_SGS["ipca_mensal"],
-        data_inicial=(hoje - timedelta(days=730)).strftime("%d/%m/%Y"),
-        data_final=hoje.strftime("%d/%m/%Y"),
-        diretorio_cache=diretorio_cache,
-    )
-    ipca_12m = float((1 + ipca_df["valor"].tail(12) / 100).prod() - 1)
-    return selic_meta, ipca_12m
+def _buscar_macro(diretorio_cache: Path) -> tuple[float, float]:
+    """Selic meta (decimal) e IPCA acumulado 12 meses (decimal), via a
+    função única de `ingest.bcb_sgs`. Buscado uma vez só, fora do loop
+    por ação — é dado macro, não por empresa."""
+    resultado = obter_selic_e_ipca(diretorio_cache)
+    if resultado.usou_valor_guardado:
+        warnings.warn(
+            "Banco Central indisponível agora — usando a Selic e o IPCA "
+            f"obtidos em {resultado.data_busca:%d/%m/%Y}.",
+            category=MacroIndisponivelWarning,
+            stacklevel=2,
+        )
+    return resultado.selic_meta, resultado.ipca_12m
 
 
 def _calcular_linha_ticker(
