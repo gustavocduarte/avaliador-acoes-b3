@@ -105,6 +105,8 @@ from avaliador_b3.screener import (
     rodar_screener,
 )
 
+MENSAGEM_MACRO_INDISPONIVEL_CURTA = "Selic/IPCA indisponíveis agora — veja o aviso no topo."
+
 COLUNAS_TABELA_SCREENER = [
     "ticker",
     "preco_atual",
@@ -1014,7 +1016,7 @@ with aba_analisar:
             resultado_fcd = {
                 "aplicavel": False,
                 "valor_justo": None,
-                "motivo_nao_aplicavel": erro_macro or "Selic/IPCA indisponíveis.",
+                "motivo_nao_aplicavel": MENSAGEM_MACRO_INDISPONIVEL_CURTA,
             }
 
         st.divider()
@@ -1971,7 +1973,7 @@ with aba_carteira:
                 # IPCA já é buscado (e cacheado por 1h) na aba "Analisar uma
                 # ação" pro WACC do FCD — reaproveita a mesma busca aqui, não
                 # dispara nada novo se já tiver rodado nessa sessão.
-                macro_carteira, erro_macro_carteira = _buscar_macro()
+                macro_carteira, _ = _buscar_macro()
                 ipca_12m_carteira = macro_carteira.ipca_12m if macro_carteira else None
 
                 SELECAO_JUROS_COMPOSTOS = "Com juros compostos"
@@ -2044,7 +2046,9 @@ with aba_carteira:
 
                     if SELECAO_INFLACAO in opcoes_selecionadas:
                         if ipca_12m_carteira is None:
-                            st.caption(f"Inflação (IPCA) indisponível: {erro_macro_carteira}")
+                            st.caption(
+                                f"Inflação (IPCA) indisponível: {MENSAGEM_MACRO_INDISPONIVEL_CURTA}"
+                            )
                         else:
                             # soma_investida_com_cenario, não soma_investida
                             # total (ajustado em 2026-09-21) — decisão por
@@ -2097,7 +2101,8 @@ with aba_carteira:
 
                 if ipca_12m_carteira is None:
                     st.caption(
-                        f"Ganho real (descontado o IPCA) indisponível: {erro_macro_carteira}"
+                        f"Ganho real (descontado o IPCA) indisponível: "
+                        f"{MENSAGEM_MACRO_INDISPONIVEL_CURTA}"
                     )
                 else:
                     st.caption(f"Ganho nominal vs. real (descontado o IPCA) em {n_anos} anos:")

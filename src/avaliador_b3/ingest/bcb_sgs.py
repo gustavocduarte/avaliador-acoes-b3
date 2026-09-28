@@ -259,11 +259,13 @@ def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
     única usada tanto pelo app quanto pelo screener.
 
     Em falha temporária (5xx, timeout, conexão — `obter_serie` já tenta de
-    novo sozinha, ver `_get_com_retry`) ou com o IPCA vindo incompleto,
-    cai pro último valor com sucesso guardado em disco
-    (`_caminho_ultimo_macro`), contanto que tenha no máximo
-    `VALIDADE_MACRO_GUARDADO_DIAS`. Sem valor guardado recente o bastante,
-    levanta `MacroIndisponivelError` com mensagem já pronta pra tela.
+    novo sozinha, ver `_get_com_retry`), cai pro último valor com sucesso
+    guardado em disco (`_caminho_ultimo_macro`), contanto que tenha no
+    máximo `VALIDADE_MACRO_GUARDADO_DIAS`. Sem valor guardado recente o
+    bastante, levanta `MacroIndisponivelError` com mensagem já pronta pra
+    tela. Com o IPCA vindo incompleto a API respondeu, então não é falha
+    de rede: levanta `DadosMacroInsuficientesError` direto, sem tentar o
+    valor guardado.
     """
     hoje = datetime.now()
     try:

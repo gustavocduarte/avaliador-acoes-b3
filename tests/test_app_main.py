@@ -91,6 +91,11 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     automática da primeira abertura (que hoje também inclui a correlação
     com fatores externos, movida pra dentro desta aba) tão rápidos e
     determinísticos quanto eram antes."""
+    # BCB simulado fora do ar de propósito aqui — filtra o aviso que isso
+    # dispara, senão a mesma linha se repete em toda busca que passa por
+    # este helper. pytest isola o filtro de warnings por teste, não vaza
+    # pros outros.
+    warnings.filterwarnings("ignore", message="Falha ao buscar Selic/IPCA do BCB")
 
     def _falha_precos(*args, **kwargs):
         raise TickerInvalido(MENSAGEM_ERRO_MOCK)
@@ -1722,7 +1727,9 @@ def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
-    at.button[1].click().run(timeout=60)
+    botao_screener = next(b for b in at.button if b.label == "Rodar screener agora")
+    with pytest.warns(MacroIndisponivelWarning, match="Selic/IPCA indisponíveis"):
+        botao_screener.click().run(timeout=60)
 
     assert not at.exception
     avisos = [

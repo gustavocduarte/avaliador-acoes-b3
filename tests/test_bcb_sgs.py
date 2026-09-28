@@ -262,14 +262,20 @@ def test_obter_selic_e_ipca_ignora_valor_guardado_com_mais_de_45_dias(tmp_path, 
     monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
     _semear_ultimo_macro(tmp_path, dias_atras=46)
 
-    with pytest.raises(bcb_sgs.MacroIndisponivelError):
+    with (
+        pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"),
+        pytest.raises(bcb_sgs.MacroIndisponivelError),
+    ):
         bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
 
 
 def test_obter_selic_e_ipca_sem_valor_guardado_mensagem_amigavel(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
 
-    with pytest.raises(bcb_sgs.MacroIndisponivelError) as excinfo:
+    with (
+        pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"),
+        pytest.raises(bcb_sgs.MacroIndisponivelError) as excinfo,
+    ):
         bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
 
     mensagem = str(excinfo.value)
