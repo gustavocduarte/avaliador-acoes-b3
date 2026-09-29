@@ -40,6 +40,7 @@ import warnings
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
@@ -51,6 +52,7 @@ from avaliador_b3.config import (
     DATA_RAW_DIR,
     DESCONTO_EXTREMO_LIMITE_INFERIOR,
     DESCONTO_EXTREMO_LIMITE_SUPERIOR,
+    FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
 )
@@ -108,6 +110,35 @@ class MacroIndisponivelWarning(UserWarning):
     falha — sem isso, o FCD de todas as ações da rodada ficava "não
     aplicável" e a causa não chegava à coluna "erro" do CSV nem a lugar
     nenhum visível, indistinguível de uma falha silenciosa."""
+
+
+class FundamentusIndisponivelWarning(UserWarning):
+    """Mesmo padrão de `MacroIndisponivelWarning`, pro aviso que
+    `rodar_screener` emite quando o disjuntor do Fundamentus abre."""
+
+
+MOTIVO_FUNDAMENTUS_INDISPONIVEL = "Fundamentus indisponível nesta rodada"
+
+
+class DisjuntorFundamentus:
+    """Conta ações SEGUIDAS com falha de rede no Fundamentus; ao atingir o
+    limite, `aberto` vira True e o resto da rodada não o consulta mais.
+    Qualquer resposta do site (inclusive ticker inexistente ou estrutura
+    da página mudada) zera a contagem."""
+
+    def __init__(self, limite: int = FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS):
+        self.limite = limite
+        self.falhas_seguidas = 0
+        self.aberto = False
+        self.aviso_emitido = False
+
+    def registrar_falha_de_rede(self) -> None:
+        self.falhas_seguidas += 1
+        if self.falhas_seguidas >= self.limite:
+            self.aberto = True
+
+    def registrar_resposta(self) -> None:
+        self.falhas_seguidas = 0
 
 
 COLUNAS_RESULTADO = [
@@ -208,11 +239,14 @@ def _calcular_linha_ticker(
     ano_mais_recente_fcd: int | None,
     erro_deteccao_ano_fcd: str | None,
     diretorio_cache: Path,
+    disjuntor_fundamentus: DisjuntorFundamentus | None = None,
 ) -> dict:
     """Roda o pipeline completo (Graham, Bazin, FCD, combinado) pra UM
     ticker. Cada fonte é buscada com tratamento de erro isolado — uma
     fonte faltando degrada aquele método específico pra "não aplicável"
-    (ou o Beta pro padrão), não interrompe o cálculo das outras.
+    (ou o Beta pro padrão), não interrompe o cálculo das outras;
+    `requests.RequestException` (5xx, timeout, conexão) do Fundamentus ou
+    da CVM entra nesse mesmo tratamento, não derruba a linha inteira.
 
     Só levanta exceção pra fora se nem o preço (o dado mais básico, sem o
     qual não dá nem pra montar a linha) puder ser obtido.
@@ -233,10 +267,18 @@ def _calcular_linha_ticker(
             beta = None
 
     indicadores = None
-    try:
-        indicadores = obter_indicadores(ticker, diretorio_cache=diretorio_cache)
-    except (TickerNaoEncontrado, EstruturaPaginaMudou):
-        indicadores = None
+    fundamentus_pulado = disjuntor_fundamentus is not None and disjuntor_fundamentus.aberto
+    if not fundamentus_pulado:
+        try:
+            indicadores = obter_indicadores(ticker, diretorio_cache=diretorio_cache)
+            if disjuntor_fundamentus is not None:
+                disjuntor_fundamentus.registrar_resposta()
+        except (TickerNaoEncontrado, EstruturaPaginaMudou):
+            if disjuntor_fundamentus is not None:
+                disjuntor_fundamentus.registrar_resposta()
+        except requests.RequestException:
+            if disjuntor_fundamentus is not None:
+                disjuntor_fundamentus.registrar_falha_de_rede()
 
     lpa = indicadores["lpa"] if indicadores else None
     vpa = indicadores["vpa"] if indicadores else None
@@ -299,10 +341,18 @@ def _calcular_linha_ticker(
             proporcao_reinvestimento_percentual = calcular_proporcao_reinvestimento_percentual(
                 resultado_fcf["cfo_atual"], resultado_fcf["cfi_atual"]
             )
-        except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
+        except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada, requests.RequestException):
             fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
 
-    resultado_graham = calcular_valor_justo_graham(lpa, vpa)
+    resultado_graham = (
+        {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_FUNDAMENTUS_INDISPONIVEL,
+        }
+        if fundamentus_pulado
+        else calcular_valor_justo_graham(lpa, vpa)
+    )
     resultado_bazin = (
         calcular_preco_teto_bazin(dividendos)
         if dividendos is not None
@@ -319,7 +369,13 @@ def _calcular_linha_ticker(
     # do ano quebrada) ficava indistinguível de uma empresa que
     # simplesmente não tem FCD na CVM — mascarando um bug de
     # infraestrutura atrás de um motivo que parece só "sem dado".
-    if ano_mais_recente_fcd is None and erro_deteccao_ano_fcd is not None and cnpj:
+    if fundamentus_pulado:
+        resultado_fcd = {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_FUNDAMENTUS_INDISPONIVEL,
+        }
+    elif ano_mais_recente_fcd is None and erro_deteccao_ano_fcd is not None and cnpj:
         resultado_fcd = {
             "aplicavel": False,
             "valor_justo": None,
@@ -469,6 +525,8 @@ def rodar_screener(
                 stacklevel=2,
             )
 
+    disjuntor_fundamentus = DisjuntorFundamentus()
+
     caminho_saida.parent.mkdir(parents=True, exist_ok=True)
     linhas: list[dict] = []
 
@@ -487,11 +545,22 @@ def rodar_screener(
                     ano_mais_recente_fcd=ano_mais_recente_fcd,
                     erro_deteccao_ano_fcd=erro_deteccao_ano_fcd,
                     diretorio_cache=diretorio_cache,
+                    disjuntor_fundamentus=disjuntor_fundamentus,
                 )
             except (TickerInvalido, FalhaFontePreco) as erro:
                 linha = _linha_erro(ticker, f"Preço: {erro}")
             except Exception as erro:  # nunca deixa uma ação derrubar o screener inteiro
                 linha = _linha_erro(ticker, f"Erro inesperado: {erro}")
+
+            if disjuntor_fundamentus.aberto and not disjuntor_fundamentus.aviso_emitido:
+                disjuntor_fundamentus.aviso_emitido = True
+                warnings.warn(
+                    f"Fundamentus indisponível: {disjuntor_fundamentus.limite} ações "
+                    "seguidas falharam por erro de rede — Graham e FCD das ações "
+                    "restantes desta rodada ficam indisponíveis.",
+                    category=FundamentusIndisponivelWarning,
+                    stacklevel=2,
+                )
 
             linhas.append(linha)
             escritor.writerow(linha)

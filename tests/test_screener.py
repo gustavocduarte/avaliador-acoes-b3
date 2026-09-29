@@ -1,5 +1,8 @@
+import warnings
+
 import pandas as pd
 import pytest
+import requests
 
 from avaliador_b3 import screener
 from avaliador_b3.ingest import bcb_sgs
@@ -191,6 +194,164 @@ def test_calcular_linha_ticker_bazin_razao_dividendos_percentual(
 
     assert linha["bazin_preco_teto"] == pytest.approx(3.0 / 0.06)
     assert linha["bazin_razao_dividendos_percentual"] == pytest.approx(300.0)
+
+
+def test_calcular_linha_ticker_fundamentus_com_erro_de_rede_nao_derruba_a_linha(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Graham e FCD dependem de dado do Fundamentus (LPA/VPA e número de
+    # ações, respectivamente) e ficam não aplicáveis; Bazin só depende de
+    # dividendos, segue calculado normalmente — a linha inteira não vira
+    # "Erro inesperado" por uma falha de rede numa fonte só.
+    def obter_indicadores_falha(*args, **kwargs):
+        resposta = type("RespostaFalsa", (), {"status_code": 503})()
+        raise requests.HTTPError("503 Server Error", response=resposta)
+
+    monkeypatch.setattr(screener, "obter_indicadores", obter_indicadores_falha)
+
+    ano_atual = pd.Timestamp.now().year
+    dividendos_validos = pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [1.0] * 5,
+        }
+    )
+    monkeypatch.setattr(screener, "obter_dividendos", lambda ticker, **kw: dividendos_validos)
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["sucesso"] is True
+    assert linha["erro"] is None
+    assert linha["graham_valor_justo"] is None
+    assert linha["fcd_valor_justo"] is None
+    assert linha["bazin_preco_teto"] == pytest.approx(1.0 / 0.06)
+    assert linha["metodos_utilizados"] == "bazin"
+
+
+def _erro_503():
+    resposta = type("RespostaFalsa", (), {"status_code": 503})()
+    return requests.HTTPError("503 Server Error", response=resposta)
+
+
+def test_rodar_screener_disjuntor_para_de_consultar_fundamentus_apos_3_falhas_seguidas(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    consultados = []
+
+    def indicadores_falha(ticker, **kwargs):
+        consultados.append(ticker)
+        raise _erro_503()
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores_falha)
+    tickers = ["AAAA4", "BBBB4", "CCCC4", "DDDD4", "EEEE4"]
+
+    with pytest.warns(screener.FundamentusIndisponivelWarning, match="Fundamentus indisponível"):
+        resultado = screener.rodar_screener(
+            tickers=tickers, diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+        )
+
+    assert consultados == ["AAAA4", "BBBB4", "CCCC4"]
+    restantes = resultado[resultado["ticker"].isin(["DDDD4", "EEEE4"])]
+    assert restantes["sucesso"].all()
+    assert restantes["graham_valor_justo"].isna().all()
+    assert restantes["fcd_valor_justo"].isna().all()
+
+
+def test_calcular_linha_ticker_com_disjuntor_aberto_nao_consulta_e_explica_graham_e_fcd(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def obter_indicadores_proibido(*args, **kwargs):
+        raise AssertionError("não deveria consultar o Fundamentus com o disjuntor aberto")
+
+    monkeypatch.setattr(screener, "obter_indicadores", obter_indicadores_proibido)
+
+    recebidos = {}
+
+    def combinado_falso(resultado_graham, resultado_bazin, resultado_fcd):
+        recebidos["graham"] = resultado_graham
+        recebidos["fcd"] = resultado_fcd
+        return {
+            "aplicavel": False,
+            "valor_combinado": None,
+            "valores_por_metodo": {},
+            "metodos_utilizados": [],
+            "motivo_nao_aplicavel": "simulado",
+        }
+
+    monkeypatch.setattr(screener, "calcular_valor_combinado", combinado_falso)
+
+    disjuntor = screener.DisjuntorFundamentus()
+    for _ in range(disjuntor.limite):
+        disjuntor.registrar_falha_de_rede()
+    assert disjuntor.aberto
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+        disjuntor_fundamentus=disjuntor,
+    )
+
+    assert linha["sucesso"] is True
+    for metodo in ("graham", "fcd"):
+        assert recebidos[metodo]["aplicavel"] is False
+        assert recebidos[metodo]["motivo_nao_aplicavel"] == "Fundamentus indisponível nesta rodada"
+
+
+def test_rodar_screener_disjuntor_avisa_uma_vez_so(ambiente_feliz, tmp_path, monkeypatch):
+    def indicadores_falha(ticker, **kwargs):
+        raise _erro_503()
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores_falha)
+
+    with pytest.warns(screener.FundamentusIndisponivelWarning) as avisos:
+        screener.rodar_screener(
+            tickers=["AAAA4", "BBBB4", "CCCC4", "DDDD4", "EEEE4"],
+            diretorio_cache=tmp_path,
+            caminho_saida=tmp_path / "screener.csv",
+        )
+
+    globais = [a for a in avisos if a.category is screener.FundamentusIndisponivelWarning]
+    assert len(globais) == 1
+
+
+def test_rodar_screener_disjuntor_nao_abre_se_a_sequencia_de_falhas_de_rede_for_interrompida(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
+
+    consultados = []
+
+    def indicadores_alternados(ticker, **kwargs):
+        consultados.append(ticker)
+        if ticker == "CCCC4":
+            raise TickerNaoEncontrado("simulado")
+        raise _erro_503()
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores_alternados)
+    tickers = ["AAAA4", "BBBB4", "CCCC4", "DDDD4", "EEEE4"]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", screener.FundamentusIndisponivelWarning)
+        screener.rodar_screener(
+            tickers=tickers, diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"
+        )
+
+    assert consultados == tickers
 
 
 def test_calcular_linha_ticker_proporcao_reinvestimento_percentual(ambiente_feliz, tmp_path):

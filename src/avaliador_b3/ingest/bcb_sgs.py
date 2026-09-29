@@ -12,7 +12,6 @@ Por isso a resposta é sempre validada como JSON antes de virar DataFrame.
 from __future__ import annotations
 
 import json
-import time
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -26,11 +25,12 @@ from avaliador_b3.config import (
     JANELA_BUSCA_IPCA_DIAS,
     JANELA_BUSCA_SELIC_DIAS,
     MESES_IPCA_ACUMULADO,
-    PAUSAS_RETRY_SEGUNDOS_BCB_SGS,
+    PAUSAS_RETRY_SEGUNDOS,
     SERIES_BCB_SGS,
     TIMEOUT_SEGUNDOS_BCB_SGS,
     VALIDADE_MACRO_GUARDADO_DIAS,
 )
+from avaliador_b3.ingest._retry import get_com_retry
 
 BASE_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados"
 
@@ -67,25 +67,7 @@ def _montar_url(codigo: int, data_inicial: str | None, data_final: str | None) -
 
 
 def _get_com_retry(url: str) -> requests.Response:
-    """GET com nova tentativa em falha temporária — erro 5xx, timeout ou
-    falha de conexão — até 2 tentativas extras, com pausa curta entre
-    elas (`PAUSAS_RETRY_SEGUNDOS_BCB_SGS`). Erro 4xx (ex: código de série
-    inexistente) não repete, é definitivo."""
-    ultimo_erro: Exception | None = None
-    for pausa in (0, *PAUSAS_RETRY_SEGUNDOS_BCB_SGS):
-        if pausa:
-            time.sleep(pausa)
-        try:
-            resposta = requests.get(url, timeout=TIMEOUT_SEGUNDOS_BCB_SGS)
-            resposta.raise_for_status()
-            return resposta
-        except requests.HTTPError as erro:
-            if erro.response is not None and erro.response.status_code < 500:
-                raise
-            ultimo_erro = erro
-        except (requests.Timeout, requests.ConnectionError) as erro:
-            ultimo_erro = erro
-    raise ultimo_erro
+    return get_com_retry(url, TIMEOUT_SEGUNDOS_BCB_SGS, PAUSAS_RETRY_SEGUNDOS)
 
 
 def _parsear_resposta(texto: str, codigo: int) -> list[dict]:

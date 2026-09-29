@@ -101,6 +101,7 @@ from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
+    FundamentusIndisponivelWarning,
     MacroIndisponivelWarning,
     rodar_screener,
 )
@@ -1686,13 +1687,20 @@ with aba_screener:
                 rodar_screener()
         for aviso in avisos_capturados:
             warnings.warn_explicit(aviso.message, aviso.category, aviso.filename, aviso.lineno)
-        # Mesmo tratamento pros dois avisos "globais" (afetam a rodada
-        # inteira, não uma linha) que rodar_screener pode emitir: detecção
-        # do ano da CVM e busca de Selic/IPCA do BCB.
+        # Mesmo tratamento pros avisos "globais" (afetam a rodada inteira,
+        # não uma linha) que rodar_screener pode emitir: detecção do ano da
+        # CVM, busca de Selic/IPCA do BCB e Fundamentus indisponível.
         avisos_globais = [
             str(aviso.message)
             for aviso in avisos_capturados
-            if issubclass(aviso.category, (DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning))
+            if issubclass(
+                aviso.category,
+                (
+                    DeteccaoAnoCvmFalhouWarning,
+                    MacroIndisponivelWarning,
+                    FundamentusIndisponivelWarning,
+                ),
+            )
         ]
         if avisos_globais:
             # st.rerun() logo abaixo descarta qualquer coisa renderizada

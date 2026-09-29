@@ -30,7 +30,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import requests
 from bs4 import BeautifulSoup
 
 from avaliador_b3.config import (
@@ -39,13 +38,15 @@ from avaliador_b3.config import (
     CAMPOS_FUNDAMENTUS_OPCIONAIS,
     DATA_RAW_DIR,
     DELAY_FUNDAMENTUS_SEGUNDOS,
+    PAUSAS_RETRY_SEGUNDOS,
     ROTULO_FUNDAMENTUS_DATA_BALANCO,
+    TIMEOUT_SEGUNDOS_FUNDAMENTUS,
     TTL_CACHE_FUNDAMENTUS_SEGUNDOS,
     URL_FUNDAMENTUS_DETALHES,
     VERSAO_SCHEMA_FUNDAMENTUS,
 )
+from avaliador_b3.ingest._retry import get_com_retry
 
-TIMEOUT_SEGUNDOS = 30
 CODIFICACAO_FUNDAMENTUS = "iso-8859-1"
 
 
@@ -194,6 +195,9 @@ def obter_indicadores(
     Levanta `TickerNaoEncontrado` se o papel não existir no Fundamentus, ou
     `EstruturaPaginaMudou` se a página existir mas faltar algum campo
     esperado (sinal de mudança no HTML do site, não de ticker inválido).
+    Erro temporário (5xx, timeout, conexão) tenta de novo sozinho, mesma
+    função de `ingest.bcb_sgs` (`ingest._retry.get_com_retry`); erro 4xx
+    não repete.
 
     `delay_segundos` é aplicado antes de cada requisição real (não em
     leituras de cache) — existe para não bater rápido demais no site
@@ -221,13 +225,13 @@ def obter_indicadores(
     if delay_segundos > 0:
         time.sleep(delay_segundos)
 
-    resposta = requests.get(
+    resposta = get_com_retry(
         URL_FUNDAMENTUS_DETALHES,
+        TIMEOUT_SEGUNDOS_FUNDAMENTUS,
+        PAUSAS_RETRY_SEGUNDOS,
         params={"papel": ticker},
         headers=CABECALHOS_FUNDAMENTUS,
-        timeout=TIMEOUT_SEGUNDOS,
     )
-    resposta.raise_for_status()
     resposta.encoding = CODIFICACAO_FUNDAMENTUS
 
     rotulos_valores = _extrair_rotulos_valores(resposta.text)

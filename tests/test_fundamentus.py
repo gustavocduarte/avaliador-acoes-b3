@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from avaliador_b3.ingest import fundamentus
+from avaliador_b3.ingest import _retry, fundamentus
 
 DIRETORIO_FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -175,8 +175,8 @@ def test_obter_indicadores_banco_real_nao_levanta_erro_e_divida_liquida_fica_non
     # inteiro (EstruturaPaginaMudou) — só aquele indicador específico
     # fica None, mesmo padrão já usado pra outros campos ausentes em banco.
     conteudo = _bytes_fixture("fundamentus_itub4.html")
-    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     indicadores = fundamentus.obter_indicadores("ITUB4", diretorio_cache=tmp_path)
 
@@ -192,9 +192,9 @@ def test_obter_indicadores_caminho_feliz_corrige_encoding_e_grava_cache(tmp_path
     # rótulos acentuados ("Marg. Líquida" etc.) não batem e o parsing quebra.
     resposta_falsa = _RespostaFalsa(conteudo, encoding_padrao="ascii")
     monkeypatch.setattr(
-        fundamentus.requests, "get", lambda *a, **k: resposta_falsa
+        _retry.requests, "get", lambda *a, **k: resposta_falsa
     )
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
@@ -206,9 +206,9 @@ def test_obter_indicadores_caminho_feliz_corrige_encoding_e_grava_cache(tmp_path
 def test_obter_indicadores_levanta_ticker_nao_encontrado(tmp_path, monkeypatch):
     conteudo = _bytes_fixture("fundamentus_ticker_invalido.html")
     monkeypatch.setattr(
-        fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo)
+        _retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo)
     )
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     with pytest.raises(fundamentus.TickerNaoEncontrado, match="TICKERINVALIDO"):
         fundamentus.obter_indicadores("TICKERINVALIDO", diretorio_cache=tmp_path)
@@ -221,11 +221,11 @@ def test_obter_indicadores_levanta_estrutura_pagina_mudou(tmp_path, monkeypatch)
     </body></html>
     """
     monkeypatch.setattr(
-        fundamentus.requests,
+        _retry.requests,
         "get",
         lambda *a, **k: _RespostaFalsa(html_quebrado.encode("iso-8859-1")),
     )
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     with pytest.raises(fundamentus.EstruturaPaginaMudou):
         fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
@@ -239,8 +239,8 @@ def test_obter_indicadores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, monkey
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
@@ -250,8 +250,8 @@ def test_obter_indicadores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, monkey
 
 def test_obter_indicadores_grava_cache_com_envelope_de_versao_de_schema(tmp_path, monkeypatch):
     conteudo = _bytes_fixture("fundamentus_petr4.html")
-    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
@@ -276,8 +276,8 @@ def test_obter_indicadores_cache_com_schema_desatualizado_busca_de_novo(tmp_path
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
@@ -308,8 +308,8 @@ def test_obter_indicadores_cache_com_versao_de_schema_antiga_busca_de_novo(tmp_p
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
@@ -339,8 +339,8 @@ def test_obter_indicadores_cache_versao_anterior_sem_campo_novo_busca_de_novo_e_
     )
 
     conteudo = _bytes_fixture("fundamentus_petr4.html")
-    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
@@ -355,8 +355,8 @@ def test_obter_indicadores_cache_mais_velho_que_ttl_busca_de_novo(tmp_path, monk
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=100)
     caminho = tmp_path / "fundamentus" / "PETR4.json"
@@ -378,8 +378,8 @@ def test_obter_indicadores_cache_dentro_do_ttl_nao_busca_de_novo(tmp_path, monke
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
@@ -395,8 +395,8 @@ def test_obter_indicadores_forcar_atualizacao_ignora_cache(tmp_path, monkeypatch
         chamadas["contador"] += 1
         return _RespostaFalsa(conteudo)
 
-    monkeypatch.setattr(fundamentus.requests, "get", get_falso)
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, forcar_atualizacao=True)
@@ -408,10 +408,10 @@ def test_obter_indicadores_aplica_delay_antes_de_requisicao_real_mas_nao_em_cach
     tmp_path, monkeypatch
 ):
     conteudo = _bytes_fixture("fundamentus_petr4.html")
-    monkeypatch.setattr(fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
 
     esperas = []
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: esperas.append(segundos))
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: esperas.append(segundos))
 
     fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path, delay_segundos=2.5)
     assert esperas == [2.5]
@@ -422,9 +422,66 @@ def test_obter_indicadores_aplica_delay_antes_de_requisicao_real_mas_nao_em_cach
 
 def test_obter_indicadores_propaga_erro_quando_site_fora_do_ar(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        fundamentus.requests, "get", lambda *a, **k: _RespostaFalsa(b"", status_ok=False)
+        _retry.requests, "get", lambda *a, **k: _RespostaFalsa(b"", status_ok=False)
     )
-    monkeypatch.setattr(fundamentus.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     with pytest.raises(requests.HTTPError):
         fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+
+class _RespostaComStatus:
+    """Fake com `status_code`/`response=self` de verdade em `raise_for_status`
+    (diferente de `_RespostaFalsa` acima) — necessário pra exercitar
+    `ingest._retry.get_com_retry`, que decide tentar de novo (ou não)
+    olhando `erro.response.status_code`."""
+
+    def __init__(
+        self, status_code: int, conteudo_bytes: bytes = b"", encoding_padrao="iso-8859-1"
+    ):
+        self.status_code = status_code
+        self._conteudo_bytes = conteudo_bytes
+        self.encoding = encoding_padrao
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"erro {self.status_code}", response=self)
+
+    @property
+    def text(self):
+        return self._conteudo_bytes.decode(self.encoding, errors="replace")
+
+
+def test_obter_indicadores_503_depois_sucesso_usa_o_valor_novo(tmp_path, monkeypatch):
+    conteudo = _bytes_fixture("fundamentus_petr4.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        if chamadas["contador"] == 1:
+            return _RespostaComStatus(503)
+        return _RespostaComStatus(200, conteudo)
+
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
+
+    indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 2
+    assert indicadores["ticker"] == "PETR4"
+
+
+def test_obter_indicadores_404_nao_tenta_de_novo(tmp_path, monkeypatch):
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaComStatus(404)
+
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
+
+    with pytest.raises(requests.HTTPError):
+        fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1

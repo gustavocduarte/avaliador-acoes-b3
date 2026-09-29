@@ -848,14 +848,35 @@ JANELA_BUSCA_IPCA_DIAS = 730
 # maioria dos casos.
 VALIDADE_MACRO_GUARDADO_DIAS = 45
 
-# Timeout de cada tentativa de requisição ao SGS do BCB, e pausas entre
-# novas tentativas em erro temporário (ver ingest.bcb_sgs._get_com_retry)
-# — buscar Selic e IPCA faz 2 séries em sequência, cada uma com até 3
-# tentativas (a original + 2 novas): pior caso = 2 × (3 × 10 + 2 + 5) =
-# 74s, contra os ~194s que um timeout de 30s daria — 10s já é folgado
-# pra uma API que historicamente responde em menos de 1s.
+# Pausas entre novas tentativas em erro temporário (5xx, timeout, conexão
+# — ver ingest._retry.get_com_retry), compartilhadas por toda fonte que
+# usa nova tentativa (hoje: BCB e Fundamentus). Timeout continua por
+# fonte, cada uma com seu próprio nome abaixo — fontes diferentes têm
+# latência típica diferente.
+PAUSAS_RETRY_SEGUNDOS = (2, 5)
+
+# Teto do Retry-After respeitado no erro 429 — um servidor pedindo espera
+# maior que isso não trava a rodada inteira; passado o teto, a próxima
+# tentativa segue mesmo assim (e falha de novo, se for o caso).
+TETO_RETRY_AFTER_SEGUNDOS = 30
+
+# Disjuntor do Fundamentus no screener: depois desta quantidade de ações
+# SEGUIDAS com falha de rede (não conta ticker inexistente nem mudança na
+# estrutura da página), o screener para de consultá-lo no resto da rodada.
+# Site fora do ar custaria 97s por ação (ver TIMEOUT_SEGUNDOS_FUNDAMENTUS)
+# nas ~76 ações do Ibovespa; com o disjuntor, no máximo 3 × 97s.
+FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS = 3
+
+# Timeout de cada tentativa de requisição ao SGS do BCB — buscar Selic e
+# IPCA faz 2 séries em sequência, cada uma com até 3 tentativas (a
+# original + 2 novas): pior caso = 2 × (3 × 10 + 2 + 5) = 74s, contra os
+# ~194s que um timeout de 30s daria — 10s já é folgado pra uma API que
+# historicamente responde em menos de 1s.
 TIMEOUT_SEGUNDOS_BCB_SGS = 10
-PAUSAS_RETRY_SEGUNDOS_BCB_SGS = (2, 5)
+
+# Timeout de cada tentativa de requisição ao Fundamentus. Pior caso por
+# ação: 3 tentativas × 30s + pausas de 2s e 5s = 97s.
+TIMEOUT_SEGUNDOS_FUNDAMENTUS = 30
 
 # Opções do seletor de janela da seção "Comparando com Petróleo (Brent)"
 # — mesmas strings de período aceitas por `ingest.precos.obter_historico`

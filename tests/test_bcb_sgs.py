@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3.ingest import bcb_sgs
+from avaliador_b3.ingest import _retry, bcb_sgs
 
 
 def test_montar_url_sem_datas():
@@ -150,9 +150,10 @@ def test_obter_serie_forcar_atualizacao_ignora_cache(tmp_path, monkeypatch):
 
 
 class _Resposta:
-    def __init__(self, status_code, texto=""):
+    def __init__(self, status_code, texto="", headers=None):
         self.status_code = status_code
         self.text = texto
+        self.headers = headers or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -169,7 +170,7 @@ def test_get_com_retry_502_depois_sucesso_usa_o_valor_novo(monkeypatch):
         return _Resposta(200, '[{"data":"01/01/2024","valor":"11.75"}]')
 
     monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
-    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     resposta = bcb_sgs._get_com_retry("https://exemplo")
 
@@ -186,7 +187,7 @@ def test_get_com_retry_502_persistente_espera_2_e_5_segundos_e_desiste(monkeypat
         return _Resposta(502)
 
     monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
-    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: pausas.append(segundos))
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: pausas.append(segundos))
 
     with pytest.raises(requests.HTTPError):
         bcb_sgs._get_com_retry("https://exemplo")
@@ -203,12 +204,69 @@ def test_get_com_retry_404_nao_tenta_de_novo(monkeypatch):
         return _Resposta(404)
 
     monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
-    monkeypatch.setattr(bcb_sgs.time, "sleep", lambda segundos: None)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     with pytest.raises(requests.HTTPError):
         bcb_sgs._get_com_retry("https://exemplo")
 
     assert chamadas["n"] == 1
+
+
+def _get_429_depois_sucesso(headers):
+    chamadas = {"n": 0}
+
+    def get_falso(url, timeout):
+        chamadas["n"] += 1
+        if chamadas["n"] == 1:
+            return _Resposta(429, headers=headers)
+        return _Resposta(200, '[{"data":"01/01/2024","valor":"11.75"}]')
+
+    return chamadas, get_falso
+
+
+def test_get_com_retry_429_depois_sucesso_usa_o_valor_novo(monkeypatch):
+    chamadas, get_falso = _get_429_depois_sucesso({})
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
+
+    resposta = bcb_sgs._get_com_retry("https://exemplo")
+
+    assert chamadas["n"] == 2
+    assert resposta.status_code == 200
+
+
+def test_get_com_retry_429_respeita_retry_after_em_segundos(monkeypatch):
+    _, get_falso = _get_429_depois_sucesso({"Retry-After": "12"})
+    pausas = []
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: pausas.append(segundos))
+
+    bcb_sgs._get_com_retry("https://exemplo")
+
+    assert pausas == [12]
+
+
+def test_get_com_retry_429_retry_after_limitado_ao_teto_de_30_segundos(monkeypatch):
+    _, get_falso = _get_429_depois_sucesso({"Retry-After": "600"})
+    pausas = []
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: pausas.append(segundos))
+
+    bcb_sgs._get_com_retry("https://exemplo")
+
+    assert pausas == [30]
+
+
+@pytest.mark.parametrize("retry_after", [{}, {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}])
+def test_get_com_retry_429_sem_retry_after_numerico_usa_a_pausa_padrao(monkeypatch, retry_after):
+    _, get_falso = _get_429_depois_sucesso(retry_after)
+    pausas = []
+    monkeypatch.setattr(bcb_sgs.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: pausas.append(segundos))
+
+    bcb_sgs._get_com_retry("https://exemplo")
+
+    assert pausas == [2]
 
 
 # --- obter_selic_e_ipca: valor guardado como último recurso -----------------
