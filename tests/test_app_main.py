@@ -65,6 +65,18 @@ def _limpar_cache_streamlit():
     st.cache_data.clear()
 
 
+@pytest.fixture(autouse=True)
+def _simular_ano_cvm_fixo(monkeypatch):
+    """A busca automática da primeira abertura chama
+    `resolver_ano_mais_recente_disponivel` em todo `at.run()`; sem este
+    mock, cada teste tentaria baixar o zip da CVM. Um teste que exercita
+    a falha dessa detecção sobrescreve com seu próprio `monkeypatch`."""
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.resolver_ano_mais_recente_disponivel",
+        lambda **kwargs: ANO_FCD_MOCK,
+    )
+
+
 def _universo_falso() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -90,7 +102,9 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     já trataria de verdade — mantém os testes que agora disparam a busca
     automática da primeira abertura (que hoje também inclui a correlação
     com fatores externos, movida pra dentro desta aba) tão rápidos e
-    determinísticos quanto eram antes."""
+    determinísticos quanto eram antes. A detecção do ano mais recente da
+    CVM é mockada à parte, pra todo o arquivo — ver
+    `_simular_ano_cvm_fixo`."""
     # BCB simulado fora do ar de propósito aqui — filtra o aviso que isso
     # dispara, senão a mesma linha se repete em toda busca que passa por
     # este helper. pytest isola o filtro de warnings por teste, não vaza
@@ -237,7 +251,8 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
     # Só depois do clique manual em "Buscar" é que a busca de VALE3 roda —
     # fluxo 100% manual de novo, igual a antes da mudança.
-    at.button[0].click().run(timeout=60)
+    botao_buscar = next(b for b in at.button if b.label == "Buscar")
+    botao_buscar.click().run(timeout=60)
 
     assert not at.exception
     assert any(subheader.value == "VALE3" for subheader in at.subheader)
@@ -1687,7 +1702,8 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
-    at.button[1].click().run(timeout=60)
+    botao_screener = next(b for b in at.button if b.label == "Rodar screener agora")
+    botao_screener.click().run(timeout=60)
 
     assert not at.exception
     avisos = [
