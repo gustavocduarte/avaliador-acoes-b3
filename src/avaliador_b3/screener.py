@@ -21,7 +21,8 @@ qualquer exceção inesperada) não derruba o restante: vira uma linha com
 `sucesso=False` e o motivo em `erro`, e o screener segue pras demais.
 
 Fontes compartilhadas entre todas as ações (não buscadas por ação):
-- Catálogo de emissores da B3 e universo do Ibovespa — cache sem TTL.
+- Catálogo de emissores da B3 e universo do Ibovespa — cache com prazo de
+  validade longo (30 e 7 dias — mudam pouco), não por ação.
 - Zip anual da CVM — cache por ano, reaproveitado entre as ~76 ações que
   precisarem do mesmo ano (só 2 downloads reais no total, não 76×2).
 - Selic/IPCA do BCB — independentes de ticker.

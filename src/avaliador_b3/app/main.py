@@ -234,11 +234,11 @@ def _buscar_gpr_diaria_cacheado() -> pd.DataFrame:
 
 def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
     """Série diária do índice GPR — cacheada na sessão por 1h, não
-    depende da ação buscada. `obter_gpr` já cacheia em disco sem TTL por
-    baixo (o arquivo raramente muda), isso só evita reler/reparsear o CSV
-    a cada busca dentro da mesma sessão do Streamlit. A parte cacheada
-    levanta em vez de devolver `(None, erro)`, senão um erro transitório
-    ficaria preso em cache pela 1h inteira."""
+    depende da ação buscada. `obter_gpr` já tem seu próprio prazo de
+    validade em disco por baixo (`DIAS_VALIDADE_CACHE_GPR_DIARIO`), isso
+    só evita reler/reparsear o CSV a cada busca dentro da mesma sessão do
+    Streamlit. A parte cacheada levanta em vez de devolver `(None, erro)`,
+    senão um erro transitório ficaria preso em cache pela 1h inteira."""
     try:
         return _buscar_gpr_diaria_cacheado(), None
     except Exception as erro:
@@ -1629,6 +1629,8 @@ with aba_analisar:
                 _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
             with col_gpr:
                 _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
+                if serie_gpr is not None and not serie_gpr.empty:
+                    st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
 
 with aba_screener:
     st.caption(

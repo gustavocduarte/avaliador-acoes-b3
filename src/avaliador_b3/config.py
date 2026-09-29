@@ -27,6 +27,14 @@ URLS_GPR = {
     "diaria": "https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls",
 }
 
+# Prazo de validade só da série "diaria" — a correlação usa uma janela de 2
+# anos que termina hoje, então um GPR diário congelado faz a ponta recente
+# da janela ficar sem dado, sem aviso nenhum (o número de observações só
+# vai caindo). 7 dias (escolha redonda, mesmo raciocínio de
+# DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE) — a "mensal" continua sem
+# prazo, muda pouco e cobre um histórico bem mais longo.
+DIAS_VALIDADE_CACHE_GPR_DIARIO = 7
+
 # Preço de ação via yfinance (ticker B3 + sufixo ".SA", ex: PETR4.SA).
 # Confirmado em 2026-09-14 com yfinance 1.7.0 contra PETR4.SA/VALE3.SA reais.
 # Diferente dos outros adapters, o cache de preço usa TTL curto: o dado já
@@ -126,6 +134,14 @@ URL_B3_PORTFOLIO_DIA = (
 # resposta): só o suficiente pro volume de dados desse endpoint específico,
 # sem teste do teto real.
 TAMANHO_PAGINA_API_B3_UNIVERSO = 120
+
+# Prazo de validade do cache do universo do Ibovespa — a carteira teórica é
+# rebalanceada 3x/ano (janeiro, maio, setembro); sem prazo, o app local
+# continua ranqueando a composição antiga depois de um rebalanceamento, sem
+# nenhum aviso. 7 dias (escolha redonda, mesmo raciocínio de
+# DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE) é folgado pra uma carteira que
+# só muda a cada ~4 meses, mas já evita ficar preso por meses.
+DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA = 7
 
 # Delay entre páginas ao paginar contra as APIs não-documentadas da B3
 # (ingest/_paginacao.py, compartilhado entre b3_universo.py — raramente
@@ -345,6 +361,12 @@ URL_B3_CATALOGO_EMISSORES = (
     "CompanyCall/GetInitialCompanies/{parametros_base64}"
 )
 TAMANHO_PAGINA_API_B3_CATALOGO = 100
+
+# Prazo de validade do cache do catálogo de emissores — traz o segmento
+# setorial (decide exclusão do FCD e monta a Comparação setorial), CNPJ e
+# código CVM; mudanças são raras (empresa nova, mudança de segmento ou de
+# CNPJ), por isso um prazo bem mais longo que os outros caches do projeto.
+DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3 = 30
 
 # Bug real encontrado em 2026-09-25 (achado em revisão externa, investigando
 # por que o FCD do ABEV3 sempre falhava com CnpjNaoEncontrado): a validação

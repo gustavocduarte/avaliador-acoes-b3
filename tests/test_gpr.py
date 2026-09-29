@@ -1,9 +1,11 @@
 import io
+from datetime import datetime, timedelta
 
 import pandas as pd
 import pytest
 import requests
 
+from avaliador_b3.config import DIAS_VALIDADE_CACHE_GPR_DIARIO
 from avaliador_b3.ingest import gpr
 
 
@@ -127,3 +129,74 @@ def test_obter_gpr_levanta_erro_claro_quando_conteudo_nao_e_excel(tmp_path, monk
 
     with pytest.raises(ValueError, match="não é um Excel válido"):
         gpr.obter_gpr(diretorio_cache=tmp_path)
+
+
+# --- Prazo de validade só pra série "diaria" ---------------------------------
+
+
+def test_obter_gpr_mensal_nunca_expira(tmp_path, monkeypatch):
+    chamadas = {"contador": 0}
+    conteudo = _bytes_excel(pd.DataFrame({"month": ["2024-01-01"], "GPR": [100.0]}))
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(gpr.requests, "get", get_falso)
+
+    gpr.obter_gpr(serie="mensal", diretorio_cache=tmp_path)
+    hoje_bem_no_futuro = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_GPR_DIARIO * 100)
+    gpr.obter_gpr(serie="mensal", diretorio_cache=tmp_path, hoje=hoje_bem_no_futuro)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_gpr_diaria_nao_bate_na_rede_dentro_do_prazo(tmp_path, monkeypatch):
+    chamadas = {"contador": 0}
+    conteudo = _bytes_excel(pd.DataFrame({"date": ["2024-01-01"], "GPRD": [50.0]}))
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(gpr.requests, "get", get_falso)
+
+    gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path)
+    hoje_dentro_do_prazo = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_GPR_DIARIO - 1)
+    gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path, hoje=hoje_dentro_do_prazo)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_gpr_diaria_atualiza_apos_prazo_vencido(tmp_path, monkeypatch):
+    chamadas = {"contador": 0}
+    conteudo = _bytes_excel(pd.DataFrame({"date": ["2024-01-01"], "GPRD": [50.0]}))
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(gpr.requests, "get", get_falso)
+
+    gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_GPR_DIARIO + 1)
+    gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path, hoje=hoje_vencido)
+
+    assert chamadas["contador"] == 2
+
+
+def test_obter_gpr_diaria_usa_cache_vencido_se_atualizacao_falha(tmp_path, monkeypatch):
+    conteudo = _bytes_excel(pd.DataFrame({"date": ["2024-01-01"], "GPRD": [50.0]}))
+    monkeypatch.setattr(gpr.requests, "get", lambda url, timeout: _RespostaFalsa(conteudo))
+    df_original = gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path)
+
+    def get_falha(url, timeout):
+        raise requests.ConnectionError("fonte fora do ar (simulado)")
+
+    monkeypatch.setattr(gpr.requests, "get", get_falha)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_GPR_DIARIO + 1)
+
+    with pytest.warns(UserWarning, match="Falha ao atualizar o GPR"):
+        df_fallback = gpr.obter_gpr(serie="diaria", diretorio_cache=tmp_path, hoje=hoje_vencido)
+
+    pd.testing.assert_frame_equal(df_original, df_fallback)

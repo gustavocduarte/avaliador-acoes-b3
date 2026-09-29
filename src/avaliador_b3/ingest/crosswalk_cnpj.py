@@ -36,18 +36,23 @@ dois grupos acima, como esperado).
 from __future__ import annotations
 
 import re
+import warnings
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from avaliador_b3.config import (
     DATA_RAW_DIR,
     DELAY_PAGINACAO_B3_SEGUNDOS,
+    DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3,
     TAMANHO_CNPJ,
     TAMANHO_CODIGO_CVM,
     TAMANHO_PAGINA_API_B3_CATALOGO,
     URL_B3_CATALOGO_EMISSORES,
 )
+from avaliador_b3.ingest._cache import cache_expirado
 from avaliador_b3.ingest._paginacao import buscar_registros_paginados, parametros_base64
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 
@@ -111,45 +116,69 @@ def _caminho_cache_catalogo(diretorio_cache: Path) -> Path:
     return diretorio_cache / "b3" / "catalogo_emissores.csv"
 
 
+def _ler_cache_catalogo(caminho: Path) -> pd.DataFrame:
+    # Reaplica a normalização de zeros à esquerda (ver _completar_zeros) na
+    # leitura: cache gravado sem os zeros continua utilizável, sem baixar
+    # de novo (~36 páginas da API).
+    df = pd.read_csv(caminho, dtype=str)
+    df["cnpj"] = df["cnpj"].apply(lambda v: _completar_zeros(v, TAMANHO_CNPJ))
+    df["codigo_cvm"] = df["codigo_cvm"].apply(lambda v: _completar_zeros(v, TAMANHO_CODIGO_CVM))
+    return df
+
+
 def obter_catalogo_emissores(
     usar_cache: bool = True,
     forcar_atualizacao: bool = False,
     diretorio_cache: Path = DATA_RAW_DIR,
     tamanho_pagina: int = TAMANHO_PAGINA_API_B3_CATALOGO,
     delay_segundos: float = DELAY_PAGINACAO_B3_SEGUNDOS,
+    hoje: datetime | None = None,
 ) -> pd.DataFrame:
     """Busca o catálogo completo de emissores da B3 (todos os tipos de
     ativo — ações, BDRs, ETFs, etc., não só o Ibovespa) e devolve um
     DataFrame com `codigo_emissor`, `codigo_cvm`, `cnpj` e `nome_empresa`.
 
     É um catálogo de referência que muda pouco, então o cache (em
-    `data/raw/b3/catalogo_emissores.csv`) não tem TTL.
+    `data/raw/b3/catalogo_emissores.csv`) tem um prazo de validade longo
+    (`DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3`). Se o prazo venceu mas a
+    atualização falha (B3 fora do ar, timeout, erro de rede) e já existe
+    um cache em disco, usa o arquivo existente (com aviso via
+    `warnings.warn`) em vez de propagar o erro — só propaga se não houver
+    nenhum cache pra usar.
 
     `delay_segundos` é aplicado entre uma página e a próxima (~36 páginas
     pro catálogo completo de ~3523 registros, ver
     TAMANHO_PAGINA_API_B3_CATALOGO em config.py) — ver
-    `ingest._paginacao.buscar_registros_paginados`.
+    `ingest._paginacao.buscar_registros_paginados`. `hoje` é injetável
+    (default `datetime.now()`) pra testes.
     """
+    hoje = hoje or datetime.now()
     caminho = _caminho_cache_catalogo(diretorio_cache)
 
-    if usar_cache and not forcar_atualizacao and caminho.exists():
-        # A normalização de zeros à esquerda (ver _completar_zeros) é
-        # aplicada aqui de novo, não só em _registro_para_linha — cache já
-        # em disco de ANTES da correção (2026-09-25) ainda tem "cnpj"/
-        # "codigo_cvm" sem o(s) zero(s) perdido(s), e o cache não tem TTL
-        # (não expira sozinho). Reaplicar na leitura corrige qualquer cache
-        # antigo automaticamente, sem precisar apagar o arquivo nem baixar
-        # de novo (~36 páginas da API) só por causa desse bug específico.
-        df = pd.read_csv(caminho, dtype=str)
-        df["cnpj"] = df["cnpj"].apply(lambda v: _completar_zeros(v, TAMANHO_CNPJ))
-        df["codigo_cvm"] = df["codigo_cvm"].apply(lambda v: _completar_zeros(v, TAMANHO_CODIGO_CVM))
-        return df
+    if (
+        usar_cache
+        and not forcar_atualizacao
+        and caminho.exists()
+        and not cache_expirado(caminho, DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3, hoje)
+    ):
+        return _ler_cache_catalogo(caminho)
 
-    registros = buscar_registros_paginados(
-        montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),
-        contexto="catálogo de emissores da B3",
-        delay_segundos=delay_segundos,
-    )
+    try:
+        registros = buscar_registros_paginados(
+            montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),
+            contexto="catálogo de emissores da B3",
+            delay_segundos=delay_segundos,
+        )
+    except requests.RequestException:
+        if caminho.exists():
+            warnings.warn(
+                "Falha ao atualizar o catálogo de emissores da B3 (cache "
+                "expirado) — usando a versão em cache, possivelmente "
+                "desatualizada.",
+                stacklevel=2,
+            )
+            return _ler_cache_catalogo(caminho)
+        raise
 
     linhas = [_registro_para_linha(registro) for registro in registros]
     df = pd.DataFrame(linhas).sort_values("codigo_emissor").reset_index(drop=True)

@@ -1249,6 +1249,48 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
     )
 
 
+def test_correlacao_mostra_data_do_ultimo_dado_do_gpr(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    serie_gpr = pd.DataFrame(
+        {
+            "data": pd.to_datetime(["2026-09-01", "2026-09-20", "2026-09-25"]),
+            "GPRD": [90.0, 100.0, 110.0],
+        }
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", lambda *args, **kwargs: serie_gpr)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption]
+    assert "Último dado do GPR: 25/09/2026." in legendas
+
+
+def test_correlacao_sem_serie_gpr_nao_mostra_data_do_ultimo_dado(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not any(c.value.startswith("Último dado do GPR") for c in at.caption)
+
+
 def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
     # figura_dividendos usava texttemplate="R$ %{text:.2f}" e "%{text:.1f}%"
     # — o d3-format que o Plotly usa por trás desses especificadores tem o

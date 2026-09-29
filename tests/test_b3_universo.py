@@ -1,10 +1,12 @@
 import base64
 import json
+from datetime import datetime, timedelta
 
 import pandas as pd
 import pytest
 import requests
 
+from avaliador_b3.config import DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA
 from avaliador_b3.ingest import _paginacao, b3_universo
 
 
@@ -220,4 +222,80 @@ def test_obter_universo_ibovespa_propaga_erro_quando_api_fora_do_ar(tmp_path, mo
         _paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(status_ok=False)
     )
     with pytest.raises(requests.HTTPError):
+        b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
+
+
+# --- Prazo de validade e uso do cache antigo em falha -----------------------
+
+
+def test_obter_universo_ibovespa_nao_bate_na_rede_dentro_do_prazo(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 120, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(dados)
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+
+    b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
+    dias = DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA - 1
+    hoje_dentro_do_prazo = datetime.now() + timedelta(days=dias)
+    b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path, hoje=hoje_dentro_do_prazo)
+
+    assert chamadas["contador"] == 1
+
+
+def test_obter_universo_ibovespa_atualiza_apos_prazo_vencido(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 120, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(dados)
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+
+    b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA + 1)
+    b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path, hoje=hoje_vencido)
+
+    assert chamadas["contador"] == 2
+
+
+def test_obter_universo_ibovespa_usa_cache_vencido_se_atualizacao_falha(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 120, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro(cod="VALE3")],
+    }
+    monkeypatch.setattr(_paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
+    df_original = b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)
+
+    def get_falha(url, timeout):
+        raise requests.ConnectionError("B3 fora do ar (simulado)")
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falha)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA + 1)
+
+    with pytest.warns(UserWarning, match="Falha ao atualizar o universo do Ibovespa"):
+        df_fallback = b3_universo.obter_universo_ibovespa(
+            diretorio_cache=tmp_path, hoje=hoje_vencido
+        )
+
+    pd.testing.assert_frame_equal(df_original, df_fallback)
+
+
+def test_obter_universo_ibovespa_propaga_erro_sem_cache_mesmo_com_prazo_novo(tmp_path, monkeypatch):
+    def get_falha(url, timeout):
+        raise requests.ConnectionError("B3 fora do ar (simulado)")
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falha)
+
+    with pytest.raises(requests.ConnectionError):
         b3_universo.obter_universo_ibovespa(diretorio_cache=tmp_path)

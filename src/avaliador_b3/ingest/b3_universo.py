@@ -20,18 +20,23 @@ da mesma família da B3, com parâmetros de requisição próprios (por isso
 
 from __future__ import annotations
 
+import warnings
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from avaliador_b3.config import (
     DATA_RAW_DIR,
     DELAY_PAGINACAO_B3_SEGUNDOS,
+    DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA,
     SEGMENTO_LISTAGEM_PADRAO,
     SEGMENTOS_LISTAGEM_B3,
     TAMANHO_PAGINA_API_B3_UNIVERSO,
     URL_B3_PORTFOLIO_DIA,
 )
+from avaliador_b3.ingest._cache import cache_expirado
 from avaliador_b3.ingest._paginacao import buscar_registros_paginados, parametros_base64
 
 CAMPOS_OBRIGATORIOS_REGISTRO = {"cod", "asset", "type", "part"}
@@ -84,30 +89,52 @@ def obter_universo_ibovespa(
     diretorio_cache: Path = DATA_RAW_DIR,
     tamanho_pagina: int = TAMANHO_PAGINA_API_B3_UNIVERSO,
     delay_segundos: float = DELAY_PAGINACAO_B3_SEGUNDOS,
+    hoje: datetime | None = None,
 ) -> pd.DataFrame:
     """Busca a carteira teórica vigente do Ibovespa e devolve um DataFrame
     com `ticker`, `nome`, `segmento_listagem`, `tipo_bruto` e
     `peso_percentual`, ordenado por ticker.
 
-    A carteira é revisada só a cada quadrimestre, então o cache (em
-    `data/raw/b3/universo_ibovespa.csv`) não tem TTL — vale até ser
-    explicitamente atualizado com `forcar_atualizacao=True`.
+    A carteira é revisada a cada quadrimestre — o cache (em
+    `data/raw/b3/universo_ibovespa.csv`) expira depois de
+    `DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA` dias. Se o prazo venceu mas a
+    atualização falha (B3 fora do ar, timeout, erro de rede) e já existe
+    um cache em disco, usa o arquivo existente (com aviso via
+    `warnings.warn`) em vez de propagar o erro — só propaga se não houver
+    nenhum cache pra usar.
 
     `delay_segundos` só importa se esse endpoint chegar a precisar de mais
     de uma página (hoje os 76 ativos do Ibovespa cabem numa só, ver
     TAMANHO_PAGINA_API_B3_UNIVERSO em config.py) — ver
-    `ingest._paginacao.buscar_registros_paginados`.
+    `ingest._paginacao.buscar_registros_paginados`. `hoje` é injetável
+    (default `datetime.now()`) pra testes.
     """
+    hoje = hoje or datetime.now()
     caminho = _caminho_cache(diretorio_cache)
 
-    if usar_cache and not forcar_atualizacao and caminho.exists():
+    if (
+        usar_cache
+        and not forcar_atualizacao
+        and caminho.exists()
+        and not cache_expirado(caminho, DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA, hoje)
+    ):
         return pd.read_csv(caminho)
 
-    registros = buscar_registros_paginados(
-        montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),
-        contexto="carteira teórica da B3",
-        delay_segundos=delay_segundos,
-    )
+    try:
+        registros = buscar_registros_paginados(
+            montar_url=lambda pagina: _montar_url(pagina, tamanho_pagina),
+            contexto="carteira teórica da B3",
+            delay_segundos=delay_segundos,
+        )
+    except requests.RequestException:
+        if caminho.exists():
+            warnings.warn(
+                "Falha ao atualizar o universo do Ibovespa (cache expirado) — "
+                "usando a versão em cache, possivelmente desatualizada.",
+                stacklevel=2,
+            )
+            return pd.read_csv(caminho)
+        raise
 
     linhas = [_registro_para_linha(registro) for registro in registros]
     df = pd.DataFrame(linhas).sort_values("ticker").reset_index(drop=True)

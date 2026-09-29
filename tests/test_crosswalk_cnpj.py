@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 import pytest
 import requests
 
+from avaliador_b3.config import DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3
 from avaliador_b3.ingest import _paginacao, crosswalk_cnpj
 
 
@@ -271,6 +274,51 @@ def test_obter_catalogo_emissores_propaga_erro_http(tmp_path, monkeypatch):
     )
     with pytest.raises(requests.HTTPError):
         crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+
+# --- Prazo de validade e uso do cache antigo em falha -----------------------
+
+
+def test_obter_catalogo_emissores_atualiza_apos_prazo_vencido(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 100, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro()],
+    }
+    chamadas = {"contador": 0}
+
+    def get_falso(url, timeout):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(dados)
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falso)
+
+    crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3 + 1)
+    crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path, hoje=hoje_vencido)
+
+    assert chamadas["contador"] == 2
+
+
+def test_obter_catalogo_emissores_usa_cache_vencido_se_atualizacao_falha(tmp_path, monkeypatch):
+    dados = {
+        "page": {"pageNumber": 1, "pageSize": 100, "totalRecords": 1, "totalPages": 1},
+        "results": [_registro()],
+    }
+    monkeypatch.setattr(_paginacao.requests, "get", lambda url, timeout: _RespostaFalsa(dados))
+    df_original = crosswalk_cnpj.obter_catalogo_emissores(diretorio_cache=tmp_path)
+
+    def get_falha(url, timeout):
+        raise requests.ConnectionError("B3 fora do ar (simulado)")
+
+    monkeypatch.setattr(_paginacao.requests, "get", get_falha)
+    hoje_vencido = datetime.now() + timedelta(days=DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3 + 1)
+
+    with pytest.warns(UserWarning, match="Falha ao atualizar o catálogo de emissores"):
+        df_fallback = crosswalk_cnpj.obter_catalogo_emissores(
+            diretorio_cache=tmp_path, hoje=hoje_vencido
+        )
+
+    pd.testing.assert_frame_equal(df_original, df_fallback)
 
 
 def test_resolver_cnpj_caminho_feliz():
