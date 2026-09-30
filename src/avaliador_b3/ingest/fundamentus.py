@@ -39,8 +39,11 @@ from avaliador_b3.config import (
     DATA_RAW_DIR,
     DELAY_FUNDAMENTUS_SEGUNDOS,
     PAUSAS_RETRY_SEGUNDOS,
+    ROTULO_FUNDAMENTUS_COTACAO,
     ROTULO_FUNDAMENTUS_DATA_BALANCO,
+    ROTULO_FUNDAMENTUS_VALOR_MERCADO,
     TIMEOUT_SEGUNDOS_FUNDAMENTUS,
+    TOLERANCIA_FATOR_ACOES_POR_COTACAO,
     TTL_CACHE_FUNDAMENTUS_SEGUNDOS,
     URL_FUNDAMENTUS_DETALHES,
     VERSAO_SCHEMA_FUNDAMENTUS,
@@ -113,6 +116,26 @@ def _extrair_rotulos_valores(html: str) -> dict[str, str]:
     return resultado
 
 
+def _numero_acoes_na_base_da_cotacao(
+    numero_acoes: float | None, cotacao: float | None, valor_mercado: float | None
+) -> float | None:
+    """Em units, o Fundamentus conta AÇÕES em "Nro. Ações", mas a Cotação e
+    o Valor de mercado são da unit (ex: TAEE11 = 3 ações). O fator
+    `Nro. Ações × Cotação ÷ Valor de mercado` é o número de ações por
+    cotação (1 em ação comum); dividir por ele deixa o número na mesma
+    base do preço. Fator que não é inteiro (dentro da tolerância) ou dado
+    faltando deixa o número indisponível (`None`), nunca aproximado."""
+    if not numero_acoes or not cotacao or not valor_mercado:
+        return None
+    if numero_acoes <= 0 or cotacao <= 0 or valor_mercado <= 0:
+        return None
+    fator_bruto = numero_acoes * cotacao / valor_mercado
+    fator = round(fator_bruto)
+    if fator < 1 or abs(fator_bruto - fator) > TOLERANCIA_FATOR_ACOES_POR_COTACAO * fator:
+        return None
+    return numero_acoes / fator
+
+
 def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
     faltando = set(CAMPOS_FUNDAMENTUS) - rotulos_valores.keys()
     if faltando:
@@ -124,6 +147,11 @@ def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
     indicadores: dict = {"ticker": ticker}
     for rotulo, nome_campo in CAMPOS_FUNDAMENTUS.items():
         indicadores[nome_campo] = _parse_numero(rotulos_valores[rotulo])
+    indicadores["numero_acoes"] = _numero_acoes_na_base_da_cotacao(
+        indicadores["numero_acoes"],
+        _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_COTACAO, "-")),
+        _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_VALOR_MERCADO, "-")),
+    )
     # Opcionais (ver CAMPOS_FUNDAMENTUS_OPCIONAIS): ausência do rótulo na
     # página (não só valor vazio) é esperada pra certos tipos de empresa
     # — tratada como "-" (vira None via _parse_numero), não como sinal de

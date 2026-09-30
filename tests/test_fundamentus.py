@@ -121,6 +121,8 @@ def _rotulos_valores_completos(**sobrescritas: str) -> dict[str, str]:
         "Dív Líq / Patrim": "0,65",
         "Cres. Rec (5a)": "-2,3%",
         "Nro. Ações": "12.888.700.000",
+        "Cotação": "49,10",
+        "Valor de mercado": "632.837.000.000",
         "Patrim. Líq": "480.950.000.000",
         "Dív. Líquida": "312.769.000.000",
         "Últ balanço processado": "30/06/2026",
@@ -152,6 +154,74 @@ def test_montar_indicadores_levanta_erro_quando_falta_campo():
     rotulos_valores = {"ROE": "27,7%", "LPA": "10,35"}  # faltam os outros
     with pytest.raises(fundamentus.EstruturaPaginaMudou, match="PETR4"):
         fundamentus._montar_indicadores("PETR4", rotulos_valores)
+
+
+def test_montar_indicadores_unit_real_numero_de_acoes_fica_na_base_do_preco_da_unit():
+    # TAEE11: a página traz "Nro. Ações" em ações (1.033.500.000), mas a
+    # Cotação e o Valor de mercado são da unit (1 unit = 3 ações).
+    rotulos_valores = fundamentus._extrair_rotulos_valores(
+        _html_fixture("fundamentus_taee11.html")
+    )
+
+    indicadores = fundamentus._montar_indicadores("TAEE11", rotulos_valores)
+
+    cotacao = fundamentus._parse_numero(rotulos_valores["Cotação"])
+    valor_mercado = fundamentus._parse_numero(rotulos_valores["Valor de mercado"])
+    assert indicadores["numero_acoes"] == pytest.approx(1033500000.0 / 3)
+    assert cotacao * indicadores["numero_acoes"] == pytest.approx(valor_mercado, rel=0.001)
+
+
+def test_montar_indicadores_acao_comum_real_mantem_o_numero_de_acoes():
+    rotulos_valores = fundamentus._extrair_rotulos_valores(_html_fixture("fundamentus_petr4.html"))
+
+    indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
+
+    assert indicadores["numero_acoes"] == 12888700000.0
+
+
+@pytest.mark.parametrize(
+    ("numero_acoes", "cotacao", "valor_mercado", "esperado"),
+    [
+        (1200.0, 10.0, 12000.0, 1200.0),  # ação comum: fator 1
+        (1200.0, 10.0, 4000.0, 400.0),  # unit de 3 ações: fator 3
+        (1200.0, 10.0, 4000.0 / 1.019, 400.0),  # fator 3,057 (1,9% do inteiro): aceito
+        (1200.0, 10.0, 4000.0 / 1.021, None),  # fator 3,063 (2,1% do inteiro): rejeitado
+        (1200.0, 10.0, 4800.0, None),  # fator 2,5: não é inteiro
+        (1200.0, 10.0, 48000.0, None),  # fator 0,25: arredonda pra 0
+        (1200.0, 10.0, None, None),  # sem Valor de mercado
+        (1200.0, None, 12000.0, None),  # sem Cotação
+        (None, 10.0, 12000.0, None),  # sem Nro. Ações
+        (1200.0, 10.0, 0.0, None),  # Valor de mercado zerado
+    ],
+)
+def test_numero_acoes_na_base_da_cotacao(numero_acoes, cotacao, valor_mercado, esperado):
+    resultado = fundamentus._numero_acoes_na_base_da_cotacao(numero_acoes, cotacao, valor_mercado)
+
+    if esperado is None:
+        assert resultado is None
+    else:
+        assert resultado == pytest.approx(esperado)
+
+
+def test_montar_indicadores_fator_nao_inteiro_deixa_numero_de_acoes_indisponivel():
+    rotulos_valores = _rotulos_valores_completos(**{"Valor de mercado": "1.288.870.000.000"})
+
+    indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
+
+    assert indicadores["numero_acoes"] is None
+    assert indicadores["lpa"] == 10.35  # o resto da página segue aproveitado
+
+
+@pytest.mark.parametrize("rotulo_ausente", ["Cotação", "Valor de mercado"])
+def test_montar_indicadores_sem_cotacao_ou_valor_de_mercado_numero_de_acoes_indisponivel(
+    rotulo_ausente,
+):
+    rotulos_valores = _rotulos_valores_completos()
+    del rotulos_valores[rotulo_ausente]
+
+    indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
+
+    assert indicadores["numero_acoes"] is None
 
 
 def test_montar_indicadores_campo_opcional_ausente_vira_none_sem_erro():
@@ -345,6 +415,37 @@ def test_obter_indicadores_cache_versao_anterior_sem_campo_novo_busca_de_novo_e_
     indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
 
     assert indicadores["data_balanco_fundamentus"] == "2026-06-30"
+
+
+def test_obter_indicadores_cache_da_versao_3_e_descartado_e_corrige_o_numero_de_acoes_da_unit(
+    tmp_path, monkeypatch
+):
+    assert fundamentus.VERSAO_SCHEMA_FUNDAMENTUS == 4
+    caminho = tmp_path / "fundamentus" / "TAEE11.json"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "versao_schema": 3,
+                "indicadores": {"ticker": "TAEE11", "numero_acoes": 1033500000.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    conteudo = _bytes_fixture("fundamentus_taee11.html")
+    chamadas = {"contador": 0}
+
+    def get_falso(*args, **kwargs):
+        chamadas["contador"] += 1
+        return _RespostaFalsa(conteudo)
+
+    monkeypatch.setattr(_retry.requests, "get", get_falso)
+    monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
+
+    indicadores = fundamentus.obter_indicadores("TAEE11", diretorio_cache=tmp_path)
+
+    assert chamadas["contador"] == 1
+    assert indicadores["numero_acoes"] == pytest.approx(1033500000.0 / 3)
 
 
 def test_obter_indicadores_cache_mais_velho_que_ttl_busca_de_novo(tmp_path, monkeypatch):

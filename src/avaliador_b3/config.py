@@ -214,8 +214,22 @@ DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
 # cenário que esse mecanismo existe pra cobrir (campo novo, cache velho
 # sem ele), mesmo caso real do KeyError de "Patrim. Líq/Dív. Líquida"
 # citado acima.
-VERSAO_SCHEMA_FUNDAMENTUS = 3
+VERSAO_SCHEMA_FUNDAMENTUS = 4
 TTL_CACHE_FUNDAMENTUS_SEGUNDOS = 24 * 60 * 60
+
+# Rótulos usados só pra converter "Nro. Ações" na base do preço do ticker
+# (ver ingest.fundamentus._numero_acoes_na_base_da_cotacao). Não fazem
+# parte de CAMPOS_FUNDAMENTUS: a falta deles deixa o número de ações
+# indisponível, não invalida a página inteira.
+ROTULO_FUNDAMENTUS_COTACAO = "Cotação"
+ROTULO_FUNDAMENTUS_VALOR_MERCADO = "Valor de mercado"
+
+# Tolerância (relativa ao inteiro mais próximo) do fator "ações por
+# cotação" calculado em ingest.fundamentus. A Cotação vem com 2 casas
+# decimais, então em ativos de preço baixo o fator calculado se afasta do
+# inteiro em até ~0,25%; 2% cobre esse ruído e ainda rejeita fator que
+# claramente não é inteiro.
+TOLERANCIA_FATOR_ACOES_POR_COTACAO = 0.02
 
 CAMPOS_FUNDAMENTUS = {
     "ROE": "roe_percentual",
