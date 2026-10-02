@@ -342,7 +342,7 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # KeyError pra qualquer CNPJ/ano já cacheado. Começa em 1 porque esse cache
 # nunca teve controle de versão antes (diferente do Fundamentus, que já
 # tinha passado por uma mudança de schema sem esse mecanismo).
-VERSAO_SCHEMA_CVM_FCF = 1
+VERSAO_SCHEMA_CVM_FCF = 2
 
 # Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
 # ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).

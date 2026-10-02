@@ -1,5 +1,6 @@
 import json
 import os
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -463,6 +464,136 @@ def test_obter_fluxo_caixa_livre_cai_para_md_quando_nao_esta_em_mi(tmp_path, mon
 
     assert resultado["metodo_dfc"] == "MD"
     assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+
+
+CNPJ_SINTETICO_ZERADA = "00.000.000/0004-00"
+CABECALHO_DFC = (
+    "CNPJ_CIA;CD_CVM;DENOM_CIA;ESCALA_MOEDA;ORDEM_EXERC;DT_FIM_EXERC;CD_CONTA;DS_CONTA;VL_CONTA"
+)
+
+
+def _zip_dfc_sintetico(caminho: Path, ano: int, membros: dict) -> Path:
+    """Zip mínimo só com os quatro CSVs da DFC (vazios, exceto os de
+    `membros`: (método, tipo) -> lista de (CD_CONTA, VL_CONTA), em MIL)."""
+    with zipfile.ZipFile(caminho, "w") as arquivo_zip:
+        for metodo in ("MI", "MD"):
+            for tipo in ("con", "ind"):
+                linhas = [CABECALHO_DFC]
+                for codigo, valor in membros.get((metodo, tipo), []):
+                    linhas.append(
+                        f"{CNPJ_SINTETICO_ZERADA};000001;EMPRESA SINTETICA S.A.;MIL;ÚLTIMO;"
+                        f"{ano}-12-31;{codigo};Conta {codigo};{valor}"
+                    )
+                arquivo_zip.writestr(
+                    f"dfp_cia_aberta_DFC_{metodo}_{tipo}_{ano}.csv",
+                    "\n".join(linhas).encode("iso-8859-1"),
+                )
+    return caminho
+
+
+def _fluxo_com_zip(tmp_path, monkeypatch, membros):
+    caminho_zip = _zip_dfc_sintetico(tmp_path / "dfp_sintetico.zip", 2024, membros)
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: caminho_zip)
+    return cvm.obter_fluxo_caixa_livre(CNPJ_SINTETICO_ZERADA, 2024, diretorio_cache=tmp_path)
+
+
+def test_obter_fluxo_caixa_livre_consolidada_zerada_usa_a_individual(tmp_path, monkeypatch):
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "0"), ("6.02", "0")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+    )
+
+    assert resultado["tipo_demonstracao"] == "individual"
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_consolidada_sem_6_01_e_6_02_usa_a_individual(
+    tmp_path, monkeypatch
+):
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.03", "-80")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+    )
+
+    assert resultado["tipo_demonstracao"] == "individual"
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_consolidada_valida_continua_sendo_a_escolhida(
+    tmp_path, monkeypatch
+):
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "900"), ("6.02", "-300")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+    )
+
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["fcf_atual"] == pytest.approx(600.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_consolidada_com_so_um_dos_dois_zerado_nao_e_pulada(
+    tmp_path, monkeypatch
+):
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "0"), ("6.02", "-100")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+    )
+
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["fcf_atual"] == pytest.approx(-100.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_as_duas_zeradas_mantem_a_consolidada(tmp_path, monkeypatch):
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "0"), ("6.02", "0")],
+            ("MI", "ind"): [("6.01", "0"), ("6.02", "0")],
+        },
+    )
+
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["fcf_atual"] == 0.0
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_anterior_do_schema(
+    tmp_path, monkeypatch
+):
+    # Cache gravado com a escolha antiga (consolidada zerada) não pode ser
+    # servido depois da mudança de critério.
+    caminho_cache = tmp_path / "cvm" / "fcf_00000000000400_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text(
+        json.dumps({"versao_schema": 1, "resultado": {"fcf_atual": 0.0}}), encoding="utf-8"
+    )
+
+    resultado = _fluxo_com_zip(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "0"), ("6.02", "0")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+    )
+
     assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
 
 

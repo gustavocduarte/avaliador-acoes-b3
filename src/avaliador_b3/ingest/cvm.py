@@ -367,6 +367,37 @@ def _cfo_cfi_do_periodo(linhas_periodo: list[dict]) -> tuple[float, float]:
     return cfo, cfi
 
 
+def _fluxo_zerado(linhas: list[dict]) -> bool:
+    """True se 6.01 e 6.02 do período ÚLTIMO são ambos zero ou ausentes —
+    demonstração publicada sem valores, que não serve de base pro FCF."""
+    valores = {
+        linha["CD_CONTA"]: float(linha["VL_CONTA"])
+        for linha in linhas
+        if linha["ORDEM_EXERC"] == "ÚLTIMO"
+        and linha["CD_CONTA"] in (CODIGO_CFO_CVM, CODIGO_CFI_CVM)
+    }
+    return all(valores.get(codigo, 0.0) == 0.0 for codigo in (CODIGO_CFO_CVM, CODIGO_CFI_CVM))
+
+
+def _escolher_dfc(
+    caminho_zip: Path, ano: int, cnpj_normalizado: str
+) -> tuple[str, str, list[dict]] | None:
+    """Primeira demonstração com fluxo, na ordem MI/MD e consolidada antes
+    da individual. Uma com 6.01 e 6.02 zerados é pulada; se todas as
+    encontradas forem zeradas, vale a primeira. `None` se nenhuma existir."""
+    primeira = None
+    for metodo in ("MI", "MD"):
+        for tipo in ("con", "ind"):
+            linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
+            if not linhas:
+                continue
+            if primeira is None:
+                primeira = (metodo, tipo, linhas)
+            if not _fluxo_zerado(linhas):
+                return metodo, tipo, linhas
+    return primeira
+
+
 def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
     linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaFluxoCaixaNaoEncontrada)
 
@@ -419,7 +450,8 @@ def obter_fluxo_caixa_livre(
     percentual`).
 
     Tenta a DFC pelo método indireto (a maioria das empresas) antes do
-    direto, e a demonstração consolidada antes da individual. Levanta
+    direto, e a demonstração consolidada antes da individual; uma
+    demonstração com 6.01 e 6.02 zerados é pulada (ver `_escolher_dfc`). Levanta
     `CnpjNaoEncontrado` se o CNPJ não aparecer em nenhuma combinação, ou
     `ContaFluxoCaixaNaoEncontrada` se as contas 6.01/6.02 não puderem ser
     localizadas (formato mudou).
@@ -436,19 +468,11 @@ def obter_fluxo_caixa_livre(
 
     caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
 
-    resultado = None
-    for metodo in ("MI", "MD"):
-        for tipo in ("con", "ind"):
-            linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
-            if not linhas:
-                continue
-            resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
-            break
-        if resultado is not None:
-            break
-
-    if resultado is None:
+    escolhida = _escolher_dfc(caminho_zip, ano, cnpj_normalizado)
+    if escolhida is None:
         raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado na DFC da CVM para {ano}.")
+    metodo, tipo, linhas = escolhida
+    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
 
     if usar_cache:
         caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
