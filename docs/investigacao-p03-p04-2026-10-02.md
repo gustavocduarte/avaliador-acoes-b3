@@ -543,6 +543,10 @@ O Simulador é uma **estimativa, não uma previsão**. Os valores de cada cenár
     (505 passam, 1 falha, 506 coletados) e passa num clone limpo (foi o que aconteceu nos worktrees da verificação por commit). Não é regressão do código. A correção seria o teste
     comparar o conteúdo/data de modificação antes e depois, em vez de exigir ausência. Quer que eu corrija em um commit à parte?
 
+12. **Participação de não controladores:** verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida. Se não subtrai, o valor de holdings com minoritários relevantes (hipótese principal para a CSAN3 seguir em 30,03 contra preço de 3,72) fica superestimado. Medir depois, nas 76, o peso dos não controladores sobre o patrimônio.
+13. **Juros de arrendamento em 6.01:** na alt3, definir se a soma de volta dos juros pagos em 6.01 inclui os juros de arrendamento. Proposta: incluir quando o arrendamento está dentro da dívida do Fundamentus; não incluir quando está fora.
+14. **Mesmo tipo de demonstração nos dois anos do crescimento:** quando o ano de referência e o ano-base usam tipos diferentes e o mesmo tipo existe nos dois, usar o mesmo tipo (caso ASAI3: 4,2% → 10,8%).
+
 **Hipóteses não confirmadas deste relatório (para o item 4 e 5):** composição da "Dív. Líquida" do Fundamentus (arrendamento e aplicações financeiras); moeda do prêmio do Damodaran; dupla contagem do risco-país; peso do valor terminal de ~55% (da auditoria, não reconferido).
 
 ---
@@ -554,17 +558,117 @@ Cada decisão está ligada ao número da pergunta em aberto da seção 8 que ela
 | Pergunta (seção 8) | Decisão | Situação |
 |---|---|---|
 | 1 — P03: qual opção para o Simulador | **Opção B**: potencial sem prazo, sem taxa anual e sem "ganho real". | Decidido |
-| 2 — P04: definição do fluxo | Direção: **capex explícito**. A escolha entre alt2 e alt3 depende da verificação de dívida líquida e arrendamento (pergunta 4). Quando o capex não for identificado, o FCD fica **"não aplicável"**, com o motivo na tela, **sem voltar para 6.01 + 6.02** (substitui o fallback proposto na seção 4.7). | Direção decidida; alt2 ou alt3 em aberto |
-| 3 — Bug do TIMS3 (consolidada zerada) | Corrigir agora, em etapa própria. Regra: se a consolidada do ano tem 6.01 e 6.02 iguais a zero (ou ausentes), ela é tratada como inexistente e o app usa a individual daquele ano; se as duas forem zeradas, o comportamento atual continua. | Decidido, correção em andamento |
-| 4 — Dívida líquida do Fundamentus (arrendamento e aplicações financeiras) | Verificação só de leitura nas 8 empresas, comparando com o balanço da CVM; o resultado decide alt2 ou alt3. | Em andamento |
+| 2 — P04: definição do fluxo | Direção: **capex explícito**. Quando o capex não for identificado, o FCD fica **"não aplicável"**, com o motivo na tela, **sem voltar para 6.01 + 6.02** (substitui o fallback proposto na seção 4.7). **Decidido: alt3.** Etapa seguinte, depois da alt3: somar o passivo de arrendamento à dívida líquida quando ele estiver fora de 2.01.04/2.02.01. | Decidido: alt3 |
+| 3 — Bug do TIMS3 (consolidada zerada) | Corrigir agora, em etapa própria. Regra: se a consolidada do ano tem 6.01 e 6.02 iguais a zero (ou ausentes), ela é tratada como inexistente e o app usa a individual daquele ano; se as duas forem zeradas, o comportamento atual continua. | Decidido; corrigido no commit `4e23afb` (inclui subir `VERSAO_SCHEMA_CVM_FCF` para 2) |
+| 4 — Dívida líquida do Fundamentus (arrendamento e aplicações financeiras) | Verificação só de leitura nas empresas do relatório (mais o TIMS3), comparando com o balanço da CVM; o resultado decide alt2 ou alt3. | Verificado (seção 10); a escolha entre alt2 e alt3 continua com você |
 | 5 — Prêmio do Damodaran (moeda e dupla contagem) | Adiado para a rodada do P10. | Em aberto |
 | 6 — Financeiras não bancárias | FCD **não aplicável** para as seguradoras (BBSE3, PSSA3, CXSE3) e para ITSA4. **B3SA3 continua com FCD**, com a limitação documentada. | Decidido |
 | 7 — FCD extremo (16 ações) | Fluxo-base ≤ 0: FCD **não aplicável** (não perpetuar fluxo negativo). As regras de aplicabilidade usam só as entradas do modelo, nunca a comparação com o preço. **Descartado:** excluir ou limitar o FCD com base na razão FCD ÷ preço. **Em aberto:** aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado). | Decidido em parte |
 | 8 — MGLU3 (linha "Fornecedores" e crescimento no teto) | Adiado para a rodada do P10. | Em aberto |
 | 9 — Vocabulário "Potencial" (P11) | **Aprovado** o vocabulário da seção 6; a coluna `desconto_percentual` continua no CSV. | Decidido |
-| 10 — Implementação do capex por descrição | Outra tarefa, depois da decisão entre alt2 e alt3. | Em aberto |
-| 11 — Teste frágil (`tests/test_conftest.py:14`) | Corrigir agora, em etapa própria: o teste não pode depender de o arquivo real existir ou não. | Decidido, correção em andamento |
+| 10 — Implementação do capex por descrição | Outra tarefa, já com a alt3 decidida (pergunta 2). | Em aberto |
+| 11 — Teste frágil (`tests/test_conftest.py:14`) | Corrigir agora, em etapa própria: o teste não pode depender de o arquivo real existir ou não. | Decidido; corrigido no commit `e29e83b` |
+| 12 — Participação de não controladores | Verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida; medir depois, nas 76, o peso dos não controladores sobre o patrimônio. | Em aberto |
+| 13 — Juros de arrendamento em 6.01 na alt3 | Definir se a soma de volta dos juros pagos em 6.01 inclui os juros de arrendamento. Proposta: incluir quando o arrendamento está dentro da dívida do Fundamentus; não incluir quando está fora. | Em aberto |
+| 14 — Mesmo tipo de demonstração nos dois anos do crescimento | Quando o ano de referência e o ano-base usam tipos diferentes e o mesmo tipo existe nos dois, usar o mesmo tipo (caso ASAI3: 4,2% → 10,8%). | Em aberto |
 
-**Em aberto:** perguntas 5, 8 e 10; a escolha entre alt2 e alt3 (pergunta 2, depende da 4); e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
+**Em aberto:** perguntas 5, 8, 10, 12, 13 e 14; e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
 
 **Fora desta rodada:** a implementação do P03, do P11 e do P04 (será outra tarefa); a regeneração do `data/processed/screener.csv`.
+
+---
+
+## 10. Complemento: dívida líquida e arrendamento (02/10/2026)
+
+Objetivo: decidir entre alt2 e alt3 (seção 4.6) a partir de como a "Dív. Líquida" do Fundamentus é montada. Só leitura; nada no código foi alterado por esta seção.
+
+### 10.1 Fontes e desvio do combinado
+
+- **Fundamentus:** "Dív. Bruta", "Disponibilidades" e "Dív. Líquida" das páginas de 02/10/2026, data-base 30/06/2026 nas nove empresas. O cache local (`data/raw/fundamentus/*.json`) só guarda a dívida líquida, o patrimônio e o número de ações, **não** a dívida bruta nem as disponibilidades. Por isso busquei as **9 páginas** (uma requisição cada, as mesmas do app) e as salvei em `%TEMP%\investigacao_p03_p04\fund_html`. A dívida líquida das páginas é igual à do cache nas nove.
+- **CVM:** `itr_cia_aberta_2026.zip` (19,6 MB, ITR 2026, baixado para `%TEMP%\investigacao_p03_p04`), balanço consolidado (BPA e BPP) com `DT_REFER = 2026-06-30`, versão mais recente de cada empresa.
+- **Empresas:** as 8 do relatório mais **TIMS3** (a nona), com a regra nova de demonstração (commit `4e23afb`).
+
+### 10.2 Como o Fundamentus monta a dívida (CONFIRMADO nas 9 empresas)
+
+Comparação com o balanço da CVM, em R$ mi. Em todas as nove, a diferença é 0,0% (até o arredondamento):
+
+- **Dív. Bruta** = conta 2.01.04 + conta 2.02.01 do passivo ("Empréstimos e Financiamentos", circulante e não circulante). Essas contas **incluem as debêntures** e a subconta padrão **"Financiamento por Arrendamento"**.
+- **Disponibilidades** = conta 1.01.01 ("Caixa e Equivalentes de Caixa") + conta 1.01.02 ("Aplicações Financeiras" do circulante).
+- **Dív. Líquida** = Dív. Bruta − Disponibilidades.
+
+| Ticker | Dív. Bruta (Fund. = CVM) | Disponibilidades (Fund. = CVM) | Caixa + aplicações (1.01.01 + 1.01.02) | Dív. Líquida |
+|---|---|---|---|---|
+| CSAN3 | 60.890 | 13.358 | 13.358 + 0 | 47.532 |
+| SBSP3 | 51.658 | 17.441 | 4.243 + 13.197 | 34.217 |
+| PETR4 | 366.533 | 53.764 | 33.560 + 20.204 | 312.769 |
+| RADL3 | 3.453 | 653 | 537 + 116 | 2.800 |
+| KLBN11 | 34.860 | 10.109 | 9.322 + 787 | 24.751 |
+| CPFE3 | 31.552 | 3.988 | 2.165 + 1.823 | 27.564 |
+| WEGE3 | 5.066 | 8.801 | 7.750 + 1.051 | −3.735 |
+| MGLU3 | 4.946 | 1.762 | 905 + 857 | 3.184 |
+| TIMS3 | 2.649 | 4.530 | 2.677 + 1.852 | −1.881 |
+
+A regra foi verificada só nestas nove; que valha para as 76 é **HIPÓTESE** (a verificar).
+
+### 10.3 Conclusão por empresa
+
+**O passivo de arrendamento está dentro da dívida do Fundamentus?** Só quando a empresa o registra na subconta padrão "Financiamento por Arrendamento" dentro de Empréstimos e Financiamentos. Se o registra em "outras obrigações" (contas 2.01.05 e 2.02.02, ou 2.01.06 e 2.02.04), fica **fora**.
+
+| Ticker | Arrendamento na dívida do Fundamentus? | Passivo de arrendamento (R$ mi) | A líquida desconta aplicações financeiras? |
+|---|---|---|---|
+| CSAN3 | **Sim** | 6.631 dentro | Só o caixa (1.01.02 é zero). Ficam **fora**: títulos e valores mobiliários de R$ 5.491 mi (1.01.08.03.01), caixa restrito (R$ 37 mi + R$ 194 mi) e títulos não circulantes (R$ 64 mi) |
+| SBSP3 | Sem passivo de arrendamento | — | Sim (R$ 13.197 mi em 1.01.02); caixa restrito de R$ 28 mi fica fora |
+| PETR4 | **Sim** | 232.799 dentro (63,5% da dívida bruta; R$ 179.740 mi só no não circulante) | Sim (R$ 20.204 mi) |
+| RADL3 | **Não** | 5.140 fora ("Arrendamentos a pagar": 1.025 + 4.115) | Sim (R$ 116 mi) |
+| KLBN11 | **Não** | 1.840 fora (381 + 1.459) | Sim (R$ 787 mi) |
+| CPFE3 | Sem passivo de arrendamento | — | Sim (R$ 1.823 mi) |
+| WEGE3 | **Não** | 768 fora (184 + 585) | Sim (R$ 1.051 mi); aplicações não circulantes de R$ 12 mi ficam fora |
+| MGLU3 | **Não** | 3.566 fora (439 + 3.127) | Sim (R$ 857 mi) |
+| TIMS3 | **Não** | 13.848 fora (1.674 + 12.175) | Sim (R$ 1.852 mi); aplicação não circulante de R$ 34 mi fica fora |
+
+Resumo: o arrendamento está **dentro** da dívida em 2 das 9 (CSAN3, PETR4), **fora** em 5 (RADL3, KLBN11, WEGE3, MGLU3, TIMS3) e **inexistente** em 2 (SBSP3, CPFE3). A líquida desconta as aplicações financeiras **da conta 1.01.02**, mas não as que a empresa classifica em outras contas (CSAN3, R$ 5,5 bi). No TIMS3, a dívida líquida de −R$ 1,9 bi (caixa líquido) viraria dívida de R$ 12,0 bi se o passivo de arrendamento entrasse.
+
+### 10.4 FCD em quatro versões (as 9 empresas)
+
+**atual** = 6.01 + 6.02 (com a regra nova de demonstração); **só capex** = 6.01 − capex; **alt2** = 6.01 − capex − arrendamento pago em 6.03 + juros pagos em 6.01 × (1 − 34%); **alt3** = 6.01 − capex + juros pagos em 6.01 × (1 − 34%), sem subtrair arrendamento. Última coluna, informativa: alt3 com o passivo de arrendamento que está **fora** da dívida somado à dívida líquida (alt3 menos passivo fora ÷ número de ações). Mesma função `calcular_valor_justo_fcd`, importada sem alteração; os valores "atual" batem com o `screener.csv` (exceto TIMS3, ver nota).
+
+| Ticker | Preço | `screener.csv` | atual | só capex | alt2 | alt3 | alt3 + arrend. como dívida |
+|---|---|---|---|---|---|---|---|
+| CSAN3 | 3,72 | 32,06 | 32,06 | 30,03 | 15,22 | 30,03 | 30,03 |
+| SBSP3 | 27,06 | −26,74 | −26,74 | −22,19 | −18,06 | −18,06 | −18,06 |
+| PETR4 | 49,10 | 48,26 | 48,26 | 26,55 | −10,13 | 26,55 | 26,55 |
+| RADL3 | 18,14 | 2,53 | 2,53 | 2,56 | 0,24 | 4,90 | 1,97 |
+| KLBN11 | 18,27 | 101,95 | 101,95 | 78,09 | 38,65 | 48,43 | 46,95 |
+| CPFE3 | 44,50 | −6,94 | −6,94 | −16,68 | −6,08 | −6,08 | −6,08 |
+| WEGE3 | 50,29 | 5,31 | 5,31 | 6,62 | 6,94 | 6,94 | 6,75 |
+| MGLU3 | 6,63 | 225,66 | 225,66 | 227,36 | 214,81 | 227,36 | 222,77 |
+| TIMS3 | 18,53 | 0,79 | 57,67 | 36,06 | 23,32 | 36,06 | 30,24 |
+
+Nota TIMS3: o `screener.csv` ainda traz 0,79 (não regenerado); "atual" é o que o código corrigido calcula (FCF 2025 = R$ 9.879 mi pela demonstração individual). O arrendamento pago do TIMS3 em 6.03 é R$ 3.210 mi em 2025 (a individual traz o principal e os juros de arrendamento em 6.03), e o passivo de R$ 13.848 mi está fora da dívida.
+
+### 10.5 Recomendação: alt3
+
+**Alt3, não alt2**, com base na seção 10.3:
+
+1. **Alt2 só é coerente onde o arrendamento está fora da dívida do Fundamentus** (5 das 9). Onde ele está **dentro** (CSAN3, PETR4), subtrair o pagamento de arrendamento do fluxo conta o mesmo custo duas vezes: o passivo já está na dívida subtraída. Os dois casos são grandes: PETR4 vai de 26,55 (alt3) para −10,13 (alt2), efeito quase todo do arrendamento pago de R$ 52,4 bi; CSAN3, de 30,03 para 15,22.
+2. **Alt3 ignora o custo do arrendamento onde ele está fora da dívida**, o que superestima o valor nessas cinco: a coluna "alt3 + arrend. como dívida" mostra o tamanho (RADL3 4,90 → 1,97; TIMS3 36,06 → 30,24; KLBN11 48,43 → 46,95; MGLU3 227,36 → 222,77; WEGE3 6,94 → 6,75). É a limitação a documentar com a alt3.
+3. **O desenho consistente a médio prazo** é o da última coluna: fluxo antes do pagamento do arrendamento (alt3) **e** passivo de arrendamento somado à dívida líquida quando o Fundamentus não o inclui. Exige ler o passivo de arrendamento do balanço (contas fora de 2.01.04/2.02.01, identificadas por descrição, a mesma fragilidade do capex) e fica como etapa seguinte à alt3.
+4. **As disponibilidades** do Fundamentus (1.01.01 + 1.01.02) não incluem os títulos em outras contas (CSAN3, R$ 5,5 bi). Isso reforça tirar do fluxo a parte financeira de 6.02, como alt3 faz ao usar só o capex.
+
+Não corrige o que é de modelo (SBSP3 e CPFE3 seguem negativos; MGLU3 segue em ~R$ 227): ver P10.
+
+### 10.6 Verificação extra: tipo e método da demonstração diferentes entre o ano de referência e o ano-base
+
+Para as 76 ações (74 CNPJs), comparei a demonstração escolhida em 2025 (ano de referência) e em 2020 (ano-base do crescimento), aplicando a regra atual (commit `4e23afb`). **68 CNPJs usam o mesmo método e tipo nos dois anos; 5 usam diferentes; 1 (AURE3) não tem DFC em 2020.** Sem proposta de correção, só o levantamento.
+
+| Ticker | 2025 | 2020 | FCF 2025 / 2020 (R$ mi) | Crescimento atual | Mesmo tipo nos dois anos |
+|---|---|---|---|---|---|
+| ASAI3 | MI/individual | MI/consolidada | 4.725 / −1.289 | 4,2% (IPCA, base negativa) | **10,8%** (CAGR) com a individual de 2020 (FCF 2.835). FCD de R$ 22,45 passa a R$ 31,39 (preço R$ 10,54) |
+| TIMS3 | MI/individual | MI/consolidada | 9.879 / 3.381 | 23,9% (CAGR) | 23,9% (a individual de 2020 também dá 3.381) |
+| BRAP4 | MI/individual | MI/consolidada | 670 / 979 | −7,3% (CAGR) | −7,3% (a individual de 2020 dá 978); em 2025 só existe a individual |
+| SBSP3 | MI/consolidada | MI/individual | −7.343 / −1.790 | 4,2% (IPCA, fluxo negativo) | 4,2% (IPCA) com qualquer tipo: em 2020 só existe a individual |
+| SANB11 (banco, FCD não aplicável) | MI/individual | MI/consolidada | 10.179 / 41.155 | −20,0% (CAGR no piso) | −19,1% com a individual nos dois anos (2020: 29.398) |
+
+Notas: (i) o SANB11 também tem diferença de **método**: em 2025 a DFC consolidada existe só no método direto (MD, FCF R$ 1.669 mi) e a ordem MI-antes-de-MD escolhe a individual indireta; como banco, o FCD não se aplica, então não afeta nenhum valor justo. (ii) Entre as ações com FCD aplicável, a diferença é de **tipo** (consolidada contra individual), não de método.
+
+**TIMS3, em particular.** Em 2020 foi usada a **consolidada** (MI/con); em 2025, depois da correção, a **individual** (MI/ind). Isso **não** explica o salto de 4,2% para 23,9%: em 2020 as duas demonstrações trazem o mesmo FCF (R$ 3.381 mi), então o CAGR é 23,9% com qualquer combinação. O salto vem de o FCF de 2025 ter passado de 0 para R$ 9.879 mi: antes da correção o fluxo atual era zero, o CAGR não era calculável (`fcd.py:141`, fluxo atual ≤ 0) e o crescimento caía para o IPCA (4,2%). Com a correção, o crescimento passa a ser o CAGR de 23,9% (limite de 30%). Quem quiser olhar com cautela o FCD de R$ 57,67 deve considerar que 23,9% por 5 anos é um crescimento alto para uma telecom.
