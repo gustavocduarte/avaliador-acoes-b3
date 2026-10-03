@@ -124,9 +124,7 @@ TTL_CACHE_DIVIDENDOS_SEGUNDOS = 24 * 60 * 60
 # O campo "type" de cada resultado (ex: "ON      NM", "PN  EJ  N1", "UNT")
 # traz o segmento de listagem como último token — checado contra as 13
 # combinações reais observadas nos 76 ativos do índice nessa data.
-URL_B3_PORTFOLIO_DIA = (
-    "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{parametros_base64}"
-)
+URL_B3_PORTFOLIO_DIA = "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/GetPortfolioDay/{parametros_base64}"
 
 # 120 foi o tamanho de página que trouxe os 76 ativos do Ibovespa numa
 # única página (ver comentário acima) — não é um limite confirmado da API
@@ -1243,7 +1241,9 @@ JANELA_BUSCA_SELIC_SOAP_DIAS = 15
 # Terceira fonte, só do IPCA: a API SIDRA do IBGE (tabela 1737, variável 63, IPCA mensal).
 # Os meses são os mesmos da série 433 do BCB, e o acumulado de 12 meses sai do mesmo
 # cálculo. Busca 14 meses (mínimo de 12, mais uma folga de publicação).
-URL_IBGE_SIDRA_IPCA_MENSAL = "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/63/p/last%20{meses}"
+URL_IBGE_SIDRA_IPCA_MENSAL = (
+    "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/63/p/last%20{meses}"
+)
 TIMEOUT_SEGUNDOS_IBGE = 10
 MESES_BUSCA_IPCA_SIDRA = 14
 FONTE_IBGE = "IBGE (SIDRA)"

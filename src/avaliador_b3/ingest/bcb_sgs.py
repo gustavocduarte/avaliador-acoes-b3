@@ -108,9 +108,7 @@ def _registros_para_dataframe(registros: list[dict]) -> pd.DataFrame:
     """Converte os registros brutos da API em um DataFrame tipado e ordenado."""
     df = pd.DataFrame(registros, columns=["data", "valor"])
     if df.empty:
-        return df.assign(
-            data=pd.to_datetime(df["data"]), valor=df["valor"].astype(float)
-        )
+        return df.assign(data=pd.to_datetime(df["data"]), valor=df["valor"].astype(float))
     df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
     df["valor"] = df["valor"].astype(float)
     return df.sort_values("data").reset_index(drop=True)
@@ -246,9 +244,7 @@ def obter_serie_com_fallback(
     JSON), a mesma série pelo SOAP, só com as leituras até hoje. Se o SOAP também
     falhar, levanta o erro da API REST."""
     try:
-        return obter_serie(
-            codigo, data_inicial, data_final, diretorio_cache=diretorio_cache
-        )
+        return obter_serie(codigo, data_inicial, data_final, diretorio_cache=diretorio_cache)
     except (requests.RequestException, ValueError) as erro_api:
         _log.warning("Falha ao buscar a série %s do %s: %s", codigo, FONTE_BCB_API, erro_api)
         try:

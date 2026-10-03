@@ -135,17 +135,13 @@ def test_fcd_informa_por_que_o_crescimento_caiu_para_o_ipca(
 def test_proporcao_reinvestimento_caso_normal():
     # Caixa operacional positivo, caixa de investimento negativo — caso
     # comum. 200 de 1.000 gerados foram reinvestidos = 20%.
-    assert fcd.calcular_proporcao_reinvestimento_percentual(1_000.0, -200.0) == pytest.approx(
-        20.0
-    )
+    assert fcd.calcular_proporcao_reinvestimento_percentual(1_000.0, -200.0) == pytest.approx(20.0)
 
 
 def test_proporcao_reinvestimento_pode_passar_de_100_por_cento():
     # Empresa em investimento pesado financiado com dívida — investiu mais
     # do que gerou de caixa operacional (ver RDOR3/SBSP3 na investigação).
-    assert fcd.calcular_proporcao_reinvestimento_percentual(500.0, -2_500.0) == pytest.approx(
-        500.0
-    )
+    assert fcd.calcular_proporcao_reinvestimento_percentual(500.0, -2_500.0) == pytest.approx(500.0)
 
 
 @pytest.mark.parametrize("caixa_operacional", [0.0, -100.0])
@@ -447,9 +443,7 @@ def test_calcular_valor_justo_fcd_deduz_divida_liquida_do_valor_justo():
         beta=1.0,
     )
     resultado_sem_divida = fcd.calcular_valor_justo_fcd(**parametros_comuns, divida_liquida=None)
-    resultado_com_divida = fcd.calcular_valor_justo_fcd(
-        **parametros_comuns, divida_liquida=5000.0
-    )
+    resultado_com_divida = fcd.calcular_valor_justo_fcd(**parametros_comuns, divida_liquida=5000.0)
 
     assert resultado_com_divida["aplicavel"] is True
     assert resultado_com_divida["divida_liquida_deduzida"] is True

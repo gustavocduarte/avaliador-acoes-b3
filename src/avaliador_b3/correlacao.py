@@ -111,8 +111,7 @@ def calcular_correlacao(
             "correlacao": None,
             "observacoes": len(retornos),
             "motivo_nao_aplicavel": (
-                "Uma das séries não varia no período (desvio padrão zero) — "
-                "correlação indefinida."
+                "Uma das séries não varia no período (desvio padrão zero) — correlação indefinida."
             ),
         }
 

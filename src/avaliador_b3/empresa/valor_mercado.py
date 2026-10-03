@@ -26,9 +26,7 @@ def calcular_valor_mercado_e_firma(
     caixa que dívida) é um valor real, não tratada como ausente.
     """
     valor_mercado = (
-        preco_atual * numero_acoes
-        if preco_atual is not None and numero_acoes is not None
-        else None
+        preco_atual * numero_acoes if preco_atual is not None and numero_acoes is not None else None
     )
     valor_firma = (
         valor_mercado + divida_liquida

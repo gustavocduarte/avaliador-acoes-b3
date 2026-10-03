@@ -178,9 +178,7 @@ def test_divergencia_com_valor_negativo_nao_quebra_nem_inverte():
     # Caso real: FCD pode sair negativo (ex: VALE3). "maior ÷ menor" ou
     # "% sobre o menor" quebrariam ou inverteriam de sinal aqui — dividir
     # pelo preço atual (sempre positivo) evita os dois problemas.
-    resultado = calcular_divergencia_metodos(
-        {"graham": 12.06, "fcd": -8.53}, preco_atual=50.0
-    )
+    resultado = calcular_divergencia_metodos({"graham": 12.06, "fcd": -8.53}, preco_atual=50.0)
 
     assert resultado["aplicavel"] is True
     assert resultado["menor"] == pytest.approx(-8.53)

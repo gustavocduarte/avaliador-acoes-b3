@@ -794,9 +794,7 @@ def test_buscar_macro_avisa_quando_usa_valor_guardado(tmp_path, monkeypatch):
         usou_valor_guardado=True,
         data_busca=pd.Timestamp("2026-09-20"),
     )
-    monkeypatch.setattr(
-        screener, "obter_selic_e_ipca", lambda diretorio_cache: resultado_guardado
-    )
+    monkeypatch.setattr(screener, "obter_selic_e_ipca", lambda diretorio_cache: resultado_guardado)
 
     with pytest.warns(screener.MacroIndisponivelWarning, match="Banco Central indisponível agora"):
         macro = screener._buscar_macro(tmp_path)
@@ -1458,7 +1456,6 @@ def test_rodar_screener_sinaliza_so_a_acao_com_desconto_extremo(
     linha_normal = resultado[resultado["ticker"] == "BBBB4"].iloc[0]
 
     assert (
-        linha_extrema["aviso_desconto_extremo"]
-        == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
+        linha_extrema["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
     )
     assert linha_normal["aviso_desconto_extremo"] == ""

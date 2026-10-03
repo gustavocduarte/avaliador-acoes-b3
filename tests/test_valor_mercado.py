@@ -17,9 +17,7 @@ def test_valor_de_firma_e_valor_de_mercado_mais_divida_liquida():
     )
 
     assert resultado["divida_liquida"] == pytest.approx(312_769_000_000.0)
-    assert resultado["valor_firma"] == pytest.approx(
-        resultado["valor_mercado"] + 312_769_000_000.0
-    )
+    assert resultado["valor_firma"] == pytest.approx(resultado["valor_mercado"] + 312_769_000_000.0)
 
 
 def test_divida_liquida_negativa_posicao_de_caixa_liquido_e_um_valor_real():

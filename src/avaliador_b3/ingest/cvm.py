@@ -175,11 +175,7 @@ def _baixar_zip_ano(
     `hoje` é injetável (default `datetime.now()`) pra testes."""
     hoje = hoje or datetime.now()
     caminho = _caminho_zip_ano(ano, diretorio_cache, documento)
-    if (
-        caminho.exists()
-        and not forcar_atualizacao
-        and not _cache_zip_expirado(caminho, ano, hoje)
-    ):
+    if caminho.exists() and not forcar_atualizacao and not _cache_zip_expirado(caminho, ano, hoje):
         return caminho
 
     url = URLS_CVM_ZIP[documento].format(ano=ano)
@@ -229,15 +225,11 @@ def _linhas_do_membro(
             texto = io.TextIOWrapper(bruto, encoding=CODIFICACAO_CVM, newline="")
             leitor = csv.DictReader(texto, delimiter=";")
             return [
-                linha
-                for linha in leitor
-                if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
+                linha for linha in leitor if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
             ]
 
 
-def _linhas_da_empresa(
-    caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str
-) -> list[dict]:
+def _linhas_da_empresa(caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str) -> list[dict]:
     """Lê o CSV de DRE ("con" ou "ind") de dentro do zip — ver
     `_linhas_do_membro`."""
     nome_membro = f"dfp_cia_aberta_DRE_{tipo}_{ano}.csv"

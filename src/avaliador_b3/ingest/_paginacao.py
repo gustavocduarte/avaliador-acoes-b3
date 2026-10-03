@@ -38,8 +38,7 @@ def _baixar_pagina(url: str, contexto: str) -> dict:
         return resposta.json()
     except ValueError as erro:  # requests.exceptions.JSONDecodeError é subclasse de ValueError
         raise ValueError(
-            f"Resposta de {contexto} não é JSON válido — a API "
-            "não-documentada pode ter mudado."
+            f"Resposta de {contexto} não é JSON válido — a API não-documentada pode ter mudado."
         ) from erro
 
 

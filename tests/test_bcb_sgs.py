@@ -453,7 +453,7 @@ def test_obter_serie_soap_pede_a_serie_e_as_datas_e_devolve_o_dataframe(monkeypa
     assert list(df.columns) == ["data", "valor"]
     assert len(df) == 14
     assert df["valor"].iloc[-1] == pytest.approx(-0.32)
-    assert "<item xsi:type=\"xsd:long\">433</item>" in chamadas[0]
+    assert '<item xsi:type="xsd:long">433</item>' in chamadas[0]
     assert "<in1>01/07/2025</in1><in2>03/10/2026</in2>" in chamadas[0]
 
 
@@ -798,9 +798,7 @@ def test_arquivo_de_referencia_vencido_e_ignorado(monkeypatch, tmp_path):
         bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
 
 
-def test_valor_guardado_valido_tem_prioridade_sobre_o_arquivo_de_referencia(
-    monkeypatch, tmp_path
-):
+def test_valor_guardado_valido_tem_prioridade_sobre_o_arquivo_de_referencia(monkeypatch, tmp_path):
     _todas_as_fontes_vivas_falham(monkeypatch)
     _semear_ultimo_macro(tmp_path, dias_atras=5)
     _semear_referencia(tmp_path, dias_atras=5)

@@ -226,9 +226,7 @@ def test_aplicavel_independente_do_mes_da_data_referencia(data_referencia):
     # app roda pra uma empresa com o mesmo histórico.
     dividendos = _dividendos([(f"{ano}-05-15", 1.0) for ano in range(2021, 2027)])
 
-    resultado = calcular_preco_teto_bazin(
-        dividendos, data_referencia=pd.Timestamp(data_referencia)
-    )
+    resultado = calcular_preco_teto_bazin(dividendos, data_referencia=pd.Timestamp(data_referencia))
 
     assert resultado["aplicavel"] is True
     assert resultado["preco_teto"] == pytest.approx(1.0 / 0.06)

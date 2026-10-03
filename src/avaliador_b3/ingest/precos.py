@@ -153,9 +153,7 @@ def obter_historico(
     try:
         historico = yf.Ticker(ticker_yahoo).history(period=periodo, auto_adjust=auto_adjust)
     except yf.exceptions.YFTickerMissingError as erro:
-        raise TickerInvalido(
-            f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance."
-        ) from erro
+        raise TickerInvalido(f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance.") from erro
     except Exception as erro:
         raise FalhaFontePreco(
             f"Falha ao buscar {ticker_yahoo!r} via yfinance — pode ser rate "
@@ -165,8 +163,7 @@ def obter_historico(
 
     if historico.empty:
         raise TickerInvalido(
-            f"Nenhum dado retornado para {ticker_yahoo!r} — ticker inválido "
-            "ou deslistado."
+            f"Nenhum dado retornado para {ticker_yahoo!r} — ticker inválido ou deslistado."
         )
 
     historico = _sem_fechamento_vazio(historico.reset_index().rename(columns={"Date": "data"}))
@@ -255,9 +252,7 @@ def obter_dividendos(
     try:
         serie = yf.Ticker(ticker_yahoo).dividends
     except yf.exceptions.YFTickerMissingError as erro:
-        raise TickerInvalido(
-            f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance."
-        ) from erro
+        raise TickerInvalido(f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance.") from erro
     except AttributeError as erro:
         raise TickerInvalido(
             f"Ticker {ticker_yahoo!r} não encontrado no Yahoo Finance "

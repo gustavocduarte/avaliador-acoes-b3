@@ -365,9 +365,7 @@ def _calcular_linha_ticker(
     # que são praticamente a mesma data pra todas as ações da mesma
     # rodada (buscadas em sequência, minutos de diferença) — não levadas
     # pro CSV por não variarem o suficiente pra justificar a coluna.
-    data_balanco_fundamentus = (
-        indicadores["data_balanco_fundamentus"] if indicadores else None
-    )
+    data_balanco_fundamentus = indicadores["data_balanco_fundamentus"] if indicadores else None
 
     dividendos = None
     try:

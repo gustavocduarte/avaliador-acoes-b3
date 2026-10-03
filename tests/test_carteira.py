@@ -144,9 +144,7 @@ def test_simular_investimento_fcd_negativo_limita_pessimista_a_perda_total():
     # abaixo do preço atual que arrastaria o valor_combinado (base) pra
     # negativo também — os dois cenários viram perda total, não um saldo
     # negativo.
-    linha = _linha_screener(
-        preco_atual=26.98, valor_combinado=-0.55, graham=25.64, fcd=-26.74
-    )
+    linha = _linha_screener(preco_atual=26.98, valor_combinado=-0.55, graham=25.64, fcd=-26.74)
 
     resultado = carteira.simular_investimento_ticker(linha, valor_investido=1000.0)
 
@@ -273,9 +271,7 @@ def test_totais_da_carteira_somam_so_a_parte_com_cenario_nos_valores_ao_convergi
     # só tem a parte com cenário, e a base do potencial é a mesma.
     tabela_screener = pd.DataFrame(
         [
-            _linha_screener(
-                ticker="DOBR4", preco_atual=40.0, valor_combinado=80.0, graham=80.0
-            ),
+            _linha_screener(ticker="DOBR4", preco_atual=40.0, valor_combinado=80.0, graham=80.0),
             _linha_screener(ticker="SEMC3", preco_atual=10.0, valor_combinado=None),
         ]
     )

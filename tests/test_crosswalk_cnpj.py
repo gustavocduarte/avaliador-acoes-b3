@@ -44,9 +44,7 @@ def _catalogo_petr_vale() -> pd.DataFrame:
     return pd.DataFrame(
         [
             _linha_catalogo(),
-            _linha_catalogo(
-                "VALE", "4170", "33592510000154", "VALE S.A.", "Minerais Metálicos"
-            ),
+            _linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A.", "Minerais Metálicos"),
         ]
     )
 
@@ -335,9 +333,7 @@ def test_resolver_cnpj_caminho_feliz():
 
 
 def test_resolver_cnpj_levanta_erro_quando_emissor_nao_existe():
-    catalogo = pd.DataFrame(
-        [_linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A.")]
-    )
+    catalogo = pd.DataFrame([_linha_catalogo("VALE", "4170", "33592510000154", "VALE S.A.")])
     with pytest.raises(crosswalk_cnpj.EmissorNaoEncontrado, match="PETR4"):
         crosswalk_cnpj.resolver_cnpj("PETR4", catalogo)
 
@@ -357,9 +353,7 @@ def test_resolver_segmentos_setoriais_resolve_todos_quando_todos_existem():
 def test_resolver_segmentos_setoriais_omite_tickers_nao_encontrados_sem_erro():
     catalogo = _catalogo_so_petr()
 
-    resultado = crosswalk_cnpj.resolver_segmentos_setoriais(
-        ["PETR4", "TICKERFANTASMA99"], catalogo
-    )
+    resultado = crosswalk_cnpj.resolver_segmentos_setoriais(["PETR4", "TICKERFANTASMA99"], catalogo)
 
     assert list(resultado["ticker"]) == ["PETR4"]
 

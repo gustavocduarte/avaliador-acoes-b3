@@ -291,4 +291,3 @@ def test_sem_nenhum_preco_historico_devolve_yield_vazio_sem_erro():
     yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico_vazio)
 
     assert yield_por_ano.empty
-

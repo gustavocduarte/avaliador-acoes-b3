@@ -160,9 +160,7 @@ def test_montar_indicadores_levanta_erro_quando_falta_campo():
 def test_montar_indicadores_unit_real_numero_de_acoes_fica_na_base_do_preco_da_unit():
     # TAEE11: a página traz "Nro. Ações" em ações (1.033.500.000), mas a
     # Cotação e o Valor de mercado são da unit (1 unit = 3 ações).
-    rotulos_valores = fundamentus._extrair_rotulos_valores(
-        _html_fixture("fundamentus_taee11.html")
-    )
+    rotulos_valores = fundamentus._extrair_rotulos_valores(_html_fixture("fundamentus_taee11.html"))
 
     indicadores = fundamentus._montar_indicadores("TAEE11", rotulos_valores)
 
@@ -278,9 +276,7 @@ def test_obter_indicadores_caminho_feliz_corrige_encoding_e_grava_cache(tmp_path
     # precisa corrigir para iso-8859-1 antes de ler `.text`, senão os
     # rótulos acentuados ("Marg. Líquida" etc.) não batem e o parsing quebra.
     resposta_falsa = _RespostaFalsa(conteudo, encoding_padrao="ascii")
-    monkeypatch.setattr(
-        _retry.requests, "get", lambda *a, **k: resposta_falsa
-    )
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: resposta_falsa)
     monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     indicadores = fundamentus.obter_indicadores("PETR4", diretorio_cache=tmp_path)
@@ -292,9 +288,7 @@ def test_obter_indicadores_caminho_feliz_corrige_encoding_e_grava_cache(tmp_path
 
 def test_obter_indicadores_levanta_ticker_nao_encontrado(tmp_path, monkeypatch):
     conteudo = _bytes_fixture("fundamentus_ticker_invalido.html")
-    monkeypatch.setattr(
-        _retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo)
-    )
+    monkeypatch.setattr(_retry.requests, "get", lambda *a, **k: _RespostaFalsa(conteudo))
     monkeypatch.setattr(_retry.time, "sleep", lambda segundos: None)
 
     with pytest.raises(fundamentus.TickerNaoEncontrado, match="TICKERINVALIDO"):
@@ -554,9 +548,7 @@ class _RespostaComStatus:
     `ingest._retry.get_com_retry`, que decide tentar de novo (ou não)
     olhando `erro.response.status_code`."""
 
-    def __init__(
-        self, status_code: int, conteudo_bytes: bytes = b"", encoding_padrao="iso-8859-1"
-    ):
+    def __init__(self, status_code: int, conteudo_bytes: bytes = b"", encoding_padrao="iso-8859-1"):
         self.status_code = status_code
         self._conteudo_bytes = conteudo_bytes
         self.encoding = encoding_padrao

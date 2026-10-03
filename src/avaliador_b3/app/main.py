@@ -606,9 +606,7 @@ def _cartao_metodo(
             len(motivos_do_balanco) == 1 and None not in motivos_do_balanco
         )
         if balanco_inteiro_indisponivel:
-            st.caption(
-                TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo_sem_nao_controladores)
-            )
+            st.caption(TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo_sem_nao_controladores))
         elif motivo_sem_nao_controladores:
             st.caption(
                 TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
@@ -779,15 +777,10 @@ def _tabela_formatada_pt_br(
     Simulador de carteira, Ganho nominal vs. real."""
     colunas_percentual = colunas_percentual or {}
     ajudas = ajudas or {}
-    df_formatado = df.assign(
-        **{coluna: df[coluna].apply(_fmt_bilhoes) for coluna in colunas_moeda}
-    )
+    df_formatado = df.assign(**{coluna: df[coluna].apply(_fmt_bilhoes) for coluna in colunas_moeda})
     if colunas_percentual:
         df_formatado = df_formatado.assign(
-            **{
-                coluna: df_formatado[coluna].apply(_fmt_percentual)
-                for coluna in colunas_percentual
-            }
+            **{coluna: df_formatado[coluna].apply(_fmt_percentual) for coluna in colunas_percentual}
         )
     column_config = {
         coluna: st.column_config.TextColumn(rotulo, alignment="right", help=ajudas.get(coluna))
@@ -861,6 +854,7 @@ st.caption(
     "brasileira), com projeções apresentadas sempre como cenários "
     "(pessimista/base/otimista) — nunca como um número único."
 )
+
 
 def _ativar_aba(aba: str) -> None:
     """Callback de on_click: roda ANTES do script recarregar (diferente de
@@ -968,9 +962,7 @@ with aba_analisar:
             # mais recente disponível de verdade. Ver o comentário em
             # config.py com a investigação completa (discrepância real
             # encontrada contra o TradingView).
-            historico_preco_atual, erro_preco_atual = _buscar_historico(
-                ticker, PERIODO_PRECO_ATUAL
-            )
+            historico_preco_atual, erro_preco_atual = _buscar_historico(ticker, PERIODO_PRECO_ATUAL)
             historico_beta, erro_historico_beta = _buscar_historico(ticker, PERIODO_BETA)
             historico_ibovespa_beta, erro_historico_ibovespa_beta = _buscar_historico_ibovespa(
                 PERIODO_BETA
@@ -1270,9 +1262,7 @@ with aba_analisar:
             data_preco_referencia = (
                 None if erro_preco_atual else historico_preco_atual["data"].iloc[-1]
             )
-            data_beta_referencia = (
-                None if erro_historico_beta else historico_beta["data"].iloc[-1]
-            )
+            data_beta_referencia = None if erro_historico_beta else historico_beta["data"].iloc[-1]
             data_balanco_referencia = (
                 indicadores["data_balanco_fundamentus"] if indicadores else None
             )
@@ -1423,7 +1413,7 @@ with aba_analisar:
                         )
                     )
                 st.caption(
-                    "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
+                    'Indicadores individuais ausentes ("N/D") — comum em bancos, onde o '
                     "Fundamentus não reporta alguns desses índices no mesmo formato."
                 )
 
@@ -1439,9 +1429,7 @@ with aba_analisar:
                 if erro_universo:
                     st.warning(f"Segmento de listagem: {erro_universo}")
                 elif linha_universo is not None and not linha_universo.empty:
-                    st.metric(
-                        "Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"]
-                    )
+                    st.metric("Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"])
                 else:
                     st.metric("Segmento de listagem", "—")
                     st.caption(
@@ -1908,7 +1896,7 @@ with aba_screener:
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:
             st.warning(
-                f'{linhas_com_aviso} ação(ões) com potencial fora do comum (valor '
+                f"{linhas_com_aviso} ação(ões) com potencial fora do comum (valor "
                 "justo muito acima ou muito abaixo do preço) — veja a coluna "
                 '"Aviso" na tabela: a causa provável varia de uma ação para outra.'
             )
@@ -2073,7 +2061,7 @@ with aba_carteira:
                     st.caption(
                         f"{totais_carteira['quantidade_sem_cenario']} ação(ões) sem cenário "
                         "não entram nos totais por cenário, mas o valor investido nelas está "
-                        "incluído em \"Investido\"."
+                        'incluído em "Investido".'
                     )
 
                 st.divider()
@@ -2114,8 +2102,7 @@ with aba_carteira:
 # Sem esse aviso, o clique extra pareceria um link quebrado.
 st.divider()
 st.caption(
-    "Hospedado no Streamlit Community Cloud — se o app estiver \"dormindo\", "
+    'Hospedado no Streamlit Community Cloud — se o app estiver "dormindo", '
     "vai aparecer uma tela pedindo um clique pra acordar; depois disso, "
     "leva cerca de 1 minuto pra carregar."
 )
-

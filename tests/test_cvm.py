@@ -265,7 +265,9 @@ def test_baixar_zip_ano_do_itr_usa_a_url_e_o_caminho_do_itr(tmp_path, monkeypatc
 
     caminho = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, documento="itr")
 
-    assert urls == ["https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_2026.zip"]
+    assert urls == [
+        "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_2026.zip"
+    ]
     assert caminho == tmp_path / "cvm" / "itr_cia_aberta_2026.zip"
     assert caminho.read_bytes() == conteudo
 
@@ -597,9 +599,7 @@ def test_obter_fluxo_caixa_livre_as_duas_zeradas_mantem_a_consolidada(tmp_path, 
     assert resultado["fcf_atual"] == 0.0
 
 
-def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_anterior_do_schema(
-    tmp_path, monkeypatch
-):
+def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_anterior_do_schema(tmp_path, monkeypatch):
     # Cache gravado com a escolha antiga (consolidada zerada) não pode ser
     # servido depois da mudança de critério.
     caminho_cache = tmp_path / "cvm" / "fcf_00000000000400_2024.json"
@@ -642,9 +642,7 @@ def test_obter_fluxo_caixa_livre_devolve_cfo_e_cfi_separados(tmp_path, monkeypat
     assert resultado["cfo_atual"] + resultado["cfi_atual"] == pytest.approx(resultado["fcf_atual"])
 
 
-def test_obter_fluxo_caixa_livre_ignora_cache_em_formato_antigo_sem_envelope(
-    tmp_path, monkeypatch
-):
+def test_obter_fluxo_caixa_livre_ignora_cache_em_formato_antigo_sem_envelope(tmp_path, monkeypatch):
     # Regressão (2026-09-25, mesmo padrão de
     # fundamentus._ler_cache_com_schema_atual): um cache gravado ANTES da
     # versão com cfo_atual/cfi_atual (formato antigo, sem o envelope
@@ -1003,6 +1001,7 @@ def test_obter_fluxo_caixa_livre_com_fallback_propaga_cnpj_nao_encontrado_nos_do
             anos_historico_crescimento=5,
             diretorio_cache=tmp_path,
         )
+
 
 # --- Capex e juros pagos por descrição das subcontas -------------------------
 #

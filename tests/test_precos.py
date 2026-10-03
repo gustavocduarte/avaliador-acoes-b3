@@ -106,9 +106,7 @@ def test_obter_historico_sobrevive_a_cache_com_fuso_que_observa_horario_de_verao
     # os offsets misturados como texto, e relê-lo depois (cache hit)
     # levanta `ValueError: Mixed timezones detected` — bug real
     # encontrado testando o painel de correlação contra BZ=F no navegador.
-    indice = pd.DatetimeIndex(
-        ["2025-01-02", "2025-07-01"], name="Date", tz="America/New_York"
-    )
+    indice = pd.DatetimeIndex(["2025-01-02", "2025-07-01"], name="Date", tz="America/New_York")
     historico = pd.DataFrame(
         {
             "Open": [70.0, 66.0],
@@ -250,8 +248,15 @@ def test_obter_historico_forcar_atualizacao_ignora_cache_valido(tmp_path, monkey
 
 @pytest.mark.parametrize(
     "preco, esperado",
-    [(49.9, True), (0.01, True), (0.0, False), (-3.0, False), (float("nan"), False),
-     (float("inf"), False), (None, False)],
+    [
+        (49.9, True),
+        (0.01, True),
+        (0.0, False),
+        (-3.0, False),
+        (float("nan"), False),
+        (float("inf"), False),
+        (None, False),
+    ],
 )
 def test_preco_valido(preco, esperado):
     assert precos.preco_valido(preco) is esperado
@@ -312,9 +317,7 @@ def test_obter_historico_cache_com_linha_sem_fechamento_e_limpo_na_leitura(tmp_p
     caminho = tmp_path / "precos" / "PETR4.SA_3mo.csv"
     caminho.parent.mkdir(parents=True)
     caminho.write_text(
-        "data,Close,Volume\n"
-        "2026-10-01 03:00:00+00:00,49.9,100\n"
-        "2026-10-02 03:00:00+00:00,,200\n",
+        "data,Close,Volume\n2026-10-01 03:00:00+00:00,49.9,100\n2026-10-02 03:00:00+00:00,,200\n",
         encoding="utf-8",
     )
     ticker_falso = _TickerFalso(resultado=_historico_falso())

@@ -45,7 +45,6 @@ from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivel
 ANO_FCD_MOCK = 2025
 
 
-
 def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None):
     """Resultado do FCF de UM ano (`ingest.cvm.obter_fluxo_caixa_livre`). `capex`
     `None` simula o capex não identificado. O fluxo do FCD é
@@ -62,6 +61,7 @@ def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None):
         },
         "juros_pagos_atual": {"valor": juros_pagos, "linhas": []},
     }
+
 
 # Caminho absoluto: AppTest.from_file resolve caminho relativo contra o
 # arquivo que CHAMA from_file (este arquivo de teste), não contra o cwd do
@@ -194,9 +194,7 @@ def test_dropdown_lista_acoes_do_ibovespa_quando_universo_disponivel(monkeypatch
     # fallback (esse aviso específico é o foco deste teste; Selic/IPCA
     # segue indisponível nesta simulação e mostra o aviso próprio dele,
     # sem relação com o dropdown).
-    assert not any(
-        "Lista de ações do Ibovespa indisponível" in aviso.value for aviso in at.warning
-    )
+    assert not any("Lista de ações do Ibovespa indisponível" in aviso.value for aviso in at.warning)
 
 
 def test_cai_pro_campo_de_texto_livre_quando_universo_falha(monkeypatch):
@@ -218,9 +216,7 @@ def test_cai_pro_campo_de_texto_livre_quando_universo_falha(monkeypatch):
     assert "Ticker (ex: PETR4)" in rotulos_texto
 
     avisos = [aviso.value for aviso in at.warning]
-    assert any(
-        "indisponível" in aviso and "falha simulada de rede" in aviso for aviso in avisos
-    )
+    assert any("indisponível" in aviso and "falha simulada de rede" in aviso for aviso in avisos)
 
 
 # --- Busca automática de PETR4 na primeira abertura da sessão --------------
@@ -437,9 +433,7 @@ def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monke
 
     assert not at.exception
     assert "Correlação com fatores externos" not in [tab.label for tab in at.tabs]
-    assert any(
-        subheader.value == "Correlação com fatores externos" for subheader in at.subheader
-    )
+    assert any(subheader.value == "Correlação com fatores externos" for subheader in at.subheader)
 
 
 # --- Delta (%) de upside nos cards de valor justo -----------------------------
@@ -1181,9 +1175,7 @@ def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
 
     assert not at.exception
     captions = [
-        c.value
-        for c in at.caption
-        if "o caixa gerado pela operação foi negativo" in c.value
+        c.value for c in at.caption if "o caixa gerado pela operação foi negativo" in c.value
     ]
     assert len(captions) == 1
     assert captions[0] == (
@@ -1205,9 +1197,7 @@ def test_caption_reinvestimento_ausente_quando_caixa_de_investimento_positivo(mo
     assert not at.exception
     assert not [c.value for c in at.caption if "reinvestiu" in c.value]
     assert not [
-        c.value
-        for c in at.caption
-        if "o caixa gerado pela operação foi negativo" in c.value
+        c.value for c in at.caption if "o caixa gerado pela operação foi negativo" in c.value
     ]
 
 
@@ -1236,8 +1226,7 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
         "outros métodos" in bloco
     )
     assert (
-        "No cartão do FCD, a porcentagem reinvestida no ano aparece logo "
-        "abaixo do valor." in bloco
+        "No cartão do FCD, a porcentagem reinvestida no ano aparece logo abaixo do valor." in bloco
     )
 
 
@@ -1296,11 +1285,7 @@ def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    blocos = [
-        m.value
-        for m in at.markdown
-        if "**Potencial**" in m.value and "**Aviso**" in m.value
-    ]
+    blocos = [m.value for m in at.markdown if "**Potencial**" in m.value and "**Aviso**" in m.value]
     assert len(blocos) == 1
     bloco = blocos[0]
     assert (
@@ -1547,9 +1532,7 @@ def test_caption_divergencia_aparece_com_dois_metodos_aplicaveis(monkeypatch):
     bazin = 1.0 / 0.06
     pct_esperado = round((graham - bazin) / 50.0 * 100)
 
-    divergencias = [
-        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
-    ]
+    divergencias = [c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value]
     assert len(divergencias) == 1
     assert f"{pct_esperado}% do preço atual" in divergencias[0]
     assert "Quanto maior essa diferença, menos os métodos concordam entre si." in divergencias[0]
@@ -1567,9 +1550,7 @@ def test_caption_divergencia_some_com_um_so_metodo_aplicavel(monkeypatch):
 
     assert not at.exception
     assert _metrica_por_label(at, "FCD").value == "—"
-    divergencias = [
-        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
-    ]
+    divergencias = [c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value]
     assert divergencias == []
 
 
@@ -1587,9 +1568,7 @@ def test_caption_divergencia_sem_preco_atual_mostra_variante_sem_percentual(monk
     at.run(timeout=60)
 
     assert not at.exception
-    divergencias = [
-        c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value
-    ]
+    divergencias = [c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value]
     assert len(divergencias) == 1
     assert "de diferença)." in divergencias[0]
     assert "% do preço atual" not in divergencias[0]
@@ -1675,9 +1654,7 @@ def test_caption_dividendos_atipicos_aparece_acima_do_corte(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    avisos = [
-        c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value
-    ]
+    avisos = [c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value]
     assert len(avisos) == 1
     assert "Dividendos dos últimos 12 meses em 300% da mediana dos 5 anos anteriores." in avisos[0]
     assert "Pode ser crescimento real dos pagamentos ou um pagamento extraordinário" in avisos[0]
@@ -1698,9 +1675,7 @@ def test_caption_dividendos_atipicos_nao_aparece_abaixo_do_corte(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    avisos = [
-        c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value
-    ]
+    avisos = [c.value for c in at.caption if "Dividendos dos últimos 12 meses em" in c.value]
     assert avisos == []
 
 
@@ -2214,9 +2189,7 @@ def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs)
     raise RuntimeError(f"série {codigo} não mockada neste teste")
 
 
-def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
-    monkeypatch, tmp_path
-):
+def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkeypatch, tmp_path):
     # Ver comentário central perto de `_tabela_formatada_pt_br` em
     # app/main.py pro porquê (NumberColumn sem vírgula brasileira em
     # locale nenhum) e o trade-off aceito (ordenar pelo cabeçalho dessas
@@ -2250,9 +2223,7 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(
     assert linha_dobr4["desconto_percentual"] == "100,0%"
 
 
-def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(
-    monkeypatch, tmp_path
-):
+def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monkeypatch, tmp_path):
     # Bug real: a faixa amarela mandava ver a coluna "aviso_desconto_
     # extremo" (nome interno do CSV), mas a tabela mostra essa coluna
     # como "Aviso" (ver column_config em app/main.py) -- quem lesse a
@@ -2285,12 +2256,10 @@ def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(
     at.run(timeout=60)
 
     assert not at.exception
-    avisos = [
-        w.value for w in at.warning if "ação(ões) com potencial fora do comum" in w.value
-    ]
+    avisos = [w.value for w in at.warning if "ação(ões) com potencial fora do comum" in w.value]
     assert len(avisos) == 1
     assert avisos[0] == (
-        '1 ação(ões) com potencial fora do comum (valor justo muito acima ou '
+        "1 ação(ões) com potencial fora do comum (valor justo muito acima ou "
         'muito abaixo do preço) — veja a coluna "Aviso" na tabela: a causa '
         "provável varia de uma ação para outra."
     )
@@ -2372,9 +2341,7 @@ def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
         botao_screener.click().run(timeout=60)
 
     assert not at.exception
-    avisos = [
-        aviso.value for aviso in at.warning if "Selic/IPCA indisponíveis" in aviso.value
-    ]
+    avisos = [aviso.value for aviso in at.warning if "Selic/IPCA indisponíveis" in aviso.value]
     assert len(avisos) == 1
     assert "BCB fora do ar (simulado)" in avisos[0]
 
@@ -2474,10 +2441,7 @@ def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypa
         if "Dividendos vs. histórico vazio significa que o Bazin não se aplica" in m.value
     ]
     assert len(blocos) == 1
-    assert (
-        "ou, raramente, que os anos anteriores não têm pagamento para comparar"
-        in blocos[0]
-    )
+    assert "ou, raramente, que os anos anteriores não têm pagamento para comparar" in blocos[0]
 
 
 def _escrever_screener_falso_para_simulador(caminho) -> None:
