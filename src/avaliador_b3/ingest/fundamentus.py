@@ -116,15 +116,15 @@ def _extrair_rotulos_valores(html: str) -> dict[str, str]:
     return resultado
 
 
-def _numero_acoes_na_base_da_cotacao(
+def _fator_acoes_por_cotacao(
     numero_acoes: float | None, cotacao: float | None, valor_mercado: float | None
-) -> float | None:
+) -> int | None:
     """Em units, o Fundamentus conta AÇÕES em "Nro. Ações", mas a Cotação e
     o Valor de mercado são da unit (ex: TAEE11 = 3 ações). O fator
     `Nro. Ações × Cotação ÷ Valor de mercado` é o número de ações por
     cotação (1 em ação comum); dividir por ele deixa o número na mesma
     base do preço. Fator que não é inteiro (dentro da tolerância) ou dado
-    faltando deixa o número indisponível (`None`), nunca aproximado."""
+    faltando deixa o fator indisponível (`None`), nunca aproximado."""
     if not numero_acoes or not cotacao or not valor_mercado:
         return None
     if numero_acoes <= 0 or cotacao <= 0 or valor_mercado <= 0:
@@ -133,7 +133,16 @@ def _numero_acoes_na_base_da_cotacao(
     fator = round(fator_bruto)
     if fator < 1 or abs(fator_bruto - fator) > TOLERANCIA_FATOR_ACOES_POR_COTACAO * fator:
         return None
-    return numero_acoes / fator
+    return fator
+
+
+def _numero_acoes_na_base_da_cotacao(
+    numero_acoes: float | None, cotacao: float | None, valor_mercado: float | None
+) -> float | None:
+    """Número de ações na base da cotação (ver `_fator_acoes_por_cotacao`), ou
+    `None` se o fator não for calculável."""
+    fator = _fator_acoes_por_cotacao(numero_acoes, cotacao, valor_mercado)
+    return None if fator is None else numero_acoes / fator
 
 
 def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
@@ -147,10 +156,15 @@ def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:
     indicadores: dict = {"ticker": ticker}
     for rotulo, nome_campo in CAMPOS_FUNDAMENTUS.items():
         indicadores[nome_campo] = _parse_numero(rotulos_valores[rotulo])
+    cotacao = _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_COTACAO, "-"))
+    valor_mercado = _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_VALOR_MERCADO, "-"))
+    # Ações por cotação (1 em ação comum, o número de ações da unit em units): a
+    # composição do capital da CVM, que conta ações, é dividida por ele.
+    indicadores["acoes_por_cotacao"] = _fator_acoes_por_cotacao(
+        indicadores["numero_acoes"], cotacao, valor_mercado
+    )
     indicadores["numero_acoes"] = _numero_acoes_na_base_da_cotacao(
-        indicadores["numero_acoes"],
-        _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_COTACAO, "-")),
-        _parse_numero(rotulos_valores.get(ROTULO_FUNDAMENTUS_VALOR_MERCADO, "-")),
+        indicadores["numero_acoes"], cotacao, valor_mercado
     )
     # Opcionais (ver CAMPOS_FUNDAMENTUS_OPCIONAIS): ausência do rótulo na
     # página (não só valor vazio) é esperada pra certos tipos de empresa

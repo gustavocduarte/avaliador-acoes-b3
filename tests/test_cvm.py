@@ -253,6 +253,23 @@ def test_baixar_zip_ano_grava_arquivo_via_streaming(tmp_path, monkeypatch):
     assert caminho == tmp_path / "cvm" / "dfp_cia_aberta_2024.zip"
 
 
+def test_baixar_zip_ano_do_itr_usa_a_url_e_o_caminho_do_itr(tmp_path, monkeypatch):
+    conteudo = ZIP_AMOSTRA.read_bytes()
+    urls = []
+
+    def get_falso(url, timeout, stream):
+        urls.append(url)
+        return _RespostaStreamFalsa(conteudo)
+
+    monkeypatch.setattr(cvm.requests, "get", get_falso)
+
+    caminho = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, documento="itr")
+
+    assert urls == ["https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_2026.zip"]
+    assert caminho == tmp_path / "cvm" / "itr_cia_aberta_2026.zip"
+    assert caminho.read_bytes() == conteudo
+
+
 def test_baixar_zip_ano_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path, monkeypatch):
     conteudo = ZIP_AMOSTRA.read_bytes()
     chamadas = {"contador": 0}

@@ -144,6 +144,7 @@ def test_montar_indicadores_caminho_feliz():
         "divida_liquida_sobre_patrimonio": 0.65,
         "crescimento_receita_5a_percentual": -2.3,
         "numero_acoes": 12888700000.0,
+        "acoes_por_cotacao": 1,
         "patrimonio_liquido": 480950000000.0,
         "divida_liquida": 312769000000.0,
         "data_balanco_fundamentus": "2026-06-30",
@@ -169,6 +170,7 @@ def test_montar_indicadores_unit_real_numero_de_acoes_fica_na_base_do_preco_da_u
     valor_mercado = fundamentus._parse_numero(rotulos_valores["Valor de mercado"])
     assert indicadores["numero_acoes"] == pytest.approx(1033500000.0 / 3)
     assert cotacao * indicadores["numero_acoes"] == pytest.approx(valor_mercado, rel=0.001)
+    assert indicadores["acoes_por_cotacao"] == 3
 
 
 def test_montar_indicadores_acao_comum_real_mantem_o_numero_de_acoes():
@@ -177,6 +179,21 @@ def test_montar_indicadores_acao_comum_real_mantem_o_numero_de_acoes():
     indicadores = fundamentus._montar_indicadores("PETR4", rotulos_valores)
 
     assert indicadores["numero_acoes"] == 12888700000.0
+    assert indicadores["acoes_por_cotacao"] == 1
+
+
+@pytest.mark.parametrize(
+    ("numero_acoes", "cotacao", "valor_mercado", "esperado"),
+    [
+        (1000.0, 10.0, 10000.0, 1),
+        (1033.5e6, 42.85, 14762e6, 3),
+        (1000.0, 10.0, 12345.0, None),
+        (None, 10.0, 10000.0, None),
+        (1000.0, 10.0, None, None),
+    ],
+)
+def test_fator_acoes_por_cotacao(numero_acoes, cotacao, valor_mercado, esperado):
+    assert fundamentus._fator_acoes_por_cotacao(numero_acoes, cotacao, valor_mercado) == esperado
 
 
 @pytest.mark.parametrize(
@@ -420,7 +437,7 @@ def test_obter_indicadores_cache_versao_anterior_sem_campo_novo_busca_de_novo_e_
 def test_obter_indicadores_cache_da_versao_3_e_descartado_e_corrige_o_numero_de_acoes_da_unit(
     tmp_path, monkeypatch
 ):
-    assert fundamentus.VERSAO_SCHEMA_FUNDAMENTUS == 4
+    assert fundamentus.VERSAO_SCHEMA_FUNDAMENTUS == 5
     caminho = tmp_path / "fundamentus" / "TAEE11.json"
     caminho.parent.mkdir(parents=True)
     caminho.write_text(

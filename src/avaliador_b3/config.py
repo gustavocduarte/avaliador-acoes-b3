@@ -214,7 +214,7 @@ DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
 # cenário que esse mecanismo existe pra cobrir (campo novo, cache velho
 # sem ele), mesmo caso real do KeyError de "Patrim. Líq/Dív. Líquida"
 # citado acima.
-VERSAO_SCHEMA_FUNDAMENTUS = 4
+VERSAO_SCHEMA_FUNDAMENTUS = 5
 TTL_CACHE_FUNDAMENTUS_SEGUNDOS = 24 * 60 * 60
 
 # Rótulos usados só pra converter "Nro. Ações" na base do preço do ticker
@@ -302,6 +302,8 @@ ROTULO_FUNDAMENTUS_DATA_BALANCO = "Últ balanço processado"
 # aceitar silenciosamente uma conta errada se essa regra falhar para algum
 # outro tipo de empresa (seguradora, etc.) ainda não testado.
 URL_CVM_DFP_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{ano}.zip"
+URL_CVM_ITR_ZIP = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_{ano}.zip"
+URLS_CVM_ZIP = {"dfp": URL_CVM_DFP_ZIP, "itr": URL_CVM_ITR_ZIP}
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
@@ -436,6 +438,65 @@ TERMOS_JUROS_EXCLUIDOS = (
 )
 TERMOS_JUROS_MISTOS = ("principal",)
 TERMOS_ARRENDAMENTO = ("arrendamento", "leasing", "alugue", "locacao", "locacoes")
+
+# --- Balanço consolidado e composição do capital (ITR e DFP) ---
+#
+# Uma leitura só, na data-base do balanço do Fundamentus, alimenta o desconto dos
+# não controladores, os pesos do WACC (patrimônio total), o passivo de
+# arrendamento fora da dívida do Fundamentus e o número de ações em circulação.
+# 31/03, 30/06 e 30/09 vêm do ITR; 31/12 vem do DFP.
+VERSAO_SCHEMA_CVM_BALANCO = 1
+CODIGO_PATRIMONIO_LIQUIDO_CVM = "2.03"
+TERMO_NAO_CONTROLADORES = "nao controlador"
+# A dívida do Fundamentus é 2.01.04 + 2.02.01; arrendamento nessas contas já está nela.
+PREFIXOS_CONTAS_DIVIDA_FUNDAMENTUS = ("2.01.04", "2.02.01")
+PREFIXOS_CONTAS_PASSIVO = ("2.01.", "2.02.")
+TERMOS_PASSIVO_ARRENDAMENTO = ("arrendamento", "locacao", "locacoes")
+MESES_DIAS_BALANCO_ITR = ("03-31", "06-30", "09-30")
+MES_DIA_BALANCO_DFP = "12-31"
+# Salvaguardas do número de ações em circulação (ver relatório, seção 12):
+# 22 empresas informam a composição em milhares (o número do Fundamentus é cerca
+# de 1.000 vezes o da CVM); tesouraria acima do limite indica erro de escala nos
+# dados (TEND3); o integralizado já líquido de tesouraria (VALE3) é reconhecido
+# quando integralizado + tesouraria bate com o Fundamentus; e uma divergência
+# implausível (IGTI11, cujo fator de unit do Fundamentus não bate com a CVM) deixa
+# o número da CVM de lado.
+FATOR_ESCALA_MILHARES_CVM = 1000.0
+FAIXA_RAZAO_ESCALA_MILHARES_CVM = (500.0, 2000.0)
+LIMITE_TESOURARIA_SOBRE_CAPITAL = 0.20
+TOLERANCIA_INTEGRALIZADO_LIQUIDO = 0.005
+# Diferença entre o número do Fundamentus e o em circulação da CVM (ou o integralizado,
+# quando a diferença é só a tesouraria) acima da qual a tela avisa.
+LIMITE_DIVERGENCIA_ACOES = 0.02
+LIMITE_DIVERGENCIA_ACOES_IMPLAUSIVEL = 0.5
+MOTIVO_BALANCO_DATA_FORA_DO_TRIMESTRE = "A data-base do balanço ({data}) não é um fim de trimestre."
+MOTIVO_BALANCO_SEM_DATA_BASE = "A data-base do balanço não está disponível."
+MOTIVO_BALANCO_ARQUIVO_NAO_PUBLICADO = (
+    "O arquivo {documento} da CVM de {ano} ainda não foi publicado."
+)
+MOTIVO_BALANCO_SEM_DEMONSTRACAO = (
+    "A empresa não tem balanço consolidado de {data} no {documento} da CVM."
+)
+MOTIVO_ACOES_SEM_REFERENCIA = (
+    "Número de ações do Fundamentus indisponível: sem ele não dá para validar a escala "
+    "da composição do capital da CVM."
+)
+MOTIVO_ACOES_SEM_COMPOSICAO = (
+    "A empresa não tem composição do capital de {data} no {documento} da CVM."
+)
+MOTIVO_ACOES_TESOURARIA_ALTA = (
+    "Tesouraria de {percentual} do capital na composição da CVM, acima do limite de "
+    "{limite}: provável erro de escala nos dados da CVM."
+)
+MOTIVO_ACOES_DIVERGENCIA_IMPLAUSIVEL = (
+    "O número de ações da CVM ({cvm}) difere {divergencia} do do Fundamentus "
+    "({fundamentus}): provável erro de escala ou de fator de unit; mantido o do Fundamentus."
+)
+AVISO_DIVERGENCIA_ACOES = (
+    "O número de ações do Fundamentus ({fundamentus}) difere em {divergencia} do da CVM "
+    "em {data} ({cvm}). Pode ter havido oferta, bonificação ou cancelamento de ações "
+    "depois dessa data."
+)
 
 # Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
 # ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).

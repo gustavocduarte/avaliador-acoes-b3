@@ -58,7 +58,7 @@ from avaliador_b3.config import (
     TERMOS_JUROS_MISTOS,
     TERMOS_JUROS_PAGOS,
     TERMOS_NAO_CAPEX,
-    URL_CVM_DFP_ZIP,
+    URLS_CVM_ZIP,
     VERSAO_SCHEMA_CVM_FCF,
 )
 
@@ -124,8 +124,8 @@ def _normalizar_cnpj(cnpj: str) -> str:
     return "".join(c for c in cnpj if c.isdigit()).zfill(TAMANHO_CNPJ)
 
 
-def _caminho_zip_ano(ano: int, diretorio_cache: Path) -> Path:
-    return diretorio_cache / "cvm" / f"dfp_cia_aberta_{ano}.zip"
+def _caminho_zip_ano(ano: int, diretorio_cache: Path, documento: str = "dfp") -> Path:
+    return diretorio_cache / "cvm" / f"{documento}_cia_aberta_{ano}.zip"
 
 
 def _caminho_cache_resultado(cnpj_normalizado: str, ano: int, diretorio_cache: Path) -> Path:
@@ -149,9 +149,10 @@ def _baixar_zip_ano(
     diretorio_cache: Path,
     forcar_atualizacao: bool,
     hoje: datetime | None = None,
+    documento: str = "dfp",
 ) -> Path:
     """Baixa (com streaming, sem carregar tudo em memória) o zip anual do
-    DFP, ou devolve o caminho do já cacheado. Um único zip serve para
+    DFP (ITR com `documento="itr"`), ou devolve o caminho do já cacheado. Um único zip serve para
     qualquer número de empresas consultadas naquele ano.
 
     Cache é permanente pra anos fechados, mas expira pro ano ainda em
@@ -173,7 +174,7 @@ def _baixar_zip_ano(
 
     `hoje` é injetável (default `datetime.now()`) pra testes."""
     hoje = hoje or datetime.now()
-    caminho = _caminho_zip_ano(ano, diretorio_cache)
+    caminho = _caminho_zip_ano(ano, diretorio_cache, documento)
     if (
         caminho.exists()
         and not forcar_atualizacao
@@ -181,7 +182,7 @@ def _baixar_zip_ano(
     ):
         return caminho
 
-    url = URL_CVM_DFP_ZIP.format(ano=ano)
+    url = URLS_CVM_ZIP[documento].format(ano=ano)
     caminho.parent.mkdir(parents=True, exist_ok=True)
     caminho_temporario = caminho.with_suffix(".zip.tmp")
 
