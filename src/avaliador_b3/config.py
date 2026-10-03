@@ -551,20 +551,17 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 
 # --- Fluxo de Caixa Descontado (FCD) ---
 #
-# Base do fluxo de caixa livre: FCF = Caixa Líquido Atividades Operacionais
-# (conta 6.01 da DFC) + Caixa Líquido Atividades de Investimento (6.02).
-# Investigado em 2026-09-14: esses dois códigos de nível 2 são estáveis
-# entre empresas de perfis bem diferentes — Petrobras (método indireto,
-# não-financeira), Itaú Unibanco (método indireto, banco) e uma empresa
-# que usa método direto — ao contrário da conta de Lucro Líquido da DRE
-# (ver `CONTA_LUCRO_POR_ACAO_CVM` e o comentário do crosswalk/cvm.py), que
-# varia por tipo de empresa. Como 6.02 normalmente vem negativo, somar os
-# dois já desconta capex e outros investimentos do caixa operacional.
-# Simplificação assumida (não é FCFF nem FCFE no sentido estritamente
-# acadêmico, que exigiria reconstruir EBIT-CapEx-ΔWC ou separar juros de
-# financiamento item a item — dado que a CVM não padroniza essa quebra de
-# forma uniforme entre empresas): tratamos o valor presente desses fluxos
-# como Enterprise Value — valor da empresa como um todo, dívida incluída.
+# Base do fluxo de caixa livre: caixa gerado pela operação (conta 6.01 da
+# DFC), menos o capex (compras de imobilizado e intangível, subcontas de
+# 6.02 identificadas pela descrição) e mais os juros pagos em 6.01, já
+# líquidos do imposto (ALIQUOTA_IR_CSLL_PADRAO). Os juros voltam ao fluxo
+# porque o custo da dívida já está no WACC e a dívida líquida é subtraída
+# depois; sem isso a dívida seria penalizada duas vezes. Ficam de fora o
+# resto de 6.02 (aplicações financeiras, compra e venda de participações e
+# de ativos, que não são geração de caixa recorrente) e o pagamento de
+# arrendamentos (IFRS 16), que fica em 6.03. O valor presente desses
+# fluxos é o Enterprise Value — valor da empresa como um todo, dívida
+# incluída.
 #
 # Correção em 2026-09-23 (achado numa revisão externa do projeto): até
 # então, esse Enterprise Value era dividido direto pelo número de ações,
@@ -679,6 +676,21 @@ MOTIVO_FCD_HOLDING_FINANCEIRA = (
     "dessas participações. Os outros métodos continuam sendo calculados quando se aplicam."
 )
 TEXTO_COMPLEMENTO_SEM_METODO = "Veja o motivo de cada método nos cartões ao lado."
+MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO = (
+    "Não foi possível identificar o gasto em imobilizado e intangível "
+    "(capex) na demonstração de fluxo de caixa da empresa, e sem ele o "
+    "fluxo de caixa livre não é calculado. Os outros métodos continuam "
+    "sendo calculados quando se aplicam."
+)
+# Motivos mostrados quando o crescimento do fluxo cai para o IPCA.
+TEXTO_CRESCIMENTO_IPCA = "Crescimento do fluxo estimado pelo IPCA: {motivo}."
+MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE = "a empresa não tem demonstração do ano-base na CVM"
+MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX = (
+    "o gasto em imobilizado e intangível do ano-base não foi identificado"
+)
+MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA = (
+    "o fluxo de caixa livre do ano-base foi zero ou negativo"
+)
 MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
     "O fluxo de caixa livre do último ano foi zero ou negativo; projetá-lo "
     "para o futuro não dá uma estimativa de valor confiável, então o "

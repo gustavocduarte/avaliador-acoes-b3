@@ -43,12 +43,24 @@ from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivel
 # (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não uma constante.
 ANO_FCD_MOCK = 2025
 
-# Campos de capex e juros pagos do resultado do FCF; os testes de interface ainda
-# não os usam.
-EXTRAS_FCF_MOCK = {
-    "capex_atual": {"status": "nao_identificado", "valor": None, "linhas": []},
-    "juros_pagos_atual": {"valor": 0.0, "linhas": []},
-}
+
+
+def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None):
+    """Resultado do FCF de UM ano (`ingest.cvm.obter_fluxo_caixa_livre`). `capex`
+    `None` simula o capex não identificado. O fluxo do FCD é
+    cfo - capex + juros_pagos x (1 - alíquota)."""
+    cfi = -(capex or 0.0) if cfi_atual is None else cfi_atual
+    return {
+        "fcf_atual": cfo_atual + cfi,
+        "cfo_atual": cfo_atual,
+        "cfi_atual": cfi,
+        "capex_atual": {
+            "status": "identificado" if capex is not None else "nao_identificado",
+            "valor": capex,
+            "linhas": [],
+        },
+        "juros_pagos_atual": {"valor": juros_pagos, "linhas": []},
+    }
 
 # Caminho absoluto: AppTest.from_file resolve caminho relativo contra o
 # arquivo que CHAMA from_file (este arquivo de teste), não contra o cwd do
@@ -531,14 +543,9 @@ def _preparar_fcd_aplicavel(
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            {
-                "fcf_atual": 1_000_000.0,
-                "cfo_atual": 1_200_000.0,
-                "cfi_atual": -200_000.0,
-                **EXTRAS_FCF_MOCK,
-            }
+            _resultado_fcf_mock(1_200_000.0, 200_000.0)
             if ano == ANO_FCD_MOCK
-            else {"fcf_atual": 800_000.0, **EXTRAS_FCF_MOCK}
+            else _resultado_fcf_mock(1_000_000.0, 200_000.0)
         ),
     )
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
@@ -593,12 +600,7 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
     def obter_fluxo_caixa_livre_com_fallback(cnpj, ano, *args, **kwargs):
         if ano == ANO_FCD_MOCK:
             raise CnpjNaoEncontrado("não encontrado no ano mais recente")
-        return {
-            "fcf_atual": 800_000.0,
-            "cfo_atual": 900_000.0,
-            "cfi_atual": -100_000.0,
-            **EXTRAS_FCF_MOCK,
-        }
+        return _resultado_fcf_mock(900_000.0, 100_000.0)
 
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre", obter_fluxo_caixa_livre_com_fallback
@@ -621,19 +623,16 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
 # docs/correcao-cnpj-2026-09-25.md, seção 7) ------------------------------
 
 
-def _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual: float, cfi_atual: float) -> None:
+def _preparar_fcd_com_cfo_cfi(
+    monkeypatch, cfo_atual: float, cfi_atual: float, juros_pagos: float = 0.0
+) -> None:
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            {
-                "fcf_atual": cfo_atual + cfi_atual,
-                "cfo_atual": cfo_atual,
-                "cfi_atual": cfi_atual,
-                **EXTRAS_FCF_MOCK,
-            }
+            _resultado_fcf_mock(cfo_atual, max(-cfi_atual, 0.0), juros_pagos, cfi_atual)
             if ano == ANO_FCD_MOCK
-            else {"fcf_atual": 800_000.0, **EXTRAS_FCF_MOCK}
+            else _resultado_fcf_mock(1_000_000.0, 200_000.0)
         ),
     )
 
@@ -691,11 +690,58 @@ def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada
     assert f"Não aplicável: {MOTIVO_FCD_FLUXO_NAO_POSITIVO}" in captions
 
 
+def test_fcd_sem_capex_identificado_no_ano_de_referencia_e_nao_aplicavel_com_motivo(
+    monkeypatch,
+):
+    from avaliador_b3.config import MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO
+
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
+        lambda cnpj, ano, *a, **kw: (
+            _resultado_fcf_mock(1_200_000.0, None)
+            if ano == ANO_FCD_MOCK
+            else _resultado_fcf_mock(1_000_000.0, 200_000.0)
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert f"Não aplicável: {MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO}" in [c.value for c in at.caption]
+
+
+def test_fcd_com_capex_do_ano_base_nao_identificado_mostra_que_o_crescimento_usou_o_ipca(
+    monkeypatch,
+):
+    from avaliador_b3.config import MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX, TEXTO_CRESCIMENTO_IPCA
+
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
+        lambda cnpj, ano, *a, **kw: (
+            _resultado_fcf_mock(1_200_000.0, 200_000.0)
+            if ano == ANO_FCD_MOCK
+            else _resultado_fcf_mock(1_000_000.0, None)
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    esperado = TEXTO_CRESCIMENTO_IPCA.format(motivo=MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX)
+    assert esperado in [c.value for c in at.caption]
+
+
 def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
-    # Caixa operacional negativo com FCF positivo (a empresa vendeu mais
-    # ativos do que a operação consumiu): o FCD continua aplicável, já que
-    # com FCF zero ou negativo ele não é calculado.
-    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=-500_000.0, cfi_atual=900_000.0)
+    # Caso raro: caixa operacional negativo, mas os juros pagos somados de
+    # volta deixam o fluxo do FCD positivo (-500 - 100 + 1.000 x 0,66 > 0),
+    # então o FCD é calculado; com fluxo zero ou negativo ele não seria.
+    _preparar_fcd_com_cfo_cfi(
+        monkeypatch, cfo_atual=-500_000.0, cfi_atual=-100_000.0, juros_pagos=1_000_000.0
+    )
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
@@ -747,8 +793,9 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
     assert len(blocos) == 1
     bloco = blocos[0]
     assert (
-        "O fluxo de caixa usado é o caixa gerado pela operação menos o que foi "
-        "investido no ano." in bloco
+        "O fluxo de caixa usado é o caixa gerado pela operação menos o que a "
+        "empresa gastou em imobilizado e intangível (máquinas, obras, sistemas) "
+        "no ano, mais os juros pagos sobre a dívida, já descontado o imposto" in bloco
     )
     assert (
         "empresas em fase de investimento pesado (comuns em energia e "

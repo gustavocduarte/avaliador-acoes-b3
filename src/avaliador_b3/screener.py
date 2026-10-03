@@ -87,6 +87,7 @@ from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcula
 from avaliador_b3.modelos.fcd import (
     calcular_proporcao_reinvestimento_percentual,
     calcular_valor_justo_fcd,
+    montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 
@@ -314,7 +315,7 @@ def _calcular_linha_ticker(
         # Mesmo registro que já traz o cnpj — sem busca extra. Usado só
         # pra decidir se o FCD se aplica (ver config.SEGMENTOS_FCD_NAO_
         # APLICAVEL), instituição financeira não tem interpretação
-        # econômica válida pra CFO+CFI descontado pelo WACC.
+        # econômica válida pro fluxo de caixa descontado pelo WACC.
         segmento_setorial = registro_cnpj["segmento_setorial"]
     except EmissorNaoEncontrado:
         cnpj = None
@@ -325,7 +326,8 @@ def _calcular_linha_ticker(
     # ainda não apareceu no zip mais recente, cai um ano só pra ele, com o
     # ano-base do crescimento andando junto. Ver
     # ingest.cvm.obter_fluxo_caixa_livre_com_fallback.
-    fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
+    fluxos_fcd = montar_fluxos_fcd(None)
+    ano_referencia_fcd = None
     proporcao_reinvestimento_percentual = None
     if cnpj and ano_mais_recente_fcd is not None:
         try:
@@ -335,14 +337,14 @@ def _calcular_linha_ticker(
                 ANOS_HISTORICO_CRESCIMENTO_FCD,
                 diretorio_cache=diretorio_cache,
             )
-            fcf_atual = resultado_fcf["fcf_atual"]
-            fcf_ha_n_anos = resultado_fcf["fcf_ha_n_anos"]
+            fluxos_fcd = montar_fluxos_fcd(resultado_fcf)
             ano_referencia_fcd = resultado_fcf["ano_referencia_utilizado"]
             proporcao_reinvestimento_percentual = calcular_proporcao_reinvestimento_percentual(
                 resultado_fcf["cfo_atual"], resultado_fcf["cfi_atual"]
             )
         except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada, requests.RequestException):
-            fcf_atual = fcf_ha_n_anos = ano_referencia_fcd = None
+            fluxos_fcd = montar_fluxos_fcd(None)
+            ano_referencia_fcd = None
 
     resultado_graham = (
         {
@@ -385,11 +387,10 @@ def _calcular_linha_ticker(
         }
     elif selic_meta is not None and ipca_12m is not None:
         resultado_fcd = calcular_valor_justo_fcd(
-            fcf_atual=fcf_atual,
+            **fluxos_fcd,
             numero_acoes=numero_acoes,
             selic_meta=selic_meta,
             ipca_12m=ipca_12m,
-            fcf_ha_n_anos=fcf_ha_n_anos,
             divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
             beta=beta,
             divida_liquida=divida_liquida,

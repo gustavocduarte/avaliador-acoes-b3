@@ -689,10 +689,11 @@ def obter_fluxo_caixa_livre_com_fallback(
             cnpj, ano_base, usar_cache, forcar_atualizacao, diretorio_cache
         )
         fcf_ha_n_anos = resultado_base["fcf_atual"]
+        cfo_ha_n_anos = resultado_base["cfo_atual"]
         capex_ha_n_anos = resultado_base["capex_atual"]
         juros_pagos_ha_n_anos = resultado_base["juros_pagos_atual"]
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
-        fcf_ha_n_anos = capex_ha_n_anos = juros_pagos_ha_n_anos = None
+        fcf_ha_n_anos = cfo_ha_n_anos = capex_ha_n_anos = juros_pagos_ha_n_anos = None
 
     return {
         "fcf_atual": resultado_atual["fcf_atual"],
@@ -708,6 +709,7 @@ def obter_fluxo_caixa_livre_com_fallback(
         "cfi_atual": resultado_atual["cfi_atual"],
         "capex_atual": resultado_atual["capex_atual"],
         "juros_pagos_atual": resultado_atual["juros_pagos_atual"],
+        "cfo_ha_n_anos": cfo_ha_n_anos,
         "capex_ha_n_anos": capex_ha_n_anos,
         "juros_pagos_ha_n_anos": juros_pagos_ha_n_anos,
     }

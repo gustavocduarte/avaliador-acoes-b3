@@ -50,6 +50,7 @@ from avaliador_b3.config import (
     SUBTITULO_POTENCIAL_CARTEIRA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_COMPLEMENTO_SEM_METODO,
+    TEXTO_CRESCIMENTO_IPCA,
     TEXTO_EXPANDER_SIMULADOR,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
@@ -103,6 +104,7 @@ from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcula
 from avaliador_b3.modelos.fcd import (
     calcular_proporcao_reinvestimento_percentual,
     calcular_valor_justo_fcd,
+    montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
 from avaliador_b3.screener import (
@@ -342,9 +344,7 @@ def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
 
 def _buscar_fcf_fcd(
     cnpj: str, ano_mais_recente: int
-) -> tuple[
-    float | None, float | None, int | None, bool, float | None, float | None, str | None
-]:
+) -> tuple[dict, int | None, bool, float | None, float | None, str | None]:
     """FCF do FCD com detecção automática de ano POR EMPRESA
     (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`) — uma chamada só
     que já resolve tanto o ano atual (`ano_mais_recente`, caindo um ano
@@ -352,9 +352,10 @@ def _buscar_fcf_fcd(
     do crescimento (que anda junto do ano efetivamente usado, não fica
     preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
 
-    Devolve (fcf_atual, fcf_ha_n_anos, ano_utilizado, usou_fallback,
-    cfo_atual, cfi_atual, erro) — os dois últimos antes do erro
-    (`cfo_atual`/`cfi_atual`, do ano efetivamente usado) alimentam a
+    Devolve (fluxos, ano_utilizado, usou_fallback, cfo_atual, cfi_atual,
+    erro) — `fluxos` é o dict de `modelos.fcd.montar_fluxos_fcd` (fluxo do
+    FCD dos dois anos e os motivos de indisponibilidade); `cfo_atual`/
+    `cfi_atual` (do ano efetivamente usado) alimentam a
     caption de proporção reinvestida no cartão do FCD (ver
     `modelos.fcd.calcular_proporcao_reinvestimento_percentual`). Erro
     aqui não é mostrado à parte na tela — já aparece embutido no motivo
@@ -365,8 +366,7 @@ def _buscar_fcf_fcd(
             cnpj, ano_mais_recente, ANOS_HISTORICO_CRESCIMENTO_FCD
         )
         return (
-            resultado["fcf_atual"],
-            resultado["fcf_ha_n_anos"],
+            montar_fluxos_fcd(resultado),
             resultado["ano_referencia_utilizado"],
             resultado["usou_fallback"],
             resultado["cfo_atual"],
@@ -374,9 +374,10 @@ def _buscar_fcf_fcd(
             None,
         )
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
-        return None, None, None, False, None, None, str(erro)
+        return montar_fluxos_fcd(None), None, False, None, None, str(erro)
     except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
-        return None, None, None, False, None, None, f"Falha ao buscar dados da CVM: {erro}"
+        mensagem = f"Falha ao buscar dados da CVM: {erro}"
+        return montar_fluxos_fcd(None), None, False, None, None, mensagem
 
 
 @st.cache_data(ttl=3600)
@@ -550,6 +551,9 @@ def _cartao_metodo(
             )
         else:
             st.caption("Aplicável")
+        motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
+        if motivo_crescimento_ipca:
+            st.caption(TEXTO_CRESCIMENTO_IPCA.format(motivo=motivo_crescimento_ipca))
     else:
         st.metric(nome, "—")
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
@@ -915,13 +919,13 @@ with aba_analisar:
             # do ano em si falhando, ex: CVM fora do ar) tem o mesmo destino:
             # sem `ano_fcd_mais_recente`, fcf_atual segue None e o card cai no
             # "não aplicável" do jeito de sempre, sem aviso à parte.
-            fcf_atual = fcf_ha_n_anos = ano_fcd_utilizado = None
+            fluxos_fcd = montar_fluxos_fcd(None)
+            ano_fcd_utilizado = None
             fcd_usou_fallback = False
             cfo_fcd_utilizado = cfi_fcd_utilizado = None
             if cnpj and ano_fcd_mais_recente is not None:
                 (
-                    fcf_atual,
-                    fcf_ha_n_anos,
+                    fluxos_fcd,
                     ano_fcd_utilizado,
                     fcd_usou_fallback,
                     cfo_fcd_utilizado,
@@ -1014,11 +1018,10 @@ with aba_analisar:
         )
         if selic_meta is not None and ipca_12m is not None:
             resultado_fcd = calcular_valor_justo_fcd(
-                fcf_atual=fcf_atual,
+                **fluxos_fcd,
                 numero_acoes=numero_acoes,
                 selic_meta=selic_meta,
                 ipca_12m=ipca_12m,
-                fcf_ha_n_anos=fcf_ha_n_anos,
                 divida_liquida_sobre_patrimonio=divida_liquida_sobre_patrimonio,
                 beta=beta,
                 divida_liquida=divida_liquida,
@@ -1217,15 +1220,25 @@ with aba_analisar:
                 "negativo: projetar um fluxo assim não estima valor. Fora esses "
                 "casos, funciona mesmo para empresas sem lucro contábil no "
                 "momento, já que olha geração de caixa, não resultado contábil "
-                "passado. O fluxo de caixa usado é o caixa "
-                "gerado pela operação menos o que foi investido no ano. Por isso, "
-                "empresas em fase de investimento pesado (comuns em energia e "
-                "saneamento) ou com dívida muito alta tendem a ter FCD bem abaixo "
-                "dos outros métodos, mesmo quando são saudáveis. Separar o "
-                "investimento que só mantém a empresa do que a faz crescer "
-                "exigiria um dado que a fonte não informa de forma "
-                "padronizada. No cartão do FCD, a porcentagem reinvestida no "
-                "ano aparece logo abaixo do valor.\n\n"
+                "passado. O fluxo de caixa usado é o caixa gerado pela operação "
+                "menos o que a empresa gastou em imobilizado e intangível "
+                "(máquinas, obras, sistemas) no ano, mais os juros pagos sobre a "
+                "dívida, já descontado o imposto: os juros voltam ao fluxo porque "
+                "o custo da dívida já entra no custo de capital e na dedução da "
+                "dívida líquida. Ficam de fora as aplicações financeiras, a compra "
+                "e venda de participações e de ativos e o pagamento de "
+                "arrendamentos (aluguéis de longo prazo). Se o gasto em "
+                "imobilizado e intangível não puder ser identificado na "
+                "demonstração da empresa, o FCD não é calculado, e o mesmo vale "
+                "quando o fluxo do último ano é zero ou negativo. Quando o fluxo "
+                "de cinco anos atrás não pode ser usado, o crescimento passa a ser "
+                "a inflação (IPCA) e o cartão avisa. Por isso, empresas em fase de "
+                "investimento pesado (comuns em energia e saneamento) ou com "
+                "dívida muito alta tendem a ter FCD bem abaixo dos outros "
+                "métodos, mesmo quando são saudáveis. Separar o investimento que "
+                "só mantém a empresa do que a faz crescer exigiria um dado que a "
+                "fonte não informa de forma padronizada. No cartão do FCD, a "
+                "porcentagem reinvestida no ano aparece logo abaixo do valor.\n\n"
                 "**Valor combinado** — média simples só dos métodos que se aplicam à "
                 "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
                 "heurística: os pesos são iguais por simplicidade, não porque exista "

@@ -2,6 +2,10 @@ import pytest
 
 from avaliador_b3.config import (
     ALIQUOTA_IR_CSLL_PADRAO,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX,
+    MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
     MOTIVO_FCD_SEGURADORA,
@@ -11,6 +15,121 @@ from avaliador_b3.config import (
     TAXA_CRESCIMENTO_FCD_MINIMA,
 )
 from avaliador_b3.modelos import fcd
+
+
+def _capex(valor):
+    status = "identificado" if valor is not None else "nao_identificado"
+    return {"status": status, "valor": valor, "linhas": []}
+
+
+def _juros(valor):
+    return {"valor": valor, "linhas": []}
+
+
+def test_fluxo_fcd_desconta_capex_e_soma_juros_liquidos_de_imposto():
+    fluxo = fcd.calcular_fluxo_caixa_fcd(1_000.0, _capex(300.0), _juros(100.0))
+
+    assert fluxo == pytest.approx(1_000.0 - 300.0 + 100.0 * (1 - ALIQUOTA_IR_CSLL_PADRAO))
+
+
+def test_fluxo_fcd_sem_juros_e_so_caixa_operacional_menos_capex():
+    assert fcd.calcular_fluxo_caixa_fcd(1_000.0, _capex(300.0), _juros(0.0)) == pytest.approx(700.0)
+
+
+def test_fluxo_fcd_nao_e_calculado_sem_capex_identificado():
+    assert fcd.calcular_fluxo_caixa_fcd(1_000.0, _capex(None), _juros(100.0)) is None
+
+
+def _resultado_cvm(capex_atual=300.0, capex_base=100.0):
+    return {
+        "cfo_atual": 1_000.0,
+        "capex_atual": _capex(capex_atual),
+        "juros_pagos_atual": _juros(0.0),
+        "cfo_ha_n_anos": 500.0,
+        "capex_ha_n_anos": _capex(capex_base),
+        "juros_pagos_ha_n_anos": _juros(0.0),
+    }
+
+
+def test_montar_fluxos_fcd_calcula_os_dois_anos():
+    fluxos = fcd.montar_fluxos_fcd(_resultado_cvm())
+
+    assert fluxos["fcf_atual"] == pytest.approx(700.0)
+    assert fluxos["fcf_ha_n_anos"] == pytest.approx(400.0)
+    assert fluxos["motivo_sem_fcf_atual"] is None
+    assert fluxos["motivo_sem_fcf_ha_n_anos"] is None
+
+
+def test_montar_fluxos_fcd_sem_capex_no_ano_de_referencia_traz_o_motivo():
+    fluxos = fcd.montar_fluxos_fcd(_resultado_cvm(capex_atual=None))
+
+    assert fluxos["fcf_atual"] is None
+    assert fluxos["motivo_sem_fcf_atual"] == MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO
+
+
+def test_montar_fluxos_fcd_sem_capex_no_ano_base_so_perde_o_crescimento():
+    fluxos = fcd.montar_fluxos_fcd(_resultado_cvm(capex_base=None))
+
+    assert fluxos["fcf_atual"] == pytest.approx(700.0)
+    assert fluxos["fcf_ha_n_anos"] is None
+    assert fluxos["motivo_sem_fcf_ha_n_anos"] == MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX
+
+
+def test_montar_fluxos_fcd_sem_demonstracao_do_ano_base():
+    resultado = _resultado_cvm()
+    resultado.update(cfo_ha_n_anos=None, capex_ha_n_anos=None, juros_pagos_ha_n_anos=None)
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fluxos["fcf_ha_n_anos"] is None
+    assert fluxos["motivo_sem_fcf_ha_n_anos"] == MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE
+
+
+def test_montar_fluxos_fcd_sem_dado_da_cvm_devolve_tudo_nulo():
+    assert fcd.montar_fluxos_fcd(None) == {
+        "fcf_atual": None,
+        "fcf_ha_n_anos": None,
+        "motivo_sem_fcf_atual": None,
+        "motivo_sem_fcf_ha_n_anos": None,
+    }
+
+
+def test_fcd_usa_o_motivo_recebido_quando_nao_ha_fluxo_de_referencia():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=None,
+        numero_acoes=1_000.0,
+        selic_meta=14.0,
+        ipca_12m=4.0,
+        motivo_sem_fcf_atual=MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
+    )
+
+    assert resultado["aplicavel"] is False
+    assert resultado["motivo_nao_aplicavel"] == MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO
+
+
+@pytest.mark.parametrize(
+    "fcf_ha_n_anos, motivo_recebido, esperado",
+    [
+        (None, MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX, MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX),
+        (None, None, MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE),
+        (-50.0, None, MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA),
+        (400.0, None, None),
+    ],
+)
+def test_fcd_informa_por_que_o_crescimento_caiu_para_o_ipca(
+    fcf_ha_n_anos, motivo_recebido, esperado
+):
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=700.0,
+        numero_acoes=1_000.0,
+        selic_meta=14.0,
+        ipca_12m=4.0,
+        fcf_ha_n_anos=fcf_ha_n_anos,
+        motivo_sem_fcf_ha_n_anos=motivo_recebido,
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["motivo_crescimento_ipca"] == esperado
 
 
 def test_proporcao_reinvestimento_caso_normal():

@@ -762,7 +762,7 @@ def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empres
         chamadas.append(ano)
         if ano == 2025:
             return {"fcf_atual": 100.0, "cfo_atual": 60.0, "cfi_atual": -30.0, **EXTRAS_FCF_MOCK}
-        return {"fcf_atual": 80.0, **EXTRAS_FCF_MOCK}
+        return {"fcf_atual": 80.0, "cfo_atual": 50.0, **EXTRAS_FCF_MOCK}
 
     monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
 
@@ -782,6 +782,39 @@ def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empres
     assert chamadas == [2025, 2020]  # ano base = 2025 - 5
 
 
+def test_obter_fluxo_caixa_livre_com_fallback_devolve_o_fluxo_do_ano_base_para_o_fcd(
+    tmp_path, monkeypatch
+):
+    def obter_falso(cnpj, ano, *a, **k):
+        if ano == 2025:
+            return {"fcf_atual": 100.0, "cfo_atual": 60.0, "cfi_atual": -30.0, **EXTRAS_FCF_MOCK}
+        if ano == 2020:
+            return {
+                "fcf_atual": 80.0,
+                "cfo_atual": 50.0,
+                "capex_atual": {"status": "identificado", "valor": 20.0, "linhas": []},
+                "juros_pagos_atual": {"valor": 5.0, "linhas": []},
+            }
+        raise cvm.CnpjNaoEncontrado("sem demonstração")
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS, 2025, 5, diretorio_cache=tmp_path
+    )
+
+    assert resultado["cfo_ha_n_anos"] == 50.0
+    assert resultado["capex_ha_n_anos"]["valor"] == 20.0
+    assert resultado["juros_pagos_ha_n_anos"]["valor"] == 5.0
+
+    # Sem demonstração do ano-base, tudo do ano-base fica None.
+    resultado_sem_base = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS, 2025, 6, diretorio_cache=tmp_path
+    )
+    assert resultado_sem_base["cfo_ha_n_anos"] is None
+    assert resultado_sem_base["capex_ha_n_anos"] is None
+
+
 def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
     tmp_path, monkeypatch
 ):
@@ -791,7 +824,7 @@ def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
         if ano == 2024:
             return {"fcf_atual": 100.0, "cfo_atual": 70.0, "cfi_atual": -20.0, **EXTRAS_FCF_MOCK}
         if ano == 2019:
-            return {"fcf_atual": 80.0, **EXTRAS_FCF_MOCK}
+            return {"fcf_atual": 80.0, "cfo_atual": 50.0, **EXTRAS_FCF_MOCK}
         raise AssertionError(f"ano inesperado: {ano}")
 
     monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)

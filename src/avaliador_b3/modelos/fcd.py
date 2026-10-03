@@ -1,7 +1,8 @@
 """Fluxo de Caixa Descontado (FCD).
 
-Projeta o fluxo de caixa livre (FCF, ver `ingest.cvm.obter_fluxo_caixa_livre`
-e a justificativa em config.py) por `config.HORIZONTE_PROJECAO_FCD_ANOS`
+Projeta o fluxo de caixa livre (caixa das operações menos o capex mais os
+juros pagos líquidos de imposto, ver `calcular_fluxo_caixa_fcd` e a
+justificativa em config.py) por `config.HORIZONTE_PROJECAO_FCD_ANOS`
 anos, mais uma perpetuidade (Gordon Growth), descontados pelo WACC —
 resultado que é Enterprise Value (valor da empresa, dívida incluída), não
 Equity Value. Convertido pra Equity Value subtraindo a dívida líquida
@@ -47,6 +48,10 @@ from avaliador_b3.config import (
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
+    MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX,
+    MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
     MOTIVOS_FCD_POR_SEGMENTO,
@@ -96,6 +101,53 @@ MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA = (
     "expansão do crédito, não com a geração de valor. Graham e Bazin "
     "continuam válidos."
 )
+
+
+def calcular_fluxo_caixa_fcd(cfo: float, capex: dict, juros_pagos: dict) -> float | None:
+    """Fluxo de caixa do FCD: caixa das operações (6.01) menos o capex, mais
+    os juros pagos em 6.01 já líquidos do imposto. `capex` e `juros_pagos`
+    são os dicts de `ingest.cvm` (`capex_atual`/`juros_pagos_atual`). `None`
+    se o capex não foi identificado: sem ele o fluxo não é calculado."""
+    if capex["status"] != "identificado":
+        return None
+    return cfo - capex["valor"] + juros_pagos["valor"] * (1 - ALIQUOTA_IR_CSLL_PADRAO)
+
+
+def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
+    """Fluxo do FCD dos dois anos (referência e base do crescimento) a partir
+    do resultado de `ingest.cvm.obter_fluxo_caixa_livre_com_fallback`, mais o
+    motivo de cada fluxo indisponível. As chaves são os parâmetros
+    homônimos de `calcular_valor_justo_fcd`, então o chamador usa
+    `**fluxos`. `None` (sem dado da CVM) devolve tudo `None`."""
+    if resultado_cvm is None:
+        return {
+            "fcf_atual": None,
+            "fcf_ha_n_anos": None,
+            "motivo_sem_fcf_atual": None,
+            "motivo_sem_fcf_ha_n_anos": None,
+        }
+    fcf_atual = calcular_fluxo_caixa_fcd(
+        resultado_cvm["cfo_atual"],
+        resultado_cvm["capex_atual"],
+        resultado_cvm["juros_pagos_atual"],
+    )
+    if resultado_cvm["capex_ha_n_anos"] is None:
+        fcf_ha_n_anos, motivo_base = None, MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE
+    else:
+        fcf_ha_n_anos = calcular_fluxo_caixa_fcd(
+            resultado_cvm["cfo_ha_n_anos"],
+            resultado_cvm["capex_ha_n_anos"],
+            resultado_cvm["juros_pagos_ha_n_anos"],
+        )
+        motivo_base = None if fcf_ha_n_anos is not None else MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX
+    return {
+        "fcf_atual": fcf_atual,
+        "fcf_ha_n_anos": fcf_ha_n_anos,
+        "motivo_sem_fcf_atual": (
+            None if fcf_atual is not None else MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO
+        ),
+        "motivo_sem_fcf_ha_n_anos": motivo_base,
+    }
 
 
 def _motivo_exclusao_do_fcd(segmento_setorial: str | None, ticker: str | None) -> str | None:
@@ -178,6 +230,8 @@ def calcular_valor_justo_fcd(
     divida_liquida: float | None = None,
     segmento_setorial: str | None = None,
     ticker: str | None = None,
+    motivo_sem_fcf_atual: str | None = None,
+    motivo_sem_fcf_ha_n_anos: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -238,7 +292,9 @@ def calcular_valor_justo_fcd(
         return {
             "aplicavel": False,
             "valor_justo": None,
-            "motivo_nao_aplicavel": "Sem dado de fluxo de caixa livre da CVM para projetar.",
+            "motivo_nao_aplicavel": (
+                motivo_sem_fcf_atual or "Sem dado de fluxo de caixa livre da CVM para projetar."
+            ),
         }
 
     if fcf_atual <= 0:
@@ -271,10 +327,16 @@ def calcular_valor_justo_fcd(
         }
 
     taxa_crescimento = _taxa_crescimento_explicita(fcf_atual, fcf_ha_n_anos)
+    motivo_crescimento_ipca = None
     if taxa_crescimento is None:
         # Sem CAGR confiável (histórico ausente ou base não-positiva):
-        # assume crescimento neutro, igual à inflação.
+        # assume crescimento neutro, igual à inflação, e diz por quê.
         taxa_crescimento = ipca_12m
+        motivo_crescimento_ipca = (
+            (motivo_sem_fcf_ha_n_anos or MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE)
+            if fcf_ha_n_anos is None
+            else MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA
+        )
 
     taxa_perpetuidade = _taxa_perpetuidade(ipca_12m, wacc)
 
@@ -305,4 +367,5 @@ def calcular_valor_justo_fcd(
         "beta_utilizado": beta_utilizado,
         "taxa_crescimento_explicita": taxa_crescimento,
         "taxa_crescimento_perpetuidade": taxa_perpetuidade,
+        "motivo_crescimento_ipca": motivo_crescimento_ipca,
     }

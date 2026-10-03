@@ -50,6 +50,37 @@ def _dividendos_vazio() -> pd.DataFrame:
     return pd.DataFrame({"data": pd.to_datetime([]), "dividendo": pd.Series(dtype=float)})
 
 
+def _capex(valor):
+    status = "identificado" if valor is not None else "nao_identificado"
+    return {"status": status, "valor": valor, "linhas": []}
+
+
+def _resultado_fcf_cvm(
+    ano_mais_recente,
+    cfo=1_200_000.0,
+    capex=200_000.0,
+    cfo_base=1_000_000.0,
+    capex_base=200_000.0,
+    juros=0.0,
+):
+    """Resultado de `obter_fluxo_caixa_livre_com_fallback`: com os padrões, o
+    fluxo do FCD é 1.000.000 no ano de referência e 800.000 no ano-base."""
+    return {
+        "fcf_atual": cfo - (capex or 0.0),
+        "fcf_ha_n_anos": cfo_base - (capex_base or 0.0),
+        "ano_referencia_utilizado": ano_mais_recente,
+        "ano_mais_recente_disponivel": ano_mais_recente,
+        "usou_fallback": False,
+        "cfo_atual": cfo,
+        "cfi_atual": -(capex or 0.0),
+        "capex_atual": _capex(capex),
+        "juros_pagos_atual": {"valor": juros, "linhas": []},
+        "cfo_ha_n_anos": cfo_base,
+        "capex_ha_n_anos": _capex(capex_base),
+        "juros_pagos_ha_n_anos": {"valor": juros, "linhas": []},
+    }
+
+
 @pytest.fixture
 def ambiente_feliz(monkeypatch):
     """Monkeypatcha os adapters usados por screener.py com dado fake
@@ -93,15 +124,9 @@ def ambiente_feliz(monkeypatch):
     monkeypatch.setattr(
         screener,
         "obter_fluxo_caixa_livre_com_fallback",
-        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: {
-            "fcf_atual": 1_000_000.0,
-            "fcf_ha_n_anos": 800_000.0,
-            "ano_referencia_utilizado": ano_mais_recente,
-            "ano_mais_recente_disponivel": ano_mais_recente,
-            "usou_fallback": False,
-            "cfo_atual": 1_200_000.0,
-            "cfi_atual": -200_000.0,
-        },
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: _resultado_fcf_cvm(
+            ano_mais_recente
+        ),
     )
     monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: (0.10, 0.04))
 
@@ -373,15 +398,9 @@ def test_calcular_linha_ticker_fcf_de_referencia_negativo_deixa_o_fcd_de_fora(
     monkeypatch.setattr(
         screener,
         "obter_fluxo_caixa_livre_com_fallback",
-        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: {
-            "fcf_atual": -300_000.0,
-            "fcf_ha_n_anos": 800_000.0,
-            "ano_referencia_utilizado": ano_mais_recente,
-            "ano_mais_recente_disponivel": ano_mais_recente,
-            "usou_fallback": False,
-            "cfo_atual": -100_000.0,
-            "cfi_atual": -200_000.0,
-        },
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: _resultado_fcf_cvm(
+            ano_mais_recente, cfo=-100_000.0, capex=200_000.0
+        ),
     )
 
     linha = _linha_ticker("AAAA4", tmp_path)
@@ -390,6 +409,44 @@ def test_calcular_linha_ticker_fcf_de_referencia_negativo_deixa_o_fcd_de_fora(
     assert linha["fcd_valor_justo"] is None
     assert "fcd" not in linha["metodos_utilizados"].split(",")
     assert linha["graham_valor_justo"] is not None  # os outros métodos seguem
+
+
+def test_calcular_linha_ticker_capex_nao_identificado_deixa_o_fcd_de_fora(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: _resultado_fcf_cvm(
+            ano_mais_recente, capex=None
+        ),
+    )
+
+    linha = _linha_ticker("AAAA4", tmp_path)
+
+    assert linha["fcd_valor_justo"] is None
+    assert "fcd" not in linha["metodos_utilizados"].split(",")
+    assert linha["graham_valor_justo"] is not None
+
+
+def test_calcular_linha_ticker_usa_o_fluxo_da_alt3_nos_dois_anos(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Mesmo FCD que o fluxo de 1.000.000 (ano de referência) e 800.000 (base)
+    # sem juros; com juros pagos somados de volta (líquidos de imposto), o
+    # fluxo sobe e o FCD também.
+    sem_juros = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: _resultado_fcf_cvm(
+            ano_mais_recente, juros=100_000.0
+        ),
+    )
+
+    com_juros = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+
+    assert com_juros > sem_juros
 
 
 def test_calcular_linha_ticker_itausa_fica_sem_fcd_e_com_os_demais_metodos(
