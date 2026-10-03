@@ -48,6 +48,7 @@ from avaliador_b3.config import (
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
+    MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL,
     MOTIVO_ARRENDAMENTO_INDISPONIVEL,
     MOTIVO_BALANCO_NAO_LIDO,
     MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
@@ -161,6 +162,18 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
     de `calcular_valor_justo_fcd` (o chamador usa `**ajustes`). Leitura
     indisponível (ou `None`, não lida) mantém o cálculo sem o ajuste e traz o
     motivo."""
+    # As ações em circulação dependem só da composição do capital, não do balanço.
+    acoes = leitura_balanco.get("acoes_em_circulacao") if leitura_balanco else None
+    if leitura_balanco is None:
+        motivo_acoes = MOTIVO_BALANCO_NAO_LIDO
+    else:
+        motivo_acoes = leitura_balanco.get("motivo_acoes") or leitura_balanco.get("motivo")
+    ajustes_acoes = {
+        "acoes_em_circulacao": acoes,
+        "motivo_sem_acoes_em_circulacao": (
+            None if acoes is not None else (motivo_acoes or MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL)
+        ),
+    }
     if leitura_balanco is None:
         motivo = MOTIVO_BALANCO_NAO_LIDO
     elif not leitura_balanco["disponivel"]:
@@ -168,6 +181,7 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
     else:
         patrimonio_total = leitura_balanco.get("patrimonio_liquido_total")
         return {
+            **ajustes_acoes,
             "nao_controladores": leitura_balanco["nao_controladores"],
             "motivo_sem_nao_controladores": None,
             "arrendamento_fora_da_divida": leitura_balanco.get("arrendamento_fora_da_divida"),
@@ -182,6 +196,7 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
             ),
         }
     return {
+        **ajustes_acoes,
         "nao_controladores": None,
         "motivo_sem_nao_controladores": motivo,
         "arrendamento_fora_da_divida": None,
@@ -301,6 +316,8 @@ def calcular_valor_justo_fcd(
     motivo_sem_patrimonio_total: str | None = None,
     arrendamento_fora_da_divida: float | None = None,
     motivo_sem_arrendamento: str | None = None,
+    acoes_em_circulacao: float | None = None,
+    motivo_sem_acoes_em_circulacao: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -342,6 +359,10 @@ def calcular_valor_justo_fcd(
     consolidado e inclui a parte dos sócios minoritários das controladas.
     `None` mantém o cálculo sem esse desconto (`motivo_sem_nao_controladores`
     diz por quê). O resultado pode ser negativo e não é limitado a zero.
+    O valor por ação usa `acoes_em_circulacao` (integralizado menos tesouraria, da
+    CVM, na base da cotação) no lugar de `numero_acoes` quando disponível; sem
+    ele, vale o número do Fundamentus e `motivo_sem_acoes_em_circulacao` diz por
+    quê.
     O passivo de arrendamento que ficou fora da dívida do Fundamentus
     (`arrendamento_fora_da_divida`) é somado à dívida líquida só na dedução do
     valor do acionista; os pesos do WACC seguem sem ele, enquanto forem pesos
@@ -397,6 +418,9 @@ def calcular_valor_justo_fcd(
                 "calculado em valor justo por ação."
             ),
         }
+
+    usar_circulacao = acoes_em_circulacao is not None and acoes_em_circulacao > 0
+    acoes_utilizadas = acoes_em_circulacao if usar_circulacao else numero_acoes
 
     beta_utilizado = beta if beta is not None else BETA_PADRAO
     arrendamento_deduzido = arrendamento_fora_da_divida is not None and divida_liquida is not None
@@ -456,9 +480,15 @@ def calcular_valor_justo_fcd(
 
     return {
         "aplicavel": True,
-        "valor_justo": valor_total / numero_acoes,
+        "valor_justo": valor_total / acoes_utilizadas,
         "motivo_nao_aplicavel": None,
         "divida_liquida_deduzida": divida_liquida_deduzida,
+        "acoes_em_circulacao_utilizadas": usar_circulacao,
+        "motivo_sem_acoes_em_circulacao": (
+            None
+            if usar_circulacao
+            else (motivo_sem_acoes_em_circulacao or MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL)
+        ),
         "arrendamento_deduzido": arrendamento_deduzido,
         "motivo_sem_arrendamento": (
             None

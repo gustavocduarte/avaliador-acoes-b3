@@ -103,7 +103,7 @@ from avaliador_b3.modelos.fcd import (
     montar_ajustes_balanco,
     montar_fluxos_fcd,
 )
-from avaliador_b3.modelos.graham import calcular_valor_justo_graham
+from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 
 CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
 
@@ -435,6 +435,11 @@ def _calcular_linha_ticker(
                 "motivo": f"falha ao buscar dados da CVM: {erro}",
             }
     ajustes_balanco = montar_ajustes_balanco(leitura_balanco)
+    # LPA e VPA do Fundamentus são sobre o número de ações dele; o Graham segue o
+    # mesmo número de ações em circulação do FCD.
+    lpa_graham, vpa_graham = reescalar_lpa_vpa(
+        lpa, vpa, numero_acoes, ajustes_balanco["acoes_em_circulacao"]
+    )
 
     resultado_graham = (
         {
@@ -443,7 +448,7 @@ def _calcular_linha_ticker(
             "motivo_nao_aplicavel": MOTIVO_FUNDAMENTUS_INDISPONIVEL,
         }
         if fundamentus_pulado
-        else calcular_valor_justo_graham(lpa, vpa)
+        else calcular_valor_justo_graham(lpa_graham, vpa_graham)
     )
     resultado_bazin = (
         calcular_preco_teto_bazin(dividendos)

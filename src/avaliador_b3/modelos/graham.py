@@ -17,6 +17,29 @@ import math
 from avaliador_b3.config import FATOR_GRAHAM
 
 
+def reescalar_lpa_vpa(
+    lpa: float | None,
+    vpa: float | None,
+    acoes_fundamentus: float | None,
+    acoes_em_circulacao: float | None,
+) -> tuple[float | None, float | None]:
+    """LPA e VPA do Fundamentus trocados para o número de ações em circulação.
+
+    O Fundamentus calcula os dois sobre o número de ações dele; com outro número
+    (ações em circulação da CVM), LPA e VPA ficam multiplicados pela razão entre
+    os dois números, e o Graham muda na mesma proporção. Sem um dos números, ou
+    com algum não positivo, devolve LPA e VPA como vieram."""
+    if not acoes_fundamentus or not acoes_em_circulacao:
+        return lpa, vpa
+    if acoes_fundamentus <= 0 or acoes_em_circulacao <= 0:
+        return lpa, vpa
+    razao = acoes_fundamentus / acoes_em_circulacao
+    return (
+        lpa * razao if lpa is not None else None,
+        vpa * razao if vpa is not None else None,
+    )
+
+
 def calcular_valor_justo_graham(lpa: float | None, vpa: float | None) -> dict:
     """Calcula o valor justo pela fórmula de Graham.
 

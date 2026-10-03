@@ -49,7 +49,11 @@ def _indicadores(
 
 
 def _leitura_balanco(
-    nao_controladores=0.0, patrimonio_liquido_total=None, arrendamento_fora_da_divida=0.0
+    nao_controladores=0.0,
+    patrimonio_liquido_total=None,
+    arrendamento_fora_da_divida=0.0,
+    acoes_em_circulacao=None,
+    motivo_acoes=None,
 ):
     """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
     return {
@@ -59,6 +63,8 @@ def _leitura_balanco(
         "nao_controladores": nao_controladores,
         "patrimonio_liquido_total": patrimonio_liquido_total,
         "arrendamento_fora_da_divida": arrendamento_fora_da_divida,
+        "acoes_em_circulacao": acoes_em_circulacao,
+        "motivo_acoes": motivo_acoes,
     }
 
 
@@ -522,6 +528,46 @@ def test_calcular_linha_ticker_soma_o_arrendamento_fora_da_divida_a_divida_liqui
 
     # numero_acoes = 1.000 no `_indicadores()` padrão.
     assert com_arrendamento == pytest.approx(sem_arrendamento - 4_000.0 / 1_000.0)
+
+
+def test_calcular_linha_ticker_usa_as_acoes_em_circulacao_no_fcd_e_no_graham(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    sem_leitura = _linha_ticker("AAAA4", tmp_path)
+    monkeypatch.setattr(
+        screener,
+        "obter_leitura_balanco",
+        lambda *a, **kw: _leitura_balanco(acoes_em_circulacao=800.0),  # Fundamentus: 1.000
+    )
+
+    com_circulacao = _linha_ticker("AAAA4", tmp_path)
+
+    # Mesmo valor do acionista dividido por 800 em vez de 1.000 ações; o Graham (LPA e
+    # VPA do Fundamentus, reescalados) muda na mesma proporção.
+    assert com_circulacao["fcd_valor_justo"] == pytest.approx(
+        sem_leitura["fcd_valor_justo"] * 1000 / 800
+    )
+    assert com_circulacao["graham_valor_justo"] == pytest.approx(
+        sem_leitura["graham_valor_justo"] * 1000 / 800
+    )
+
+
+def test_calcular_linha_ticker_com_acoes_descartadas_mantem_o_numero_do_fundamentus(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    sem_leitura = _linha_ticker("AAAA4", tmp_path)
+    monkeypatch.setattr(
+        screener,
+        "obter_leitura_balanco",
+        lambda *a, **kw: _leitura_balanco(
+            acoes_em_circulacao=None, motivo_acoes="Tesouraria de 53% do capital."
+        ),
+    )
+
+    linha = _linha_ticker("AAAA4", tmp_path)
+
+    assert linha["fcd_valor_justo"] == pytest.approx(sem_leitura["fcd_valor_justo"])
+    assert linha["graham_valor_justo"] == pytest.approx(sem_leitura["graham_valor_justo"])
 
 
 def test_calcular_linha_ticker_passa_data_base_e_acoes_do_fundamentus_para_a_leitura(

@@ -520,9 +520,12 @@ def test_ajustes_do_balanco_com_leitura_disponivel_trazem_nao_controladores_e_pa
         "nao_controladores": 26_942.0,
         "patrimonio_liquido_total": 31_910.0,
         "arrendamento_fora_da_divida": 5_140.0,
+        "acoes_em_circulacao": 960.0,
     }
 
     assert fcd.montar_ajustes_balanco(leitura) == {
+        "acoes_em_circulacao": 960.0,
+        "motivo_sem_acoes_em_circulacao": None,
         "nao_controladores": 26_942.0,
         "motivo_sem_nao_controladores": None,
         "arrendamento_fora_da_divida": 5_140.0,
@@ -546,6 +549,8 @@ def test_ajustes_do_balanco_com_leitura_indisponivel_trazem_o_motivo():
     leitura = {"disponivel": False, "motivo": "A empresa não tem balanço consolidado."}
 
     assert fcd.montar_ajustes_balanco(leitura) == {
+        "acoes_em_circulacao": None,
+        "motivo_sem_acoes_em_circulacao": "A empresa não tem balanço consolidado.",
         "nao_controladores": None,
         "motivo_sem_nao_controladores": "A empresa não tem balanço consolidado.",
         "arrendamento_fora_da_divida": None,
@@ -646,6 +651,67 @@ def test_ajustes_do_balanco_sem_arrendamento_na_leitura_trazem_o_motivo_dele():
 
     assert ajustes["arrendamento_fora_da_divida"] is None
     assert "passivo de arrendamento não encontrado" in ajustes["motivo_sem_arrendamento"]
+
+
+def test_fcd_usa_as_acoes_em_circulacao_no_lugar_do_numero_do_fundamentus():
+    com_fundamentus = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    em_circulacao = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, acoes_em_circulacao=80.0)
+
+    assert em_circulacao["acoes_em_circulacao_utilizadas"] is True
+    assert em_circulacao["motivo_sem_acoes_em_circulacao"] is None
+    # Mesmo valor do acionista dividido por 80 em vez de 100 ações.
+    assert em_circulacao["valor_justo"] == pytest.approx(com_fundamentus["valor_justo"] * 100 / 80)
+
+
+def test_fcd_sem_acoes_em_circulacao_usa_o_numero_do_fundamentus_e_traz_o_motivo():
+    padrao = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    resultado = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, motivo_sem_acoes_em_circulacao="Tesouraria de 53% do capital."
+    )
+
+    assert resultado["valor_justo"] == pytest.approx(padrao["valor_justo"])
+    assert resultado["acoes_em_circulacao_utilizadas"] is False
+    assert resultado["motivo_sem_acoes_em_circulacao"] == "Tesouraria de 53% do capital."
+
+
+def test_fcd_ignora_acoes_em_circulacao_nao_positivas():
+    padrao = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    resultado = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, acoes_em_circulacao=0.0)
+
+    assert resultado["valor_justo"] == pytest.approx(padrao["valor_justo"])
+    assert resultado["acoes_em_circulacao_utilizadas"] is False
+
+
+def test_ajustes_do_balanco_sem_balanco_consolidado_ainda_trazem_as_acoes_em_circulacao():
+    leitura = {
+        "disponivel": False,
+        "motivo": "A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM.",
+        "acoes_em_circulacao": 1338.44e6,
+        "motivo_acoes": None,
+    }
+
+    ajustes = fcd.montar_ajustes_balanco(leitura)
+
+    assert ajustes["acoes_em_circulacao"] == pytest.approx(1338.44e6)
+    assert ajustes["motivo_sem_acoes_em_circulacao"] is None
+    assert ajustes["nao_controladores"] is None
+    assert "não tem balanço consolidado" in ajustes["motivo_sem_nao_controladores"]
+
+
+def test_ajustes_do_balanco_com_acoes_descartadas_trazem_o_motivo_da_cvm():
+    leitura = {
+        "disponivel": True,
+        "nao_controladores": 0.0,
+        "patrimonio_liquido_total": 10.0,
+        "arrendamento_fora_da_divida": 0.0,
+        "acoes_em_circulacao": None,
+        "motivo_acoes": "Tesouraria de 53% do capital na composição da CVM.",
+    }
+
+    ajustes = fcd.montar_ajustes_balanco(leitura)
+
+    assert ajustes["acoes_em_circulacao"] is None
+    assert ajustes["motivo_sem_acoes_em_circulacao"].startswith("Tesouraria de 53%")
 
 
 def test_pesos_do_wacc_usam_divida_liquida_sobre_o_patrimonio_total():

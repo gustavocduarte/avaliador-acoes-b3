@@ -56,6 +56,7 @@ from avaliador_b3.config import (
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
+    TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
@@ -116,7 +117,7 @@ from avaliador_b3.modelos.fcd import (
     montar_ajustes_balanco,
     montar_fluxos_fcd,
 )
-from avaliador_b3.modelos.graham import calcular_valor_justo_graham
+from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
@@ -584,6 +585,9 @@ def _cartao_metodo(
             st.caption(
                 TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
             )
+        motivo_sem_acoes = resultado.get("motivo_sem_acoes_em_circulacao")
+        if motivo_sem_acoes:
+            st.caption(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo_sem_acoes))
         motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
         if motivo_sem_arrendamento:
             st.caption(TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo_sem_arrendamento))
@@ -1052,7 +1056,10 @@ with aba_analisar:
         # — é a mesma forma de guard que os dois modelos já fazem
         # internamente pros parâmetros que aceitam None, só que aqui pros
         # que não aceitam.
-        resultado_graham = calcular_valor_justo_graham(lpa, vpa)
+        ajustes_balanco = montar_ajustes_balanco(leitura_balanco)
+        resultado_graham = calcular_valor_justo_graham(
+            *reescalar_lpa_vpa(lpa, vpa, numero_acoes, ajustes_balanco["acoes_em_circulacao"])
+        )
         resultado_bazin = (
             calcular_preco_teto_bazin(dividendos)
             if dividendos is not None
@@ -1065,7 +1072,7 @@ with aba_analisar:
         if selic_meta is not None and ipca_12m is not None:
             resultado_fcd = calcular_valor_justo_fcd(
                 **fluxos_fcd,
-                **montar_ajustes_balanco(leitura_balanco),
+                **ajustes_balanco,
                 numero_acoes=numero_acoes,
                 selic_meta=selic_meta,
                 ipca_12m=ipca_12m,

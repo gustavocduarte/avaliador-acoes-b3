@@ -478,6 +478,10 @@ MOTIVO_BALANCO_SEM_DEMONSTRACAO = (
     "A empresa não tem balanço consolidado de {data} no {documento} da CVM."
 )
 MOTIVO_BALANCO_NAO_LIDO = "o balanço da CVM não foi lido para essa empresa."
+MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL = "número de ações da CVM indisponível."
+TEXTO_SEM_ACOES_EM_CIRCULACAO = (
+    "Número de ações do Fundamentus (sem as ações em circulação da CVM): {motivo}"
+)
 MOTIVO_ARRENDAMENTO_INDISPONIVEL = "passivo de arrendamento não encontrado no balanço."
 MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL = "patrimônio líquido total não encontrado no balanço."
 MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO = "patrimônio líquido total zero ou negativo."

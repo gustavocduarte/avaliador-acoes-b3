@@ -514,6 +514,8 @@ def _leitura_balanco_mock(
     motivo=None,
     patrimonio_liquido_total=None,
     arrendamento_fora_da_divida=0.0,
+    acoes_em_circulacao=None,
+    motivo_acoes=None,
 ):
     """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
     if not disponivel:
@@ -524,6 +526,8 @@ def _leitura_balanco_mock(
         "nao_controladores": nao_controladores,
         "patrimonio_liquido_total": patrimonio_liquido_total,
         "arrendamento_fora_da_divida": arrendamento_fora_da_divida,
+        "acoes_em_circulacao": acoes_em_circulacao,
+        "motivo_acoes": motivo_acoes,
     }
 
 
@@ -637,6 +641,46 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
 
     assert not at.exception
     assert _metrica_por_label(at, "FCD").value != sem_ajuste
+
+
+def test_fcd_e_graham_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    assert _metrica_por_label(at, "Graham").value == "R$ 47,43"
+    fcd_sem_leitura = _metrica_por_label(at, "FCD").value
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(acoes_em_circulacao=80.0),  # Fundamentus: 100
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # Graham = 47,43 x 100 / 80.
+    assert _metrica_por_label(at, "Graham").value == "R$ 59,29"
+    assert _metrica_por_label(at, "FCD").value != fcd_sem_leitura
+    assert not [c.value for c in at.caption if "ações em circulação da CVM" in c.value]
+
+
+def test_fcd_sem_acoes_em_circulacao_mostra_o_motivo_no_cartao(monkeypatch):
+    from avaliador_b3.config import TEXTO_SEM_ACOES_EM_CIRCULACAO
+
+    motivo = "Tesouraria de 53% do capital na composição da CVM, acima do limite de 20%."
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(acoes_em_circulacao=None, motivo_acoes=motivo),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Graham").value == "R$ 47,43"
+    assert TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo) in [c.value for c in at.caption]
 
 
 def test_fcd_soma_o_arrendamento_fora_da_divida_e_nao_mostra_aviso_de_arrendamento(monkeypatch):
