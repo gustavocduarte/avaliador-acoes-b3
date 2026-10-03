@@ -25,7 +25,9 @@ import pandas as pd
 import requests
 
 from avaliador_b3.config import (
+    CAMINHO_MACRO_REFERENCIA,
     DATA_RAW_DIR,
+    FONTE_ARQUIVO_REFERENCIA,
     FONTE_BCB_API,
     FONTE_BCB_SOAP,
     FONTE_IBGE,
@@ -42,6 +44,7 @@ from avaliador_b3.config import (
     TIMEOUT_SEGUNDOS_BCB_SOAP,
     URL_BCB_SOAP,
     VALIDADE_MACRO_GUARDADO_DIAS,
+    VALIDADE_MACRO_REFERENCIA_DIAS,
 )
 from avaliador_b3.ingest._retry import get_com_retry, post_com_retry
 from avaliador_b3.ingest.ibge_sidra import obter_ipca_mensal_sidra
@@ -173,6 +176,7 @@ def obter_serie(
 
 # --- Segunda fonte: serviço SOAP do SGS no www3 do BCB -----------------------
 
+
 def _envelope_soap_valores(codigo: int, data_inicial: str, data_final: str) -> str:
     """Envelope SOAP de `getValoresSeriesXML` para uma série; datas dd/mm/aaaa."""
     return (
@@ -272,16 +276,19 @@ def _caminho_ultimo_macro(diretorio_cache: Path) -> Path:
     return diretorio_cache / "bcb" / "ultimo_macro.json"
 
 
-def _salvar_ultimo_macro(
-    diretorio_cache: Path,
+def _caminho_macro_referencia() -> Path:
+    return CAMINHO_MACRO_REFERENCIA
+
+
+def _gravar_macro(
+    caminho: Path,
     selic_meta: float,
     ipca_12m: float,
     data_ipca: pd.Timestamp,
     data_busca: datetime,
-    fonte_selic: str = FONTE_BCB_API,
-    fonte_ipca: str = FONTE_BCB_API,
+    fonte_selic: str,
+    fonte_ipca: str,
 ) -> None:
-    caminho = _caminho_ultimo_macro(diretorio_cache)
     caminho.parent.mkdir(parents=True, exist_ok=True)
     caminho.write_text(
         json.dumps(
@@ -297,8 +304,45 @@ def _salvar_ultimo_macro(
     )
 
 
+def _salvar_ultimo_macro(
+    diretorio_cache: Path,
+    selic_meta: float,
+    ipca_12m: float,
+    data_ipca: pd.Timestamp,
+    data_busca: datetime,
+    fonte_selic: str = FONTE_BCB_API,
+    fonte_ipca: str = FONTE_BCB_API,
+) -> None:
+    _gravar_macro(
+        _caminho_ultimo_macro(diretorio_cache),
+        selic_meta,
+        ipca_12m,
+        data_ipca,
+        data_busca,
+        fonte_selic,
+        fonte_ipca,
+    )
+
+
+def salvar_macro_referencia(resultado: ResultadoMacro, caminho: Path) -> None:
+    """Grava no arquivo de referência (versionado com o screener.csv) a Selic, o IPCA, as
+    fontes e a data da busca de um resultado obtido ao vivo."""
+    _gravar_macro(
+        caminho,
+        resultado.selic_meta,
+        resultado.ipca_12m,
+        resultado.data_ipca,
+        resultado.data_busca.to_pydatetime(),
+        resultado.fonte_selic,
+        resultado.fonte_ipca,
+    )
+
+
 def _carregar_ultimo_macro(diretorio_cache: Path) -> dict | None:
-    caminho = _caminho_ultimo_macro(diretorio_cache)
+    return _ler_macro(_caminho_ultimo_macro(diretorio_cache))
+
+
+def _ler_macro(caminho: Path) -> dict | None:
     if not caminho.exists():
         return None
     try:
@@ -416,14 +460,15 @@ def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
     """Selic meta (decimal) e IPCA acumulado 12 meses (decimal) — função
     única usada tanto pelo app quanto pelo screener.
 
-    Cadeia de fontes: BCB (API), BCB (SOAP), IBGE (SIDRA, só o IPCA) e, por último, o valor
-    com sucesso guardado em disco (`_caminho_ultimo_macro`), contanto que tenha no máximo
-    `VALIDADE_MACRO_GUARDADO_DIAS`. Cada fonte tenta de novo sozinha em falha temporária
-    (5xx, timeout, conexão — ver `ingest._retry`), e IPCA com menos de 12 meses conta como
-    falha daquela fonte. Falhas intermediárias só vão para o log. Sem nenhuma fonte nem
-    valor guardado, levanta `MacroIndisponivelError` com mensagem já pronta pra tela, ou
-    `DadosMacroInsuficientesError` se alguma fonte respondeu com o IPCA incompleto e
-    nenhuma trouxe os 12 meses. O resultado diz a fonte de cada valor.
+    Cadeia de fontes: BCB (API), BCB (SOAP), IBGE (SIDRA, só o IPCA), o valor com sucesso
+    guardado em disco (`_caminho_ultimo_macro`, no máximo `VALIDADE_MACRO_GUARDADO_DIAS`) e,
+    por último, o arquivo de referência versionado (no máximo `VALIDADE_MACRO_REFERENCIA_DIAS`).
+    Os dois últimos vêm com `usou_valor_guardado=True`. Cada fonte tenta de novo sozinha em
+    falha temporária (5xx, timeout, conexão — ver `ingest._retry`), e IPCA com menos de 12
+    meses conta como falha daquela fonte. Falhas intermediárias só vão para o log. Sem
+    nenhuma fonte nem valor guardado, levanta `MacroIndisponivelError` com mensagem já pronta
+    pra tela, ou `DadosMacroInsuficientesError` se alguma fonte respondeu com o IPCA incompleto
+    e nenhuma trouxe os 12 meses. O resultado diz a fonte de cada valor.
     """
     hoje = datetime.now()
     try:
@@ -432,11 +477,22 @@ def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
         )
     except Exception as erro:
         warnings.warn(f"Falha ao buscar Selic/IPCA do BCB: {erro}", stacklevel=2)
-        guardado = _carregar_ultimo_macro(diretorio_cache)
-        if guardado is not None:
-            idade_dias = (pd.Timestamp(hoje) - guardado["data_busca"]).days
-            if idade_dias <= VALIDADE_MACRO_GUARDADO_DIAS:
-                fonte = FONTE_VALOR_GUARDADO.format(data=f"{guardado['data_busca']:%d/%m/%Y}")
+        for guardado, validade_dias, modelo_fonte in (
+            (
+                _carregar_ultimo_macro(diretorio_cache),
+                VALIDADE_MACRO_GUARDADO_DIAS,
+                FONTE_VALOR_GUARDADO,
+            ),
+            (
+                _ler_macro(_caminho_macro_referencia()),
+                VALIDADE_MACRO_REFERENCIA_DIAS,
+                FONTE_ARQUIVO_REFERENCIA,
+            ),
+        ):
+            if guardado is None:
+                continue
+            if (pd.Timestamp(hoje) - guardado["data_busca"]).days <= validade_dias:
+                fonte = modelo_fonte.format(data=f"{guardado['data_busca']:%d/%m/%Y}")
                 return ResultadoMacro(
                     selic_meta=guardado["selic_meta"],
                     ipca_12m=guardado["ipca_12m"],

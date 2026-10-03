@@ -1,3 +1,5 @@
+import dataclasses
+import json
 import warnings
 
 import pandas as pd
@@ -18,6 +20,15 @@ ANO_FCD_MOCK = 2025
 
 # A fixture `ambiente_feliz` troca `screener._buscar_macro`; os testes de BCB usam a real.
 _BUSCAR_MACRO_REAL = screener._buscar_macro
+MACRO_AO_VIVO = bcb_sgs.ResultadoMacro(
+    selic_meta=0.10,
+    ipca_12m=0.04,
+    data_ipca=pd.Timestamp("2026-08-01"),
+    usou_valor_guardado=False,
+    data_busca=pd.Timestamp("2026-10-03 12:00"),
+    fonte_selic="BCB (SOAP)",
+    fonte_ipca="IBGE (SIDRA)",
+)
 
 
 def _historico(fechamentos: list[float]) -> pd.DataFrame:
@@ -153,7 +164,7 @@ def ambiente_feliz(monkeypatch):
             ano_mais_recente
         ),
     )
-    monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: (0.10, 0.04))
+    monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: MACRO_AO_VIVO)
     monkeypatch.setattr(screener, "obter_leitura_balanco", lambda *a, **kw: _leitura_balanco())
 
     return {"precos_por_ticker": precos_por_ticker}
@@ -788,10 +799,10 @@ def test_buscar_macro_avisa_quando_usa_valor_guardado(tmp_path, monkeypatch):
     )
 
     with pytest.warns(screener.MacroIndisponivelWarning, match="Banco Central indisponível agora"):
-        selic_meta, ipca_12m = screener._buscar_macro(tmp_path)
+        macro = screener._buscar_macro(tmp_path)
 
-    assert selic_meta == pytest.approx(0.1375)
-    assert ipca_12m == pytest.approx(0.045)
+    assert macro.selic_meta == pytest.approx(0.1375)
+    assert macro.ipca_12m == pytest.approx(0.045)
 
 
 def test_calcular_linha_ticker_erro_deteccao_ano_fcd_nao_derruba_o_calculo(
@@ -940,6 +951,38 @@ def test_rodada_com_mais_acoes_sem_preco_que_o_limite_e_rejeitada(
     assert excecao.value.caminho_rejeitado == tmp_path / "screener.rejeitado.csv"
     assert list(pd.read_csv(excecao.value.caminho_rejeitado)["ticker"]) == ["AAAA4", "BBBB4"]
     assert not (tmp_path / "screener.csv.novo").exists()
+
+
+def test_rodada_aceita_grava_a_selic_e_o_ipca_no_arquivo_de_referencia(ambiente_feliz, tmp_path):
+    _rodar_com_oficial_antigo(tmp_path)
+
+    gravado = json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))
+    assert gravado["selic_meta"] == pytest.approx(0.10)
+    assert gravado["ipca_12m"] == pytest.approx(0.04)
+    assert gravado["data_ipca"] == "2026-08-01"
+    assert gravado["data_busca"].startswith("2026-10-03")
+    assert (gravado["fonte_selic"], gravado["fonte_ipca"]) == ("BCB (SOAP)", "IBGE (SIDRA)")
+
+
+def test_rodada_rejeitada_nao_grava_o_arquivo_de_referencia(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+
+    with pytest.raises(screener.RodadaScreenerRejeitada):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert not (tmp_path / "macro_referencia.json").exists()
+
+
+def test_rodada_que_usou_valor_guardado_nao_regrava_o_arquivo_de_referencia(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    guardado = dataclasses.replace(MACRO_AO_VIVO, usou_valor_guardado=True)
+    monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: guardado)
+
+    _rodar_com_oficial_antigo(tmp_path)
+
+    assert not (tmp_path / "macro_referencia.json").exists()
 
 
 def test_rodada_com_acoes_sem_preco_no_limite_e_aceita(ambiente_feliz, tmp_path, monkeypatch):

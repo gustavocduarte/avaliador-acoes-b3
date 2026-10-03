@@ -1187,6 +1187,17 @@ JANELA_BUSCA_IPCA_DIAS = 730
 # maioria dos casos.
 VALIDADE_MACRO_GUARDADO_DIAS = 45
 
+# Arquivo de referência versionado com o screener.csv: a cada rodada aceita do screener
+# grava a Selic, o IPCA, as fontes e a data da busca. É o último recurso da cadeia, para
+# o Streamlit Cloud, cujo disco local (e o valor guardado) some a cada reinício.
+# Validade de 90 dias (dois ciclos do Copom): mais folgada que a do valor guardado, porque
+# o arquivo só se renova quando alguém roda o screener e commita, e a tela sempre avisa a
+# data. Passado o prazo, é melhor recusar o FCD do que usar uma Selic que pode ter mudado.
+NOME_ARQUIVO_MACRO_REFERENCIA = "macro_referencia.json"
+CAMINHO_MACRO_REFERENCIA = DATA_PROCESSED_DIR / NOME_ARQUIVO_MACRO_REFERENCIA
+VALIDADE_MACRO_REFERENCIA_DIAS = 90
+FONTE_ARQUIVO_REFERENCIA = "arquivo de referência de {data}"
+
 # Pausas entre novas tentativas em erro temporário (5xx, timeout, conexão
 # — ver ingest._retry.get_com_retry), compartilhadas por toda fonte que
 # usa nova tentativa (hoje: BCB e Fundamentus). Timeout continua por

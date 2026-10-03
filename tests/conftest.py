@@ -71,6 +71,9 @@ def _isolar_cache_de_disco(tmp_path, monkeypatch):
         "_caminho_ultimo_macro",
         lambda diretorio_cache: tmp_path / "bcb" / "ultimo_macro.json",
     )
+    monkeypatch.setattr(
+        bcb_sgs, "_caminho_macro_referencia", lambda: tmp_path / "macro_referencia.json"
+    )
 
 
 _DIRETORIOS_PROTEGIDOS = (config.DATA_RAW_DIR, config.DATA_PROCESSED_DIR)

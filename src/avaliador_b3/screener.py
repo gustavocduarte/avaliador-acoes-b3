@@ -64,13 +64,14 @@ from avaliador_b3.config import (
     MOTIVO_RODADA_COM_FALHA_DE_FONTE,
     MOTIVO_RODADA_LINHAS_FALTANDO,
     MOTIVO_RODADA_SEM_PRECO,
+    NOME_ARQUIVO_MACRO_REFERENCIA,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
 )
 from avaliador_b3.empresa.comportamento import calcular_beta
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
-from avaliador_b3.ingest.bcb_sgs import obter_selic_e_ipca
+from avaliador_b3.ingest.bcb_sgs import ResultadoMacro, obter_selic_e_ipca, salvar_macro_referencia
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
     obter_catalogo_emissores,
@@ -270,8 +271,8 @@ def _linha_erro(ticker: str, mensagem: str) -> dict:
     return linha
 
 
-def _buscar_macro(diretorio_cache: Path) -> tuple[float, float]:
-    """Selic meta (decimal) e IPCA acumulado 12 meses (decimal), via a
+def _buscar_macro(diretorio_cache: Path) -> ResultadoMacro:
+    """Selic meta e IPCA acumulado 12 meses (decimais) com a proveniência, via a
     função única de `ingest.bcb_sgs`. Buscado uma vez só, fora do loop
     por ação — é dado macro, não por empresa."""
     resultado = obter_selic_e_ipca(diretorio_cache)
@@ -282,7 +283,7 @@ def _buscar_macro(diretorio_cache: Path) -> tuple[float, float]:
             category=MacroIndisponivelWarning,
             stacklevel=2,
         )
-    return resultado.selic_meta, resultado.ipca_12m
+    return resultado
 
 
 def _calcular_linha_ticker(
@@ -587,8 +588,10 @@ def _executar_rodada(
     # logo abaixo — sem o aviso, o FCD de todas as ações da rodada vira
     # "não aplicável" com a Selic/IPCA indisponíveis como causa, sem
     # aparecer em lugar nenhum visível.
+    macro_da_rodada: ResultadoMacro | None = None
     try:
-        selic_meta, ipca_12m = _buscar_macro(diretorio_cache)
+        macro_da_rodada = _buscar_macro(diretorio_cache)
+        selic_meta, ipca_12m = macro_da_rodada.selic_meta, macro_da_rodada.ipca_12m
     except Exception as erro:
         selic_meta = ipca_12m = None
         warnings.warn(
@@ -677,6 +680,7 @@ def _executar_rodada(
     # já montado a partir de `linhas` — sem nova leitura de disco nem
     # nova chamada de rede.
     resultado_ordenado.to_csv(caminho_saida, index=False)
+    resultado_ordenado.attrs["macro"] = macro_da_rodada
 
     return resultado_ordenado
 
@@ -746,5 +750,8 @@ def rodar_screener(
         raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado)
 
     os.replace(caminho_novo, caminho_saida)
+    macro = resultado.attrs.pop("macro", None)
+    if macro is not None and not macro.usou_valor_guardado:
+        salvar_macro_referencia(macro, caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA))
     resultado.attrs["falhas_de_fonte"] = falhas_de_fonte.por_ticker()
     return resultado

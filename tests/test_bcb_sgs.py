@@ -750,6 +750,102 @@ def test_rest_e_soap_falham_sem_valor_guardado_levanta_a_mensagem_amigavel(monke
     assert str(excinfo.value) == bcb_sgs.MENSAGEM_MACRO_INDISPONIVEL
 
 
+def _semear_referencia(tmp_path, dias_atras: int) -> None:
+    resultado = bcb_sgs.ResultadoMacro(
+        selic_meta=0.1425,
+        ipca_12m=0.05,
+        data_ipca=pd.Timestamp("2026-07-01"),
+        usou_valor_guardado=False,
+        data_busca=pd.Timestamp(datetime.now() - timedelta(days=dias_atras)),
+        fonte_selic="BCB (SOAP)",
+        fonte_ipca="IBGE (SIDRA)",
+    )
+    bcb_sgs.salvar_macro_referencia(resultado, tmp_path / "macro_referencia.json")
+
+
+def _todas_as_fontes_vivas_falham(monkeypatch):
+    _rest_fora_do_ar(monkeypatch)
+
+    def fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", fora_do_ar)
+    monkeypatch.setattr(bcb_sgs, "obter_ipca_mensal_sidra", fora_do_ar)
+
+
+def test_tudo_falha_e_o_arquivo_de_referencia_e_usado_com_a_data(monkeypatch, tmp_path):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_referencia(tmp_path, dias_atras=30)
+    data_esperada = (datetime.now() - timedelta(days=30)).strftime("%d/%m/%Y")
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+    assert resultado.selic_meta == pytest.approx(0.1425)
+    assert resultado.ipca_12m == pytest.approx(0.05)
+    assert resultado.fonte_selic == f"arquivo de referência de {data_esperada}"
+
+
+def test_arquivo_de_referencia_vencido_e_ignorado(monkeypatch, tmp_path):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_referencia(tmp_path, dias_atras=91)
+
+    with (
+        pytest.warns(UserWarning),
+        pytest.raises(bcb_sgs.MacroIndisponivelError),
+    ):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+
+def test_valor_guardado_valido_tem_prioridade_sobre_o_arquivo_de_referencia(
+    monkeypatch, tmp_path
+):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_ultimo_macro(tmp_path, dias_atras=5)
+    _semear_referencia(tmp_path, dias_atras=5)
+
+    with pytest.warns(UserWarning):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.selic_meta == pytest.approx(0.1375)
+    assert resultado.fonte_selic.startswith("valor guardado de")
+
+
+def test_valor_guardado_vencido_cai_no_arquivo_de_referencia(monkeypatch, tmp_path):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_ultimo_macro(tmp_path, dias_atras=46)
+    _semear_referencia(tmp_path, dias_atras=60)
+
+    with pytest.warns(UserWarning):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.selic_meta == pytest.approx(0.1425)
+    assert resultado.fonte_ipca.startswith("arquivo de referência de")
+
+
+def test_fonte_viva_tem_prioridade_sobre_o_arquivo_de_referencia(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+    _semear_referencia(tmp_path, dias_atras=5)
+
+    resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is False
+    assert resultado.selic_meta == pytest.approx(0.1375)
+
+
+def test_arquivo_de_referencia_corrompido_e_ignorado(monkeypatch, tmp_path):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    (tmp_path / "macro_referencia.json").write_text("{ não é json", encoding="utf-8")
+
+    with (
+        pytest.warns(UserWarning),
+        pytest.raises(bcb_sgs.MacroIndisponivelError),
+    ):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+
 def _soap_ipca_so_com_os_ultimos_meses():
     ipca_curto = _soap_ipca()
     antigos = ("7/2025", "8/2025", "9/2025", "10/2025", "11/2025", "12/2025", "1/2026")
