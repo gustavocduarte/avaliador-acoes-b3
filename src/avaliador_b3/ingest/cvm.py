@@ -591,6 +591,47 @@ def obter_fluxo_caixa_livre(
     return resultado
 
 
+def obter_fluxo_caixa_livre_do_tipo(
+    cnpj: str,
+    ano: int,
+    metodo: str,
+    tipo: str,
+    usar_cache: bool = True,
+    forcar_atualizacao: bool = False,
+    diretorio_cache: Path = DATA_RAW_DIR,
+) -> dict | None:
+    """Mesmo resultado de `obter_fluxo_caixa_livre`, mas só da demonstração
+    de `metodo` ("MI"/"MD") e `tipo` ("con"/"ind") pedidos. `None` se ela
+    não existe pra empresa nesse ano ou está com 6.01 e 6.02 zerados."""
+    cnpj_normalizado = _normalizar_cnpj(cnpj)
+    caminho_resultado = (
+        diretorio_cache / "cvm" / f"fcf_{cnpj_normalizado}_{ano}_{metodo}_{tipo}.json"
+    )
+    if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
+        resultado_cache = _ler_cache_fcf_com_schema_atual(caminho_resultado)
+        if resultado_cache is not None:
+            return resultado_cache
+
+    caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
+    linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
+    if not linhas or _fluxo_zerado(linhas):
+        return None
+    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
+
+    if usar_cache:
+        caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
+        envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
+        caminho_resultado.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+    return resultado
+
+
+def _tipo_da_demonstracao(resultado: dict) -> tuple[str | None, str | None]:
+    """(método, tipo) da demonstração de um resultado de FCF, ou `None`s se
+    o resultado não traz essa informação."""
+    tipo = {"consolidado": "con", "individual": "ind"}.get(resultado.get("tipo_demonstracao"))
+    return resultado.get("metodo_dfc"), tipo
+
+
 def _zip_ano_disponivel(ano: int, diretorio_cache: Path, forcar_atualizacao: bool) -> bool:
     """Garante que o zip anual de `ano` está disponível localmente (baixando
     se preciso — se já estiver em cache, `_baixar_zip_ano` não bate na rede
@@ -688,6 +729,26 @@ def obter_fluxo_caixa_livre_com_fallback(
         resultado_base = obter_fluxo_caixa_livre(
             cnpj, ano_base, usar_cache, forcar_atualizacao, diretorio_cache
         )
+        # O crescimento compara os dois anos na mesma demonstração: se a do
+        # ano-base é de outro método ou tipo, usa a do ano de referência
+        # quando ela existe (e tem valores) também no ano-base.
+        metodo_atual, tipo_atual = _tipo_da_demonstracao(resultado_atual)
+        if (
+            metodo_atual is not None
+            and tipo_atual is not None
+            and _tipo_da_demonstracao(resultado_base) != (metodo_atual, tipo_atual)
+        ):
+            resultado_mesmo_tipo = obter_fluxo_caixa_livre_do_tipo(
+                cnpj,
+                ano_base,
+                metodo_atual,
+                tipo_atual,
+                usar_cache,
+                forcar_atualizacao,
+                diretorio_cache,
+            )
+            if resultado_mesmo_tipo is not None:
+                resultado_base = resultado_mesmo_tipo
         fcf_ha_n_anos = resultado_base["fcf_atual"]
         cfo_ha_n_anos = resultado_base["cfo_atual"]
         capex_ha_n_anos = resultado_base["capex_atual"]

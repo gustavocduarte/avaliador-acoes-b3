@@ -815,6 +815,105 @@ def test_obter_fluxo_caixa_livre_com_fallback_devolve_o_fluxo_do_ano_base_para_o
     assert resultado_sem_base["capex_ha_n_anos"] is None
 
 
+def _fallback_com_dois_zips(tmp_path, monkeypatch, membros_2025, membros_2020):
+    zips = {
+        2025: _zip_dfc_sintetico(tmp_path / "dfp_2025.zip", 2025, membros_2025),
+        2020: _zip_dfc_sintetico(tmp_path / "dfp_2020.zip", 2020, membros_2020),
+    }
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda ano, *a, **k: zips[ano])
+    return cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_SINTETICO_ZERADA, 2025, 5, diretorio_cache=tmp_path
+    )
+
+
+def test_fallback_usa_no_ano_base_o_mesmo_tipo_do_ano_de_referencia(tmp_path, monkeypatch):
+    # 2025: consolidada zerada, vale a individual. 2020: as duas têm valores
+    # e a consolidada ganharia por prioridade, mas o crescimento usa a individual.
+    resultado = _fallback_com_dois_zips(
+        tmp_path,
+        monkeypatch,
+        {
+            ("MI", "con"): [("6.01", "0"), ("6.02", "0")],
+            ("MI", "ind"): [("6.01", "600"), ("6.02", "-150")],
+        },
+        {
+            ("MI", "con"): [("6.01", "200"), ("6.02", "-50")],
+            ("MI", "ind"): [("6.01", "300"), ("6.02", "-100")],
+        },
+    )
+
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+    assert resultado["fcf_ha_n_anos"] == pytest.approx(200.0 * 1000)
+
+
+def test_fallback_mantem_o_tipo_do_ano_base_quando_o_do_ano_de_referencia_nao_existe_nele(
+    tmp_path, monkeypatch
+):
+    resultado = _fallback_com_dois_zips(
+        tmp_path,
+        monkeypatch,
+        {("MI", "ind"): [("6.01", "600"), ("6.02", "-150")]},
+        {("MI", "con"): [("6.01", "200"), ("6.02", "-50")]},
+    )
+
+    assert resultado["fcf_ha_n_anos"] == pytest.approx(150.0 * 1000)
+
+
+def test_fallback_nao_troca_o_tipo_do_ano_base_quando_o_do_ano_de_referencia_esta_zerado_nele(
+    tmp_path, monkeypatch
+):
+    resultado = _fallback_com_dois_zips(
+        tmp_path,
+        monkeypatch,
+        {("MI", "ind"): [("6.01", "600"), ("6.02", "-150")]},
+        {
+            ("MI", "con"): [("6.01", "200"), ("6.02", "-50")],
+            ("MI", "ind"): [("6.01", "0"), ("6.02", "0")],
+        },
+    )
+
+    assert resultado["fcf_ha_n_anos"] == pytest.approx(150.0 * 1000)
+
+
+def test_fallback_com_o_mesmo_tipo_nos_dois_anos_nao_muda_nada(tmp_path, monkeypatch):
+    resultado = _fallback_com_dois_zips(
+        tmp_path,
+        monkeypatch,
+        {("MI", "con"): [("6.01", "600"), ("6.02", "-150")]},
+        {
+            ("MI", "con"): [("6.01", "200"), ("6.02", "-50")],
+            ("MI", "ind"): [("6.01", "300"), ("6.02", "-100")],
+        },
+    )
+
+    assert resultado["fcf_ha_n_anos"] == pytest.approx(150.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_do_tipo_devolve_so_a_demonstracao_pedida(tmp_path, monkeypatch):
+    caminho_zip = _zip_dfc_sintetico(
+        tmp_path / "dfp.zip",
+        2024,
+        {
+            ("MI", "con"): [("6.01", "200"), ("6.02", "-50")],
+            ("MI", "ind"): [("6.01", "300"), ("6.02", "-100")],
+        },
+    )
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: caminho_zip)
+
+    resultado = cvm.obter_fluxo_caixa_livre_do_tipo(
+        CNPJ_SINTETICO_ZERADA, 2024, "MI", "ind", diretorio_cache=tmp_path
+    )
+
+    assert resultado["tipo_demonstracao"] == "individual"
+    assert resultado["fcf_atual"] == pytest.approx(200.0 * 1000)
+    assert (
+        cvm.obter_fluxo_caixa_livre_do_tipo(
+            CNPJ_SINTETICO_ZERADA, 2024, "MD", "con", diretorio_cache=tmp_path
+        )
+        is None
+    )
+
+
 def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
     tmp_path, monkeypatch
 ):
