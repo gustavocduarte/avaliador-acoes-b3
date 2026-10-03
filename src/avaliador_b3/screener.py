@@ -1,7 +1,7 @@
 """Screener: roda o pipeline completo de valor justo (Graham, Bazin, FCD,
 combinado) para todas as ações do universo do Ibovespa, uma de cada vez, e
-devolve uma tabela ordenada por desconto — quanto o preço atual está
-abaixo (desconto positivo) ou acima (negativo) do valor justo combinado.
+devolve uma tabela ordenada por potencial de valorização — quanto o valor
+justo combinado está acima (potencial positivo) ou abaixo (negativo) do preço atual.
 
 Não reimplementa nenhuma lógica de cálculo: só chama os mesmos
 adapters/modelos já usados em app/main.py, orquestrando a busca pra cada
@@ -165,7 +165,7 @@ COLUNAS_RESULTADO = [
 def _aviso_desconto_extremo(
     desconto_percentual: float | None, metodos_utilizados: list[str]
 ) -> str:
-    """Sinaliza (sem filtrar) descontos fora da faixa considerada
+    """Sinaliza (sem filtrar) potenciais fora da faixa considerada
     confiável — ver a justificativa dos limiares em config.py (esses não
     mudam aqui). O TEXTO do aviso, por outro lado, depende de quais
     métodos entraram no valor combinado daquela ação específica — achado
@@ -173,7 +173,7 @@ def _aviso_desconto_extremo(
     2026-09-24): um texto único que sempre citava o FCD ficava errado
     pra ações como COGN3, onde só Graham disparava o limiar positivo,
     sem FCD nenhum na conta. Quatro casos, por sinal do
-    desconto × presença de "fcd" em `metodos_utilizados`:
+    potencial × presença de "fcd" em `metodos_utilizados`:
     - positivo + FCD: taxa de crescimento de 2 pontos do FCD (o caso mais
       comum, mas não mais o único assumido).
     - positivo + sem FCD: risco que Graham/Bazin não captam.
@@ -450,9 +450,9 @@ def rodar_screener(
     caminho_saida: Path = CAMINHO_SAIDA_PADRAO,
 ) -> pd.DataFrame:
     """Roda o screener completo e devolve a tabela ordenada por
-    `desconto_percentual` decrescente (ação mais descontada em relação ao
-    valor justo combinado primeiro; sem valor combinado ou com erro fica
-    no fim).
+    `desconto_percentual` (potencial de valorização) decrescente (ação com
+    maior potencial até o valor justo combinado primeiro; sem valor
+    combinado ou com erro fica no fim).
 
     `tickers` sobrescreve o universo do Ibovespa (útil pra rodar um
     subconjunto, ex: em teste). `ano_mais_recente_fcd` sobrescreve a
@@ -466,7 +466,7 @@ def rodar_screener(
     incrementalmente em `caminho_saida`
     durante o processamento — uma linha por ação, assim que calculada, não
     só no final — mas nessa hora ainda na ordem de processamento (universo
-    do Ibovespa, alfabética), não por desconto. Depois que o loop termina,
+    do Ibovespa, alfabética), não por potencial. Depois que o loop termina,
     `caminho_saida` é reescrito de uma vez com a tabela já ordenada, a
     partir dos mesmos dados já calculados em memória (sem reler do disco
     nem bater na rede de novo) — bug real corrigido em 2026-09-21: antes

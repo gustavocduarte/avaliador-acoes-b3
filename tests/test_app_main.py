@@ -716,13 +716,13 @@ def test_caption_screener_topo_e_curta(monkeypatch):
     captions = [
         c.value
         for c in at.caption
-        if "Ranking pelo desconto em relação ao valor combinado" in c.value
+        if "Ranking pelo potencial de valorização até o valor combinado" in c.value
     ]
     assert len(captions) == 1
     assert captions[0] == (
-        "Ranking pelo desconto em relação ao valor combinado (média simples "
-        "dos métodos aplicáveis a cada ação). Veja abaixo como ler cada "
-        "coluna."
+        "Ranking pelo potencial de valorização até o valor combinado (média "
+        "simples dos métodos aplicáveis a cada ação). Veja abaixo como ler "
+        "cada coluna."
     )
 
 
@@ -742,11 +742,8 @@ def test_expander_como_ler_tabela_existe(monkeypatch):
 
 
 def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
-    # Desconto e Aviso não tinham texto próprio na legenda antiga (o
-    # parágrafo só citava Divergência/Dividendos vs. histórico/
-    # Reinvestimento) — reaproveita o texto já usado em outro lugar da
-    # tela (o parágrafo original pro Desconto, o aviso dinâmico da
-    # tabela pro Aviso), agora como item próprio no expander.
+    # Potencial e Aviso têm item próprio no expander da legenda (junto de
+    # Divergência/Dividendos vs. histórico/Reinvestimento).
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -760,21 +757,23 @@ def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
     blocos = [
         m.value
         for m in at.markdown
-        if "**Desconto**" in m.value and "**Aviso**" in m.value
+        if "**Potencial**" in m.value and "**Aviso**" in m.value
     ]
     assert len(blocos) == 1
     bloco = blocos[0]
     assert (
-        "**Desconto** — ranking pelo desconto em relação ao valor combinado "
-        "(média simples de Graham, Bazin e FCD aplicáveis, com pesos iguais "
-        "por simplicidade — veja 'Como funciona esse cálculo?' na aba "
-        "Analisar uma ação)." in bloco
+        "**Potencial** — quanto o valor justo combinado está acima (+) ou "
+        "abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
+        "combinado é a média simples de Graham, Bazin e FCD aplicáveis, com "
+        "pesos iguais por simplicidade — veja 'Como funciona esse cálculo?' "
+        "na aba Analisar uma ação. A tabela vem ordenada do maior para o "
+        "menor potencial." in bloco
     )
     assert (
-        "**Aviso** — aparece quando o desconto está fora da faixa "
+        "**Aviso** — aparece quando o potencial está fora da faixa "
         "considerada confiável (valor justo muito acima ou muito abaixo do "
         "preço); a causa provável varia de uma ação para outra, conforme o "
-        "texto de cada aviso. Vazio significa desconto dentro da faixa "
+        "texto de cada aviso. Vazio significa potencial dentro da faixa "
         "normal." in bloco
     )
 
@@ -1704,11 +1703,11 @@ def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(
 
     assert not at.exception
     avisos = [
-        w.value for w in at.warning if "ação(ões) com desconto fora do comum" in w.value
+        w.value for w in at.warning if "ação(ões) com potencial fora do comum" in w.value
     ]
     assert len(avisos) == 1
     assert avisos[0] == (
-        '1 ação(ões) com desconto fora do comum (valor justo muito acima ou '
+        '1 ação(ões) com potencial fora do comum (valor justo muito acima ou '
         'muito abaixo do preço) — veja a coluna "Aviso" na tabela: a causa '
         "provável varia de uma ação para outra."
     )

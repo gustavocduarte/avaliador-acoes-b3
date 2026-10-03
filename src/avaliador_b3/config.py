@@ -722,12 +722,12 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 # sozinho não deve ser lido como "preço-alvo", e sim como um dos três
 # métodos a serem combinados (ver o combinador de valor justo).
 
-# --- Limiares de "desconto extremo" do screener (2026-09-14) ---
+# --- Limiares de "potencial extremo" do screener (2026-09-14) ---
 #
 # O screener roda o pipeline completo nas ~76 ações do Ibovespa e ordena
-# por desconto = (valor_combinado - preço_atual) / preço_atual × 100. A
+# por potencial = (valor_combinado - preço_atual) / preço_atual × 100. A
 # fragilidade da CAGR de 2 pontos do FCD (documentada acima) pode produzir
-# descontos absurdos numa ação isolada sem que isso seja sinal de
+# potenciais absurdos numa ação isolada sem que isso seja sinal de
 # oportunidade real. Em vez de filtrar essas linhas (o usuário quer vê-las,
 # só sinalizadas), marcamos as que passam de um limiar.
 #
@@ -742,8 +742,8 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 # - Lado negativo: a sugestão inicial de -70% foi trocada por -100%. Com
 #   -70%, 8 das 74 ações (11%) seriam marcadas, numa faixa contínua e sem
 #   quebra visível (de -73% a -109%) — não parecia capturar "extremo", só
-#   "bem descontado". -100% tem uma justificativa estrutural, não só
-#   estatística: desconto < -100% só é matematicamente possível quando o
+#   "preço bem acima do valor". -100% tem uma justificativa estrutural, não só
+#   estatística: potencial < -100% só é matematicamente possível quando o
 #   valor_combinado é negativo — um "valor justo negativo" é sempre
 #   artefato das premissas do modelo (nunca uma leitura literal de que a
 #   empresa vale menos que zero), então qualquer ocorrência já é suspeita
@@ -758,18 +758,18 @@ DESCONTO_EXTREMO_LIMITE_INFERIOR = -100.0
 # (screenshot da aba Screener): COGN3 disparava o limiar positivo só com
 # Graham (FCD nem aplicável ali), mas o texto dizia "sensibilidade da
 # CAGR do FCD" mesmo assim. Virou 4 textos, escolhidos em
-# avaliador_b3.screener._aviso_desconto_extremo por sinal do desconto
+# avaliador_b3.screener._aviso_desconto_extremo por sinal do potencial
 # (positivo/negativo) × presença de "fcd" em `metodos_utilizados` — os
 # LIMIARES não mudaram, só qual texto explica cada combinação. Nenhum
 # cita nome de arquivo/código nem jargão técnico (linguagem visível ao
 # usuário).
 AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD = (
-    "Desconto extremo — provavelmente vem da taxa de crescimento "
+    "Potencial extremo — provavelmente vem da taxa de crescimento "
     "estimada pelo FCD, que usa só dois anos de dados e pode exagerar o "
     "resultado. Não é necessariamente uma oportunidade real."
 )
 AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
-    "Desconto extremo — calculado só com Graham e/ou Bazin. Descontos "
+    "Potencial extremo — calculado só com Graham e/ou Bazin. Potenciais "
     "desse tamanho costumam indicar que o mercado está precificando um "
     "risco que essas fórmulas não captam (como dívida alta ou lucro que "
     "pode não se repetir). Confira os valores individuais antes de "
@@ -784,21 +784,31 @@ AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD = (
     "endividamento em 'Saúde financeira'."
 )
 # Reserva pra qualquer combinação não coberta acima — hoje, na prática,
-# só "desconto negativo extremo SEM FCD entre os métodos". Essa
+# só "potencial negativo extremo SEM FCD entre os métodos". Essa
 # combinação é INALCANÇÁVEL com os modelos atuais: Graham é uma raiz
 # quadrada (`modelos.graham`, sempre ≥ 0 quando calculável) e Bazin só
 # fica "aplicável" quando o dividendo dos últimos 12 meses é positivo
 # (`modelos.bazin`, preco_teto sempre > 0 nesse caso) — sem o FCD (o
 # único dos três que pode dar negativo), a média de Graham e/ou Bazin
-# nunca é negativa, então desconto ≤ LIMITE_INFERIOR (que exige
+# nunca é negativa, então potencial ≤ LIMITE_INFERIOR (que exige
 # valor_combinado ≤ 0) não pode acontecer. Existe mesmo assim, sem
 # inventar uma explicação específica, pra não deixar essa combinação sem
 # texto nenhum se um dos dois modelos mudar no futuro e passar a
 # permitir valor negativo.
 AVISO_DESCONTO_EXTREMO_GENERICO = (
-    "Desconto fora do comum — confira os valores individuais de cada "
+    "Potencial fora do comum — confira os valores individuais de cada "
     "método antes de tirar qualquer conclusão."
 )
+
+# Vocabulário do "Potencial" (valor justo ÷ preço − 1) na tela: rótulo da
+# coluna e tooltips do Screener, da comparação setorial e dos cartões de
+# Valor Justo. A coluna `desconto_percentual` do CSV mantém o nome.
+ROTULO_POTENCIAL = "Potencial"
+TOOLTIP_POTENCIAL_COLUNA = (
+    "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "
+    "atual (valor justo ÷ preço − 1). Não é prazo nem retorno esperado."
+)
+TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço − 1)."
 
 # --- Painel de correlação com fatores externos (2026-09-15) ---
 #

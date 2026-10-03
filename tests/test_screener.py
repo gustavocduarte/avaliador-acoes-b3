@@ -35,7 +35,7 @@ def _indicadores(
         "numero_acoes": numero_acoes,
         "divida_liquida_sobre_patrimonio": divida_liquida_sobre_patrimonio,
         # None por padrão (não deduzida do FCD) — preserva os valores/
-        # descontos que os testes existentes já esperavam antes da
+        # potenciais que os testes existentes já esperavam antes da
         # correção de 2026-09-23; ver test_fcd.py pra cobertura da
         # dedução em si.
         "divida_liquida": divida_liquida,
@@ -602,7 +602,7 @@ def test_rodar_screener_trata_excecao_inesperada_sem_derrubar_as_demais(
 
 
 def test_rodar_screener_ordena_por_desconto_percentual_decrescente(ambiente_feliz, tmp_path):
-    # AAAA4 mais barata (mesmos fundamentos, preço menor) -> desconto maior
+    # AAAA4 mais barata (mesmos fundamentos, preço menor) -> potencial maior
     # -> deve vir primeiro na tabela ordenada.
     ambiente_feliz["precos_por_ticker"]["AAAA4"] = 30.0
     ambiente_feliz["precos_por_ticker"]["BBBB4"] = 45.0
@@ -620,7 +620,7 @@ def test_rodar_screener_ordena_por_desconto_percentual_decrescente(ambiente_feli
 def test_rodar_screener_arquivo_em_disco_fica_ordenado_por_desconto(ambiente_feliz, tmp_path):
     # Regressão: a escrita incremental (uma linha por ação, durante o
     # processamento) grava na ordem de `tickers` — proposital aqui, ao
-    # contrário da ordem por desconto — não na ordem final por desconto.
+    # contrário da ordem por potencial — não na ordem final por potencial.
     # Só o retorno em memória era ordenado; o arquivo em disco nunca era
     # reescrito depois do sort, então ficava preso na ordem de
     # processamento. Este teste lê o ARQUIVO, não `resultado`.
@@ -753,7 +753,7 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_positivo(
             "motivo_nao_aplicavel": None,
         },
     )
-    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 10.0  # desconto = 900%
+    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 10.0  # potencial = 900%
 
     linha = screener._calcular_linha_ticker(
         "AAAA4",
@@ -778,13 +778,13 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_negativo(
         "calcular_valor_combinado",
         lambda *a, **k: {
             "aplicavel": True,
-            "valor_combinado": -20.0,  # valor combinado negativo -> desconto < -100%
+            "valor_combinado": -20.0,  # valor combinado negativo -> potencial < -100%
             "metodos_utilizados": ["fcd"],
             "valores_por_metodo": {"fcd": -20.0},
             "motivo_nao_aplicavel": None,
         },
     )
-    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 10.0  # desconto = (-20-10)/10*100 = -300%
+    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 10.0  # potencial = (-20-10)/10*100 = -300%
 
     linha = screener._calcular_linha_ticker(
         "AAAA4",
@@ -813,7 +813,7 @@ def test_calcular_linha_ticker_nao_sinaliza_desconto_normal(ambiente_feliz, tmp_
             "motivo_nao_aplicavel": None,
         },
     )
-    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 40.0  # desconto = (55-40)/40*100 = 37,5%
+    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 40.0  # potencial = (55-40)/40*100 = 37,5%
 
     linha = screener._calcular_linha_ticker(
         "AAAA4",
@@ -850,8 +850,8 @@ def test_rodar_screener_sinaliza_so_a_acao_com_desconto_extremo(
 
     combinado_falso.fila = ["AAAA4", "BBBB4"]
     monkeypatch.setattr(screener, "calcular_valor_combinado", combinado_falso)
-    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 40.0  # desconto = 1150% -> extremo
-    ambiente_feliz["precos_por_ticker"]["BBBB4"] = 40.0  # desconto = 12,5% -> normal
+    ambiente_feliz["precos_por_ticker"]["AAAA4"] = 40.0  # potencial = 1150% -> extremo
+    ambiente_feliz["precos_por_ticker"]["BBBB4"] = 40.0  # potencial = 12,5% -> normal
 
     resultado = screener.rodar_screener(
         tickers=["AAAA4", "BBBB4"],

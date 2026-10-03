@@ -44,8 +44,11 @@ from avaliador_b3.config import (
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
+    ROTULO_POTENCIAL,
     SERIES_BCB_SGS,
     TICKER_PETROLEO_BRENT,
+    TOOLTIP_POTENCIAL_CARTAO,
+    TOOLTIP_POTENCIAL_COLUNA,
     YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
@@ -533,6 +536,7 @@ def _cartao_metodo(
             nome,
             _fmt_bilhoes(resultado[rotulo_valor]),
             delta=_delta_percentual_upside(resultado[rotulo_valor], preco_atual),
+            help=TOOLTIP_POTENCIAL_CARTAO,
         )
         if resultado.get("divida_liquida_deduzida") is False:
             st.caption(
@@ -653,12 +657,14 @@ def _tabela_formatada_pt_br(
     df: pd.DataFrame,
     colunas_moeda: dict[str, str],
     colunas_percentual: dict[str, str] | None = None,
+    ajudas: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Pré-formata colunas monetárias/percentuais de `df` como texto em
     convenção brasileira (`_fmt_bilhoes`/`_fmt_percentual`) e monta o
     `column_config` correspondente, pronto pra passar pro `st.dataframe`
     — devolve `(df_formatado, column_config)`. `colunas_moeda`/
-    `colunas_percentual` são dicts `{nome_da_coluna: rótulo_exibido}`.
+    `colunas_percentual` são dicts `{nome_da_coluna: rótulo_exibido}`;
+    `ajudas` (opcional) é `{nome_da_coluna: tooltip}`.
 
     Por que texto pré-formatado, não `st.column_config.NumberColumn
     (format=...)`: o `format` do NumberColumn é sprintf-js/d3-format por
@@ -676,6 +682,7 @@ def _tabela_formatada_pt_br(
     tabelas do projeto que mostram R$/%: Comparação Setorial, Screener,
     Simulador de carteira, Ganho nominal vs. real."""
     colunas_percentual = colunas_percentual or {}
+    ajudas = ajudas or {}
     df_formatado = df.assign(
         **{coluna: df[coluna].apply(_fmt_bilhoes) for coluna in colunas_moeda}
     )
@@ -687,7 +694,7 @@ def _tabela_formatada_pt_br(
             }
         )
     column_config = {
-        coluna: st.column_config.TextColumn(rotulo, alignment="right")
+        coluna: st.column_config.TextColumn(rotulo, alignment="right", help=ajudas.get(coluna))
         for coluna, rotulo in {**colunas_moeda, **colunas_percentual}.items()
     }
     return df_formatado, column_config
@@ -1086,6 +1093,7 @@ with aba_analisar:
                     delta=_delta_percentual_upside(
                         resultado_combinado["valor_combinado"], preco_atual
                     ),
+                    help=TOOLTIP_POTENCIAL_CARTAO,
                 )
                 st.caption(
                     "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
@@ -1558,7 +1566,7 @@ with aba_analisar:
                         # salvo (dado local, sem nova busca de rede além do catálogo
                         # já cacheado) pra achar os pares do mesmo setor da ação
                         # buscada. Os números da tabela (preço, valor combinado,
-                        # desconto) vêm direto do screener — não são recalculados.
+                        # potencial) vêm direto do screener — não são recalculados.
                         segmentos_screener = resolver_segmentos_setoriais(
                             list(tabela_screener_setor["ticker"]), catalogo_setorial
                         )
@@ -1581,7 +1589,8 @@ with aba_analisar:
                                     "preco_atual": "Preço atual",
                                     "valor_combinado": "Valor combinado",
                                 },
-                                colunas_percentual={"desconto_percentual": "Desconto"},
+                                colunas_percentual={"desconto_percentual": ROTULO_POTENCIAL},
+                                ajudas={"desconto_percentual": TOOLTIP_POTENCIAL_COLUNA},
                             )
                             st.dataframe(
                                 tabela_pares_fmt,
@@ -1635,16 +1644,18 @@ with aba_analisar:
 
 with aba_screener:
     st.caption(
-        "Ranking pelo desconto em relação ao valor combinado (média simples "
-        "dos métodos aplicáveis a cada ação). Veja abaixo como ler cada "
-        "coluna."
+        "Ranking pelo potencial de valorização até o valor combinado (média "
+        "simples dos métodos aplicáveis a cada ação). Veja abaixo como ler "
+        "cada coluna."
     )
     with st.expander("Como ler esta tabela"):
         st.markdown(
-            "- **Desconto** — ranking pelo desconto em relação ao valor "
-            "combinado (média simples de Graham, Bazin e FCD aplicáveis, com "
-            "pesos iguais por simplicidade — veja 'Como funciona esse "
-            "cálculo?' na aba Analisar uma ação).\n"
+            "- **Potencial** — quanto o valor justo combinado está acima (+) "
+            "ou abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
+            "combinado é a média simples de Graham, Bazin e FCD aplicáveis, "
+            "com pesos iguais por simplicidade — veja 'Como funciona esse "
+            "cálculo?' na aba Analisar uma ação. A tabela vem ordenada do "
+            "maior para o menor potencial.\n"
             "- **Divergência** — mostra o quanto os métodos discordam entre "
             "si. Divergência vazia significa que só um método se aplica "
             "àquela ação.\n"
@@ -1659,10 +1670,10 @@ with aba_screener:
             "para baixo. Vazio quando o FCD não se aplica, o caixa "
             "operacional foi negativo ou a empresa vendeu mais ativos do que "
             "comprou.\n"
-            "- **Aviso** — aparece quando o desconto está fora da faixa "
+            "- **Aviso** — aparece quando o potencial está fora da faixa "
             "considerada confiável (valor justo muito acima ou muito abaixo "
             "do preço); a causa provável varia de uma ação para outra, "
-            "conforme o texto de cada aviso. Vazio significa desconto dentro "
+            "conforme o texto de cada aviso. Vazio significa potencial dentro "
             "da faixa normal."
         )
 
@@ -1728,7 +1739,7 @@ with aba_screener:
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:
             st.warning(
-                f'{linhas_com_aviso} ação(ões) com desconto fora do comum (valor '
+                f'{linhas_com_aviso} ação(ões) com potencial fora do comum (valor '
                 "justo muito acima ou muito abaixo do preço) — veja a coluna "
                 '"Aviso" na tabela: a causa provável varia de uma ação para outra.'
             )
@@ -1736,7 +1747,8 @@ with aba_screener:
         tabela_screener_fmt, colunas_screener_fmt = _tabela_formatada_pt_br(
             tabela_screener,
             colunas_moeda={"preco_atual": "Preço atual", "valor_combinado": "Valor combinado"},
-            colunas_percentual={"desconto_percentual": "Desconto"},
+            colunas_percentual={"desconto_percentual": ROTULO_POTENCIAL},
+            ajudas={"desconto_percentual": TOOLTIP_POTENCIAL_COLUNA},
         )
         st.dataframe(
             tabela_screener_fmt,
