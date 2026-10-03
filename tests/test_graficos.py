@@ -1,8 +1,7 @@
-import numpy as np
 import pandas as pd
 import pytest
 
-from avaliador_b3 import carteira, graficos
+from avaliador_b3 import graficos
 
 # --- ticks_mensais_pt_br ------------------------------------------------------
 #
@@ -166,130 +165,6 @@ def test_normalizar_base_100_zero_nao_lider_ainda_conta_como_primeiro_valor_vali
     normalizada = graficos.normalizar_base_100(serie)
 
     assert normalizada.isna().all()
-
-
-# --- projetar_curva_composta / projetar_curva_linear / projetar_curva_inflacao
-
-
-def test_curva_composta_tem_anos_mais_1_pontos_com_extremos_corretos():
-    curva = graficos.projetar_curva_composta(1000.0, 0.10, 5)
-
-    assert list(curva["ano"]) == [0, 1, 2, 3, 4, 5]
-    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
-    assert curva["valor"].iloc[-1] == pytest.approx(1000.0 * 1.10**5)
-
-
-def test_curva_composta_e_curva_linear_tem_mesmo_ponto_inicial_e_final():
-    # Mesmo início/fim, trajetória diferente — é o contraste que o
-    # gráfico quer mostrar (efeito dos juros compostos).
-    valor_investido, valor_destino, anos = 1000.0, 2000.0, 5
-    cagr = carteira.calcular_cagr_implicito(valor_investido, valor_destino, anos)
-    assert cagr is not None
-
-    composta = graficos.projetar_curva_composta(valor_investido, cagr, anos)
-    linear = graficos.projetar_curva_linear(valor_investido, valor_destino, anos)
-
-    assert composta["valor"].iloc[0] == pytest.approx(linear["valor"].iloc[0])
-    assert composta["valor"].iloc[-1] == pytest.approx(linear["valor"].iloc[-1])
-
-
-def test_curva_composta_e_linear_diferem_nos_pontos_intermediarios():
-    # Juros compostos crescem mais devagar no início e aceleram depois —
-    # no meio do horizonte, o valor composto fica ABAIXO do linear quando
-    # o destino é maior que o investido (convexidade da curva exponencial).
-    valor_investido, valor_destino, anos = 1000.0, 2000.0, 5
-    cagr = 2 ** (1 / 5) - 1
-
-    composta = graficos.projetar_curva_composta(valor_investido, cagr, anos)
-    linear = graficos.projetar_curva_linear(valor_investido, valor_destino, anos)
-
-    meio = 2  # ano intermediário, nem ponta nem fim
-    assert composta["valor"].iloc[meio] != pytest.approx(linear["valor"].iloc[meio])
-    assert composta["valor"].iloc[meio] < linear["valor"].iloc[meio]
-
-
-def test_curva_linear_funciona_com_destino_negativo():
-    # Cenário pessimista de valor combinado negativo (possível no
-    # projeto) não tem CAGR real, mas a reta linear é sempre calculável.
-    curva = graficos.projetar_curva_linear(1000.0, -200.0, 5)
-
-    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
-    assert curva["valor"].iloc[-1] == pytest.approx(-200.0)
-    assert curva["valor"].is_monotonic_decreasing
-
-
-def test_curva_linear_com_zero_anos_devolve_so_o_ponto_inicial():
-    # Regressão defensiva: incremento * t / anos levantaria ZeroDivisionError
-    # com anos=0 (mesmo com t=0, numerador zero) — não alcançável hoje (único
-    # chamador usa HORIZONTE_PROJECAO_FCD_ANOS=5), mas carteira.py já guarda
-    # o mesmo tipo de entrada em calcular_cagr_implicito.
-    curva = graficos.projetar_curva_linear(1000.0, 2000.0, 0)
-
-    assert list(curva["ano"]) == [0]
-    assert curva["valor"].iloc[0] == pytest.approx(1000.0)
-
-
-def test_curva_linear_e_composta_zero_anos_produzem_o_mesmo_ponto():
-    # Mesma simetria de "mesmo início/fim" que as duas já têm pra anos>0.
-    composta = graficos.projetar_curva_composta(1000.0, 0.10, 0)
-    linear = graficos.projetar_curva_linear(1000.0, 2000.0, 0)
-
-    pd.testing.assert_frame_equal(composta, linear)
-
-
-def test_curva_inflacao_e_composta_com_a_taxa_do_ipca():
-    curva_inflacao = graficos.projetar_curva_inflacao(1000.0, 0.05, 5)
-    curva_composta_equivalente = graficos.projetar_curva_composta(1000.0, 0.05, 5)
-
-    pd.testing.assert_frame_equal(curva_inflacao, curva_composta_equivalente)
-
-
-# --- validação de `anos` nas três funções de projeção ------------------------
-
-_FUNCOES_PROJECAO = [
-    (graficos.projetar_curva_composta, (1000.0, 0.10)),
-    (graficos.projetar_curva_linear, (1000.0, 2000.0)),
-    (graficos.projetar_curva_inflacao, (1000.0, 0.04)),
-]
-
-
-@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
-def test_projecao_anos_zero_continua_valido(funcao, args):
-    curva = funcao(*args, 0)
-
-    assert list(curva["ano"]) == [0]
-    assert curva["valor"].iloc[0] == pytest.approx(args[0])
-
-
-@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
-def test_projecao_anos_negativo_levanta_value_error(funcao, args):
-    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
-        funcao(*args, -5)
-
-
-@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
-def test_projecao_anos_nao_inteiro_levanta_value_error(funcao, args):
-    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
-        funcao(*args, 2.5)
-
-
-@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
-def test_projecao_aceita_inteiro_do_numpy(funcao, args):
-    # numpy.int64 (ex: valor vindo de uma coluna do pandas) não é
-    # instância de `int`, mas é de `numbers.Integral` — precisa ser
-    # aceito, não só o `int` nativo do Python.
-    curva = funcao(*args, np.int64(3))
-
-    assert list(curva["ano"]) == [0, 1, 2, 3]
-
-
-@pytest.mark.parametrize(("funcao", "args"), _FUNCOES_PROJECAO)
-def test_projecao_recusa_bool_mesmo_sendo_subclasse_de_int(funcao, args):
-    # bool é subclasse de int em Python (isinstance(True, int) é True) —
-    # True não é um número de anos válido, precisa ser recusado mesmo
-    # assim.
-    with pytest.raises(ValueError, match="anos deve ser um inteiro maior ou igual a zero"):
-        funcao(*args, True)
 
 
 # --- agregar_dividendos_por_ano ----------------------------------------------

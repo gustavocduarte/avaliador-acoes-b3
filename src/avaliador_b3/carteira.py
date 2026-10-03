@@ -1,5 +1,5 @@
-"""Simulador de carteira: projeta cenários pessimista/base/otimista pra um
-conjunto de ações e valores investidos, a partir do resultado já salvo do
+"""Simulador de carteira: mostra o potencial dos cenários pessimista/base/
+otimista pra um conjunto de ações e valores investidos, a partir do resultado já salvo do
 screener (data/processed/screener.csv) — não recalcula nada ao vivo, só
 reorganiza os valores por método que o screener já grava por ação.
 
@@ -63,8 +63,8 @@ def derivar_cenarios_ticker(linha: dict) -> dict:
 
 
 def simular_investimento_ticker(linha_screener: dict, valor_investido: float) -> dict:
-    """Projeta o valor investido numa ação nos três cenários, em R$ e em %
-    de retorno sobre o valor investido. `linha_screener` é uma linha da
+    """Valor do investimento numa ação se o preço convergir ao valor justo de
+    cada cenário, em R$ e em % de potencial sobre o valor investido. `linha_screener` é uma linha da
     tabela do screener (precisa de `ticker`, `preco_atual` e as colunas
     de `derivar_cenarios_ticker`).
 
@@ -139,74 +139,21 @@ def montar_tabela_carteira(
     return pd.DataFrame(linhas)
 
 
-def calcular_cagr_implicito(
-    valor_investido: float, valor_destino: float, anos: int
-) -> float | None:
-    """Taxa de crescimento anual composta (CAGR, em decimal — 0,10 = 10%
-    a.a.) implícita pra ir de `valor_investido` até `valor_destino` em
-    `anos` anos: `(valor_destino / valor_investido) ** (1 / anos) - 1`.
-
-    Devolve `None` (não um número inventado) quando o cálculo não tem
-    solução real: `valor_investido` ou `anos` não positivos (divisão por
-    zero), ou `valor_destino` não positivo — um cenário de valor
-    combinado negativo é possível no projeto (ver screener, ex: FCD muito
-    sensível pra uma ação específica) e não tem uma taxa composta real
-    correspondente, já que raiz de índice par de número negativo não
-    existe nos reais. O chamador deve tratar `None` como "sem CAGR pra
-    esse cenário", não substituir por zero."""
-    if valor_investido <= 0 or valor_destino <= 0 or anos <= 0:
-        return None
-    return (valor_destino / valor_investido) ** (1 / anos) - 1
-
-
-def calcular_ganho_nominal_vs_real(
-    valor_investido: float, valor_destino: float, ipca_anual: float, anos: int
-) -> dict:
-    """Ganho nominal (R$ de amanhã, sem desconto nenhum) vs. ganho real
-    (R$ de hoje, descontando a inflação projetada pelo IPCA atual — ver
-    `ipca_anual`, mesma suposição de "IPCA constante" documentada no
-    resto do projeto) pra ir de `valor_investido` até `valor_destino` em
-    `anos` anos.
-
-    `valor_destino_real` é `valor_destino` deflacionado pela inflação
-    acumulada no período — o quanto aquele valor futuro vale em poder de
-    compra de hoje. `ganho_real` pode ser menor que `ganho_nominal` (ou
-    até negativo, mesmo com `ganho_nominal` positivo) quando o retorno
-    projetado não acompanha a inflação.
-
-    Levanta `ValueError` se `ipca_anual == -1` (IPCA de -100% a.a.) — guard
-    defensivo, não um caso observado com o IPCA real do BCB: deflação
-    total de preços não tem correspondência econômica real, e zeraria o
-    denominador da deflação."""
-    if ipca_anual == -1:
-        raise ValueError(
-            "IPCA de -100% a.a. não tem correspondência econômica real "
-            "(deflação total de preços) — não é possível deflacionar o "
-            "valor de destino nesse cenário."
-        )
-    valor_destino_real = valor_destino / (1 + ipca_anual) ** anos
-    return {
-        "ganho_nominal": valor_destino - valor_investido,
-        "valor_destino_real": valor_destino_real,
-        "ganho_real": valor_destino_real - valor_investido,
-    }
-
-
 def calcular_totais_carteira(tabela_carteira: pd.DataFrame) -> dict:
     """Totais da carteira: soma investida (todos os tickers selecionados,
     mesmo os sem cenário — o dinheiro foi alocado do mesmo jeito) e o
-    total projetado em cada cenário (soma simples das projeções
+    total ao convergir em cada cenário (soma simples dos valores
     individuais; `pandas.Series.sum` já ignora os `None`/NaN dos tickers
-    sem cenário aplicável, então eles não entram na soma projetada).
+    sem cenário aplicável, então eles não entram na soma).
 
     `soma_investida_com_cenario` (bug real corrigido em 2026-09-21): soma
     só o capital dos tickers `aplicavel` — o mesmo subconjunto que já
     alimenta `total_otimista`/`total_base`/`total_pessimista`. Existe
     porque `soma_investida` (o total, incluindo tickers sem cenário) NÃO
-    deve ser usada como base de CAGR/crescimento contra os totais
-    projetados: misturaria capital que nunca entrou na projeção com
-    capital que entrou, subestimando o crescimento real da parte
-    projetável. `soma_investida` continua existindo, separada, pra exibir
+    deve ser usada como base do potencial contra os totais por
+    cenário: misturaria capital que nunca entrou na conta com capital
+    que entrou, subestimando o potencial da parte com cenário.
+    `soma_investida` continua existindo, separada, pra exibir
     o total de fato alocado — as duas respondem perguntas diferentes."""
     tabela_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
     return {

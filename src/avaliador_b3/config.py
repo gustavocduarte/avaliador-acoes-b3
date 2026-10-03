@@ -810,6 +810,63 @@ TOOLTIP_POTENCIAL_COLUNA = (
 )
 TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço − 1)."
 
+# --- Simulador de carteira: potencial sem prazo ---
+#
+# O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
+# quanto a carteira valeria se o preço de cada ação chegasse a ele, sem
+# prazo, sem dividendos e sem inflação — nada de taxa anual nem ganho real.
+TEXTO_ABERTURA_SIMULADOR = (
+    "Mostra o potencial de cada cenário (pessimista/base/otimista) para o "
+    "valor investido em cada ação — a partir do resultado já salvo do "
+    "screener, sem recalcular nada ao vivo."
+)
+SUBTITULO_POTENCIAL_CARTEIRA = "Potencial de valorização da carteira"
+AVISO_SIMULADOR_SEM_PREVISAO = (
+    "Quanto a carteira valeria se o preço de cada ação chegasse ao valor "
+    "justo do cenário, em reais de hoje, sem prazo e sem contar dividendos. "
+    "Não é previsão."
+)
+ROTULOS_VALOR_AO_CONVERGIR = {
+    "pessimista": "Valor ao convergir: pessimista (R$)",
+    "base": "Valor ao convergir: base (R$)",
+    "otimista": "Valor ao convergir: otimista (R$)",
+}
+ROTULOS_POTENCIAL_CENARIO = {
+    "pessimista": "Potencial: pessimista (%)",
+    "base": "Potencial: base (%)",
+    "otimista": "Potencial: otimista (%)",
+}
+ROTULOS_TOTAL_AO_CONVERGIR = {
+    "pessimista": "Valor ao convergir: pessimista",
+    "base": "Valor ao convergir: base",
+    "otimista": "Valor ao convergir: otimista",
+}
+TOOLTIP_POTENCIAL_CENARIO = (
+    "Quanto o valor justo do cenário está acima (+) ou abaixo (−) do preço "
+    "atual (valor justo ÷ preço − 1). Não é retorno esperado nem tem prazo."
+)
+FRASE_RESUMO_SIMULADOR = (
+    "{investido} investidos hoje equivaleriam a entre {pessimista} "
+    "(pessimista) e {otimista} (otimista) se os preços convergissem aos "
+    "valores justos, sem prazo definido."
+)
+TITULO_EXPANDER_SIMULADOR = "Como funciona este cálculo?"
+TEXTO_EXPANDER_SIMULADOR = (
+    "Os valores pessimista, base e otimista vêm dos mesmos três cenários "
+    "calculados para cada ação (o menor, a média, e o maior entre os "
+    "métodos de valor justo aplicáveis — Graham, Bazin e FCD). O potencial "
+    "é o valor justo do cenário dividido pelo preço atual, menos 1, e o "
+    "valor ao convergir é o valor investido multiplicado por esse valor "
+    "justo ÷ preço: quanto o dinheiro valeria se o preço chegasse ao valor "
+    "justo, sem prazo, sem dividendos e sem inflação. Valor justo zero ou "
+    "negativo conta como perda total (−100%).\n\n"
+    "O cenário base é o valor combinado, a mesma média simples explicada "
+    "na aba Analisar uma ação. O pessimista e o otimista são o menor e o "
+    "maior valor entre os métodos aplicáveis — e o menor pode ser o preço "
+    "teto do Bazin, que não é uma estimativa de valor, e sim o máximo a "
+    "pagar pelo retorno em dividendos."
+)
+
 # --- Painel de correlação com fatores externos (2026-09-15) ---
 #
 # Ticker do petróleo Brent no Yahoo Finance (futuro contínuo, contrato
@@ -848,8 +905,8 @@ LIMIAR_CORRELACAO_FORTE = 0.6
 #
 # Meses de acumulação do IPCA: "IPCA acumulado em 12 meses" é o indicador
 # padrão de inflação anual usado no Brasil (mesma convenção do IBGE/BCB)
-# — usado pra converter a série mensal do IPCA numa taxa anualizada, tanto
-# pro WACC do FCD quanto pro ganho real da carteira.
+# — usado pra converter a série mensal do IPCA numa taxa anualizada pro
+# WACC do FCD.
 MESES_IPCA_ACUMULADO = 12
 
 # Janelas de busca (em dias) pras séries do BCB usadas no card "Selic/
@@ -920,45 +977,13 @@ JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
 # COR_GRAFICO_PROTAGONISTA (dourado) marca a série principal (a ação
 # sendo analisada). COR_GRAFICO_CONTEXTO (cinza-azulado neutro) marca
 # qualquer série de "pano de fundo" que não deve competir visualmente com
-# o protagonista — usado em três lugares: a série de comparação real
-# (benchmark: Ibovespa ou petróleo), a linha de Dividend Yield no gráfico
+# o protagonista — usado em dois lugares: a série de comparação real
+# (benchmark: Ibovespa ou petróleo) e a linha de Dividend Yield no gráfico
 # de histórico de dividendos (uma segunda métrica da mesma ação, não um
-# benchmark externo), e a linha de inflação (IPCA) no gráfico de projeção
-# de carteira. COR_GRAFICO_GRADE é um tom só um pouco mais claro que
+# benchmark externo). COR_GRAFICO_GRADE é um tom só um pouco mais claro que
 # COR_GRAFICO_FUNDO, pras linhas de grade ficarem discretas.
 COR_GRAFICO_FUNDO = "#16212F"
 COR_GRAFICO_TEXTO = "#E9E4D8"
 COR_GRAFICO_PROTAGONISTA = "#C9982F"
 COR_GRAFICO_CONTEXTO = "#5B6B7C"
 COR_GRAFICO_GRADE = "#233040"
-
-# Verde/vermelho de ganho/perda em tom mais discreto que o padrão do
-# Plotly (que tende a um neon que destoa da paleta escura acima) —
-# mesma leitura semântica de mercado (verde=alta, vermelho=baixa),
-# só ajustada de tom. Usado nas curvas de cenário da projeção de
-# carteira (`aba_carteira`), que não passam pelo tema do Streamlit por
-# serem Plotly.
-COR_GANHO = "#3FA34D"
-COR_PERDA = "#C6483E"
-
-# Cor neutra — mesmo tom de COR_GRAFICO_CONTEXTO (mesma função: neutro,
-# não deve chamar atenção). Usada em CORES_CENARIO["base"] (curva "base"
-# do gráfico de projeção de carteira, nem ganho nem perda). Cogitada
-# originalmente também pros cartões de método/correlação "não aplicável"
-# (app/main.py, `_cartao_metodo`/`_cartao_correlacao`), mas esses já usam
-# a opacidade nativa do st.caption/st.metric do Streamlit pra ficar
-# visualmente neutros — não há como injetar essa cor ali sem HTML bruto
-# (nenhum dos dois componentes aceita parâmetro de cor), então não são
-# consumidores reais desse token.
-COR_NEUTRA = "#5B6B7C"
-
-# Cores das curvas de cenário do gráfico de "Projeção de crescimento"
-# (aba Simulador de carteira, `aba_carteira` em app/main.py) — combinação
-# dos tokens acima, não uma cor nova: pessimista/otimista usam a mesma
-# semântica de mercado dos deltas (vermelho=perda, verde=ganho); "base"
-# (nem ganho nem perda) usa o tom neutro, não o azul padrão do Plotly.
-CORES_CENARIO = {
-    "pessimista": COR_PERDA,
-    "base": COR_NEUTRA,
-    "otimista": COR_GANHO,
-}

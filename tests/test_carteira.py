@@ -254,9 +254,9 @@ def test_calcular_totais_soma_investida_com_cenario_exclui_acao_sem_cenario():
     # Regressão (bug real, corrigido em 2026-09-21): soma_investida_com_cenario
     # precisa somar só o capital dos tickers com cenário aplicável — o mesmo
     # universo que já alimenta total_otimista/total_base/total_pessimista.
-    # Misturar soma_investida (total, inclui CCCC4) com os totais projetados
-    # (só AAAA4) como base de CAGR/crescimento subestimava o crescimento real
-    # da parte projetável.
+    # Misturar soma_investida (total, inclui CCCC4) com os totais por cenário
+    # (só AAAA4) como base do potencial subestimava o potencial da parte com
+    # cenário.
     tabela_screener = _tabela_screener_exemplo()
     investimentos = {"AAAA4": 1000.0, "CCCC4": 500.0}
     tabela_carteira = carteira.montar_tabela_carteira(tabela_screener, investimentos)
@@ -267,17 +267,15 @@ def test_calcular_totais_soma_investida_com_cenario_exclui_acao_sem_cenario():
     assert totais["soma_investida_com_cenario"] == pytest.approx(1000.0)  # só AAAA4
 
 
-def test_cagr_da_carteira_usa_base_com_cenario_nao_a_base_total():
-    # Cenário próximo do exemplo já validado na investigação: uma ação com
-    # cenário que DOBRA (base = 2x o preço atual) + uma ação sem cenário
-    # nenhum, com valores investidos claramente diferentes (1000 vs. 300).
+def test_totais_da_carteira_somam_so_a_parte_com_cenario_nos_valores_ao_convergir():
+    # DOBR4 (base = 2x o preço atual) + uma ação sem cenário nenhum, com
+    # valores investidos diferentes (1000 vs. 300): o total ao convergir
+    # só tem a parte com cenário, e a base do potencial é a mesma.
     tabela_screener = pd.DataFrame(
         [
-            # DOBR4: base = 2x o preço atual -> projeção base dobra o investido.
             _linha_screener(
                 ticker="DOBR4", preco_atual=40.0, valor_combinado=80.0, graham=80.0
             ),
-            # SEMC3: nenhum método aplicável.
             _linha_screener(ticker="SEMC3", preco_atual=10.0, valor_combinado=None),
         ]
     )
@@ -288,91 +286,5 @@ def test_cagr_da_carteira_usa_base_com_cenario_nao_a_base_total():
     assert totais["soma_investida"] == pytest.approx(1300.0)
     assert totais["soma_investida_com_cenario"] == pytest.approx(1000.0)
     assert totais["total_base"] == pytest.approx(2000.0)  # só DOBR4, que dobrou
-
-    n_anos = 5
-    cagr_correto = carteira.calcular_cagr_implicito(
-        totais["soma_investida_com_cenario"], totais["total_base"], n_anos
-    )
-    cagr_com_bug_antigo = carteira.calcular_cagr_implicito(
-        totais["soma_investida"], totais["total_base"], n_anos
-    )
-
-    # DOBR4 sozinha dobrou -> CAGR correto = 2^(1/5) - 1, o mesmo que
-    # test_cagr_implicito_dobra_o_valor_em_5_anos já valida isoladamente.
-    assert cagr_correto == pytest.approx(2.0 ** (1 / 5) - 1)
-    # A base antiga (soma_investida total, incluindo os 300 da SEMC3 sem
-    # cenário) sub-representaria esse crescimento — CAGR bem menor, prova
-    # de que as duas bases não são intercambiáveis.
-    assert cagr_correto > cagr_com_bug_antigo
-
-
-# --- calcular_cagr_implicito --------------------------------------------------
-
-
-def test_cagr_implicito_dobra_o_valor_em_5_anos():
-    # 2^(1/5) - 1 ≈ 14,87% a.a. — conferência manual clássica de CAGR.
-    cagr = carteira.calcular_cagr_implicito(1000.0, 2000.0, 5)
-    assert cagr == pytest.approx(2 ** (1 / 5) - 1)
-    assert cagr == pytest.approx(0.148698, abs=1e-5)
-
-
-def test_cagr_implicito_valor_destino_igual_ao_investido_e_zero():
-    assert carteira.calcular_cagr_implicito(1000.0, 1000.0, 5) == pytest.approx(0.0)
-
-
-def test_cagr_implicito_negativo_quando_destino_menor_que_investido():
-    cagr = carteira.calcular_cagr_implicito(1000.0, 500.0, 5)
-    assert cagr < 0
-    assert cagr == pytest.approx(0.5 ** (1 / 5) - 1)
-
-
-def test_cagr_implicito_e_none_quando_valor_destino_nao_positivo():
-    # Cenário pessimista de valor combinado negativo é possível no projeto
-    # (FCD muito sensível numa ação específica) — sem CAGR real correspondente.
-    assert carteira.calcular_cagr_implicito(1000.0, -50.0, 5) is None
-    assert carteira.calcular_cagr_implicito(1000.0, 0.0, 5) is None
-
-
-def test_cagr_implicito_e_none_quando_investido_ou_anos_nao_positivos():
-    assert carteira.calcular_cagr_implicito(0.0, 2000.0, 5) is None
-    assert carteira.calcular_cagr_implicito(-100.0, 2000.0, 5) is None
-    assert carteira.calcular_cagr_implicito(1000.0, 2000.0, 0) is None
-
-
-# --- calcular_ganho_nominal_vs_real -------------------------------------------
-
-
-def test_ganho_nominal_vs_real_com_inflacao_positiva():
-    # Investido 1000, destino nominal 2000 em 5 anos, IPCA 5% a.a.
-    # Valor real = 2000 / 1.05^5 ≈ 1567,05.
-    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, 0.05, 5)
-
-    assert resultado["ganho_nominal"] == pytest.approx(1000.0)
-    assert resultado["valor_destino_real"] == pytest.approx(2000.0 / 1.05**5)
-    assert resultado["ganho_real"] == pytest.approx(2000.0 / 1.05**5 - 1000.0)
-    assert resultado["ganho_real"] < resultado["ganho_nominal"]
-
-
-def test_ganho_nominal_vs_real_sem_inflacao_os_dois_ganhos_sao_iguais():
-    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, 0.0, 5)
-
-    assert resultado["ganho_nominal"] == pytest.approx(1000.0)
-    assert resultado["ganho_real"] == pytest.approx(1000.0)
-
-
-def test_ganho_nominal_vs_real_ganho_nominal_positivo_mas_real_negativo():
-    # Retorno nominal de 10% em 5 anos com IPCA acumulado bem maior que
-    # isso — poder de compra final fica abaixo do investido, mesmo com
-    # "lucro" nominal positivo.
-    resultado = carteira.calcular_ganho_nominal_vs_real(1000.0, 1100.0, 0.15, 5)
-
-    assert resultado["ganho_nominal"] == pytest.approx(100.0)
-    assert resultado["ganho_real"] < 0
-
-
-def test_ganho_nominal_vs_real_ipca_de_menos_100_por_cento_levanta_erro_claro():
-    # Guard defensivo, não um caso observado com o IPCA real do BCB: IPCA
-    # de -100% a.a. (deflação total de preços) zeraria o denominador da
-    # deflação (1 + (-1)) ** anos == 0 — sem correspondência econômica real.
-    with pytest.raises(ValueError, match="-100%"):
-        carteira.calcular_ganho_nominal_vs_real(1000.0, 2000.0, -1.0, 5)
+    potencial_base = totais["total_base"] / totais["soma_investida_com_cenario"] - 1
+    assert potencial_base == pytest.approx(1.0)

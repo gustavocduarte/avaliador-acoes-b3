@@ -1558,23 +1558,7 @@ def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso)
     assert _metrica_por_label(at, "Valor de firma").value == esperado_firma
 
 
-# --- Base consistente na "Projeção de crescimento" da carteira --------------
-#
-# Regressão (bug real, corrigido em 2026-09-21): as curvas "Com juros
-# compostos"/"Sem juros compostos" e a tabela "Ganho nominal vs. real"
-# recebiam soma_investida (total, inclui tickers sem cenário) como ponto de
-# partida/valor investido, enquanto o ponto final vinha de valor_por_cenario
-# (só tickers com cenário aplicável) — mesma causa raiz já corrigida no CAGR.
-# A linha de "Inflação (IPCA)" não tinha esse bug (não é pareada com
-# valor_por_cenario), mas foi ajustada pra mesma base por consistência
-# VISUAL do gráfico — com soma_investida total, ela partia de um ponto
-# diferente das outras 6 curvas no mesmo gráfico, sem nenhuma indicação de
-# que era proposital (confirmado com screenshot antes de mudar). st.
-# plotly_chart não é inspecionável via AppTest, então o teste abaixo
-# espiona projetar_curva_composta/projetar_curva_linear/
-# calcular_ganho_nominal_vs_real/projetar_curva_inflacao (delegando pro
-# real, só capturando os argumentos) pra confirmar que app/main.py agora
-# passa soma_investida_com_cenario nas quatro, não soma_investida total.
+# --- Simulador de carteira (potencial sem prazo) -----------------------------
 #
 # `_carregar_screener_salvo` é uma função PRIVADA de app/main.py (não
 # importada de outro módulo) — AppTest executa o script inteiro num módulo
@@ -1825,81 +1809,54 @@ def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypa
     )
 
 
-def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tmp_path):
-    import avaliador_b3.carteira as carteira_mod
-    import avaliador_b3.graficos as graficos_mod
-    import avaliador_b3.screener as screener_mod
+def _escrever_screener_falso_para_simulador(caminho) -> None:
+    from avaliador_b3.screener import COLUNAS_RESULTADO
 
-    # Bloqueia as buscas de rede da busca automática de PETR4 na aba
-    # "Analisar uma ação" (dispara sempre, independente da aba visitada) —
-    # mesmo padrão de _bloquear_buscas_de_rede_por_ticker, mas SEM mockar
-    # bcb_sgs.obter_serie, que este teste precisa que funcione de verdade
-    # (IPCA/Selic da carteira).
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "erro": "",
+        "aviso_desconto_extremo": "",
+    }
+    linhas = [
+        # DOBR4: um só método (Graham = 80) -> os três cenários valem 2x o preço.
+        base
+        | {
+            "ticker": "DOBR4",
+            "preco_atual": 40.0,
+            "valor_combinado": 80.0,
+            "metodos_utilizados": "graham",
+            "graham_valor_justo": 80.0,
+        },
+        # SEMC3: nenhum método aplicável.
+        base | {"ticker": "SEMC3", "preco_atual": 10.0, "metodos_utilizados": ""},
+        # NEGA4: FCD negativo -> o cenário pessimista é limitado a perda total.
+        base
+        | {
+            "ticker": "NEGA4",
+            "preco_atual": 10.0,
+            "valor_combinado": 7.5,
+            "metodos_utilizados": "graham,fcd",
+            "graham_valor_justo": 20.0,
+            "fcd_valor_justo": -5.0,
+        },
+    ]
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+
+
+def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
+    monkeypatch, tmp_path
+):
+    import avaliador_b3.screener as screener_mod
+    from avaliador_b3.config import ROTULOS_POTENCIAL_CENARIO
+
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
     )
-
-    def _falha_precos(*args, **kwargs):
-        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
-    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
-
-    def _falha_fundamentus(*args, **kwargs):
-        raise TickerNaoEncontrado(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.fundamentus.obter_indicadores", _falha_fundamentus)
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
-        lambda *args, **kwargs: _catalogo_emissores_vazio(),
-    )
-
-    def _falha_gpr(*args, **kwargs):
-        raise RuntimeError(MENSAGEM_ERRO_MOCK)
-
-    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_gpr)
-    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
-
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
     caminho_screener_falso = tmp_path / "screener.csv"
-    _escrever_screener_falso_dobra_e_sem_cenario(caminho_screener_falso)
+    _escrever_screener_falso_para_simulador(caminho_screener_falso)
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
-
-    # Espiona as três funções que recebiam a base errada — delega pro real,
-    # só captura os argumentos recebidos.
-    chamadas_composta: list[float] = []
-    original_composta = graficos_mod.projetar_curva_composta
-
-    def _espiao_composta(valor_investido, cagr, anos):
-        chamadas_composta.append(valor_investido)
-        return original_composta(valor_investido, cagr, anos)
-
-    chamadas_linear: list[float] = []
-    original_linear = graficos_mod.projetar_curva_linear
-
-    def _espiao_linear(valor_investido, valor_destino, anos):
-        chamadas_linear.append(valor_investido)
-        return original_linear(valor_investido, valor_destino, anos)
-
-    chamadas_ganho: list[float] = []
-    original_ganho = carteira_mod.calcular_ganho_nominal_vs_real
-
-    def _espiao_ganho(valor_investido, valor_destino, ipca_anual, anos):
-        chamadas_ganho.append(valor_investido)
-        return original_ganho(valor_investido, valor_destino, ipca_anual, anos)
-
-    chamadas_inflacao: list[float] = []
-    original_inflacao = graficos_mod.projetar_curva_inflacao
-
-    def _espiao_inflacao(valor_investido, ipca_anual, anos):
-        chamadas_inflacao.append(valor_investido)
-        return original_inflacao(valor_investido, ipca_anual, anos)
-
-    monkeypatch.setattr(graficos_mod, "projetar_curva_composta", _espiao_composta)
-    monkeypatch.setattr(graficos_mod, "projetar_curva_linear", _espiao_linear)
-    monkeypatch.setattr(carteira_mod, "calcular_ganho_nominal_vs_real", _espiao_ganho)
-    monkeypatch.setattr(graficos_mod, "projetar_curva_inflacao", _espiao_inflacao)
 
     def _aba_carteira(at):
         return [tab for tab in at.tabs if tab.label == "Simulador de carteira"][0]
@@ -1908,61 +1865,54 @@ def test_projecao_carteira_usa_base_com_cenario_nao_a_base_total(monkeypatch, tm
     at.run(timeout=60)
     assert not at.exception
 
-    _aba_carteira(at).multiselect[0].set_value(["DOBR4", "SEMC3"])
+    _aba_carteira(at).multiselect[0].set_value(["DOBR4", "SEMC3", "NEGA4"])
     at.run(timeout=60)
-    assert not at.exception
-
     at.number_input(key="investimento_DOBR4").set_value(1000.0)
     at.number_input(key="investimento_SEMC3").set_value(300.0)
+    at.number_input(key="investimento_NEGA4").set_value(500.0)
     at.run(timeout=60)
     assert not at.exception
+    aba = _aba_carteira(at)
 
-    # "Sem juros compostos (linear)" e "Inflação (IPCA)" não vêm
-    # selecionados por padrão — liga os dois, pra exercitar
-    # projetar_curva_linear/projetar_curva_inflacao (composta já é
-    # default). Referência a `_aba_carteira(at)` de novo (não a mesma
-    # variável de antes): cada `.run()` reconstrói a árvore de elementos,
-    # uma referência antiga fica vazia (`len(...) == 0`) depois de um rerun.
-    _aba_carteira(at).pills[0].set_value(
-        ["Com juros compostos", "Sem juros compostos (linear)", "Inflação (IPCA)"]
+    # Perda acima de 100% continua limitada: NEGA4 pessimista = FCD -5 -> perda
+    # total (R$ 0, -100%); otimista = Graham 20 contra preço 10 -> +100%.
+    tabelas = [df for df in aba.dataframe if "projecao_pessimista" in df.value.columns]
+    assert len(tabelas) == 1
+    linha_nega4 = tabelas[0].value.loc[tabelas[0].value["ticker"] == "NEGA4"].iloc[0]
+    assert linha_nega4["projecao_pessimista"] == "R$ 0,00"
+    assert linha_nega4["retorno_pessimista_percentual"] == "-100,0%"
+    assert linha_nega4["retorno_otimista_percentual"] == "100,0%"
+    rotulos_colunas = json.loads(tabelas[0].proto.columns)
+    assert (
+        rotulos_colunas["retorno_pessimista_percentual"]["label"]
+        == ROTULOS_POTENCIAL_CENARIO["pessimista"]
     )
-    at.run(timeout=60)
-    assert not at.exception
-
-    # soma_investida total = 1300 (1000 + 300); soma_investida_com_cenario =
-    # 1000 (só DOBR4, que tem cenário). As quatro funções espionadas
-    # precisam ter recebido 1000, nunca 1300 — inclusive
-    # projetar_curva_inflacao, ajustada por consistência visual do gráfico
-    # em 2026-09-21 (todas as curvas passam a compartilhar o mesmo ponto de
-    # partida no ano 0, ver comentário em app/main.py).
-    assert chamadas_composta, "projetar_curva_composta não foi chamada"
-    assert all(valor == pytest.approx(1000.0) for valor in chamadas_composta)
-
-    assert chamadas_linear, "projetar_curva_linear não foi chamada"
-    assert all(valor == pytest.approx(1000.0) for valor in chamadas_linear)
-
-    assert chamadas_ganho, "calcular_ganho_nominal_vs_real não foi chamada"
-    assert all(valor == pytest.approx(1000.0) for valor in chamadas_ganho)
-
-    assert chamadas_inflacao, "projetar_curva_inflacao não foi chamada"
-    assert all(valor == pytest.approx(1000.0) for valor in chamadas_inflacao)
-
-    # soma_investida_com_cenario é exatamente 1000,00 aqui (só DOBR4 tem
-    # cenário) — dá pra conferir esse valor exato; o regex cobre os
-    # demais números da frase (pessimista/otimista), que dependem do
-    # resultado do screener falso e não vale a pena recalcular à mão aqui.
-    frases_projecao = [
-        m.value for m in at.markdown if "com projeção disponível hoje" in m.value
-    ]
-    assert len(frases_projecao) == 1
-    assert "R\\$ 1.000,00 com projeção disponível hoje" in frases_projecao[0]
-    assert not re.search(r"R\\\$\s*[\d.]*\d\.\d\d\b", frases_projecao[0]), (
-        f"frase de projeção com ponto decimal em vez de vírgula: {frases_projecao[0]!r}"
+    assert rotulos_colunas["retorno_base_percentual"]["help"] == (
+        "Quanto o valor justo do cenário está acima (+) ou abaixo (−) do preço atual "
+        "(valor justo ÷ preço − 1). Não é retorno esperado nem tem prazo."
+    )
+    assert any(
+        "NEGA4: cenário(s) Pessimista limitado(s) a perda total" in c.value for c in aba.caption
     )
 
-    legendas_cagr = [c.value for c in at.caption if "equivale a" in c.value]
-    assert legendas_cagr, "nenhuma legenda de CAGR encontrada"
-    for legenda in legendas_cagr:
-        assert not re.search(r"\d\.\d%", legenda), (
-            f"legenda de CAGR com ponto decimal em vez de vírgula: {legenda!r}"
-        )
+    # Frase-resumo: só DOBR4 e NEGA4 têm cenário (R$ 1.500,00 investidos);
+    # pessimista = 2.000 (DOBR4) + 0 (NEGA4, piso); otimista = 2.000 + 1.000.
+    frases = [m.value for m in aba.markdown if "sem prazo definido" in m.value]
+    assert len(frases) == 1
+    assert frases[0] == (
+        "R\\$ 1.500,00 investidos hoje equivaleriam a entre R\\$ 2.000,00 (pessimista) e "
+        "R\\$ 3.000,00 (otimista) se os preços convergissem aos valores justos, sem prazo "
+        "definido."
+    )
+    assert any("ficaram de fora desse cálculo" in c.value for c in aba.caption)
+    assert (
+        "Quanto a carteira valeria se o preço de cada ação chegasse ao valor justo do "
+        "cenário, em reais de hoje, sem prazo e sem contar dividendos. Não é previsão."
+    ) in [c.value for c in aba.caption]
+
+    # Sem prazo, taxa anual nem ganho real.
+    textos = [c.value for c in aba.caption] + [m.value for m in aba.markdown]
+    for proibido in ("ao ano", "Ganho real", "CAGR", "IPCA", " anos"):
+        assert not any(proibido in texto for texto in textos), proibido
+    assert len(aba.pills) == 0
+    assert not any("ganho_real" in df.value.columns for df in aba.dataframe)
