@@ -813,8 +813,9 @@ TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor 
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
-# quanto a carteira valeria se o preço de cada ação chegasse a ele, sem
-# prazo, sem dividendos e sem inflação — nada de taxa anual nem ganho real.
+# quanto a carteira valeria se o preço de cada ação chegasse a ele, em reais
+# de hoje, sem prazo e sem contar dividendos — nada de taxa anual nem ganho
+# real.
 TEXTO_ABERTURA_SIMULADOR = (
     "Mostra o potencial de cada cenário (pessimista/base/otimista) para o "
     "valor investido em cada ação — a partir do resultado já salvo do "
@@ -858,8 +859,8 @@ TEXTO_EXPANDER_SIMULADOR = (
     "é o valor justo do cenário dividido pelo preço atual, menos 1, e o "
     "valor ao convergir é o valor investido multiplicado por esse valor "
     "justo ÷ preço: quanto o dinheiro valeria se o preço chegasse ao valor "
-    "justo, sem prazo, sem dividendos e sem inflação. Valor justo zero ou "
-    "negativo conta como perda total (−100%).\n\n"
+    "justo, em reais de hoje, sem prazo e sem contar dividendos. Valor "
+    "justo zero ou negativo conta como perda total (−100%).\n\n"
     "O cenário base é o valor combinado, a mesma média simples explicada "
     "na aba Analisar uma ação. O pessimista e o otimista são o menor e o "
     "maior valor entre os métodos aplicáveis — e o menor pode ser o preço "
