@@ -52,9 +52,12 @@ from avaliador_b3.config import (
     MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
     MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
     MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX,
+    MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL,
     MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
+    MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL,
+    MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO,
     MOTIVOS_FCD_POR_SEGMENTO,
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
@@ -162,11 +165,43 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
     elif not leitura_balanco["disponivel"]:
         motivo = leitura_balanco["motivo"]
     else:
+        patrimonio_total = leitura_balanco.get("patrimonio_liquido_total")
         return {
             "nao_controladores": leitura_balanco["nao_controladores"],
             "motivo_sem_nao_controladores": None,
+            "patrimonio_liquido_total": patrimonio_total,
+            "motivo_sem_patrimonio_total": (
+                None if patrimonio_total is not None else MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL
+            ),
         }
-    return {"nao_controladores": None, "motivo_sem_nao_controladores": motivo}
+    return {
+        "nao_controladores": None,
+        "motivo_sem_nao_controladores": motivo,
+        "patrimonio_liquido_total": None,
+        "motivo_sem_patrimonio_total": motivo,
+    }
+
+
+def _razao_divida_patrimonio_para_pesos(
+    divida_liquida: float | None,
+    patrimonio_liquido_total: float | None,
+    divida_liquida_sobre_patrimonio: float | None,
+    motivo_sem_patrimonio_total: str | None,
+) -> tuple[float | None, str | None]:
+    """Razão dívida líquida ÷ patrimônio para os pesos do WACC, e o motivo de ter
+    ficado na razão do Fundamentus. A dívida e o fluxo são consolidados, então o
+    patrimônio é o total (controladores + não controladores); o do Fundamentus é
+    só o dos controladores e inflaria o peso da dívida. Sem patrimônio total
+    positivo ou sem dívida líquida, vale a razão do Fundamentus."""
+    if patrimonio_liquido_total is None:
+        motivo = motivo_sem_patrimonio_total or MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL
+    elif patrimonio_liquido_total <= 0:
+        motivo = MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO
+    elif divida_liquida is None:
+        motivo = MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL
+    else:
+        return divida_liquida / patrimonio_liquido_total, None
+    return divida_liquida_sobre_patrimonio, motivo
 
 
 def _motivo_exclusao_do_fcd(segmento_setorial: str | None, ticker: str | None) -> str | None:
@@ -253,6 +288,8 @@ def calcular_valor_justo_fcd(
     motivo_sem_fcf_ha_n_anos: str | None = None,
     nao_controladores: float | None = None,
     motivo_sem_nao_controladores: str | None = None,
+    patrimonio_liquido_total: float | None = None,
+    motivo_sem_patrimonio_total: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -294,6 +331,10 @@ def calcular_valor_justo_fcd(
     consolidado e inclui a parte dos sócios minoritários das controladas.
     `None` mantém o cálculo sem esse desconto (`motivo_sem_nao_controladores`
     diz por quê). O resultado pode ser negativo e não é limitado a zero.
+    Os pesos do WACC usam dívida líquida ÷ `patrimonio_liquido_total` (patrimônio
+    dos controladores mais os não controladores, do balanço consolidado). Sem ele
+    (ou com patrimônio não positivo), vale `divida_liquida_sobre_patrimonio` do
+    Fundamentus e o motivo vai em `motivo_sem_patrimonio_total`.
     Quando `divida_liquida` é `None` (ausente), o FCD continua aplicável,
     só sem a dedução — `divida_liquida_deduzida=False` no retorno
     sinaliza esse caso pro chamador avisar na tela. Na prática, hoje isso
@@ -341,7 +382,13 @@ def calcular_valor_justo_fcd(
         }
 
     beta_utilizado = beta if beta is not None else BETA_PADRAO
-    wacc = calcular_wacc(selic_meta, divida_liquida_sobre_patrimonio, beta)
+    razao_pesos, motivo_sem_patrimonio_total = _razao_divida_patrimonio_para_pesos(
+        divida_liquida,
+        patrimonio_liquido_total,
+        divida_liquida_sobre_patrimonio,
+        motivo_sem_patrimonio_total,
+    )
+    wacc = calcular_wacc(selic_meta, razao_pesos, beta)
     if wacc <= 0:
         return {
             "aplicavel": False,
@@ -397,6 +444,8 @@ def calcular_valor_justo_fcd(
             None if nao_controladores_deduzidos else motivo_sem_nao_controladores
         ),
         "wacc": wacc,
+        "divida_liquida_sobre_patrimonio_utilizada": razao_pesos,
+        "motivo_sem_patrimonio_total": motivo_sem_patrimonio_total,
         "beta_utilizado": beta_utilizado,
         "taxa_crescimento_explicita": taxa_crescimento,
         "taxa_crescimento_perpetuidade": taxa_perpetuidade,

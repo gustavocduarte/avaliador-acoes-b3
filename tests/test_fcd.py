@@ -514,13 +514,29 @@ def test_fcd_negativo_depois_do_ajuste_nao_e_limitado_a_zero():
     )
 
 
-def test_ajustes_do_balanco_com_leitura_disponivel_trazem_os_nao_controladores():
-    leitura = {"disponivel": True, "nao_controladores": 26_942.0}
+def test_ajustes_do_balanco_com_leitura_disponivel_trazem_nao_controladores_e_patrimonio_total():
+    leitura = {
+        "disponivel": True,
+        "nao_controladores": 26_942.0,
+        "patrimonio_liquido_total": 31_910.0,
+    }
 
     assert fcd.montar_ajustes_balanco(leitura) == {
         "nao_controladores": 26_942.0,
         "motivo_sem_nao_controladores": None,
+        "patrimonio_liquido_total": 31_910.0,
+        "motivo_sem_patrimonio_total": None,
     }
+
+
+def test_ajustes_do_balanco_sem_patrimonio_total_na_leitura_trazem_o_motivo_dele():
+    leitura = {"disponivel": True, "nao_controladores": 100.0, "patrimonio_liquido_total": None}
+
+    ajustes = fcd.montar_ajustes_balanco(leitura)
+
+    assert ajustes["nao_controladores"] == 100.0
+    assert ajustes["patrimonio_liquido_total"] is None
+    assert "patrimônio líquido total não encontrado" in ajustes["motivo_sem_patrimonio_total"]
 
 
 def test_ajustes_do_balanco_com_leitura_indisponivel_trazem_o_motivo():
@@ -529,6 +545,8 @@ def test_ajustes_do_balanco_com_leitura_indisponivel_trazem_o_motivo():
     assert fcd.montar_ajustes_balanco(leitura) == {
         "nao_controladores": None,
         "motivo_sem_nao_controladores": "A empresa não tem balanço consolidado.",
+        "patrimonio_liquido_total": None,
+        "motivo_sem_patrimonio_total": "A empresa não tem balanço consolidado.",
     }
 
 
@@ -537,6 +555,65 @@ def test_ajustes_do_balanco_sem_leitura_trazem_o_motivo_de_nao_lido():
 
     assert ajustes["nao_controladores"] is None
     assert "não foi lido" in ajustes["motivo_sem_nao_controladores"]
+
+
+def test_pesos_do_wacc_usam_divida_liquida_sobre_o_patrimonio_total():
+    # Dívida líquida 5.000 sobre patrimônio total 25.000: razão 0,2 (a do Fundamentus, só
+    # dos controladores, seria 1,0).
+    resultado = fcd.calcular_valor_justo_fcd(
+        **{**PARAMETROS_FCD_BASE, "divida_liquida_sobre_patrimonio": 1.0},
+        patrimonio_liquido_total=25_000.0,
+    )
+
+    assert resultado["divida_liquida_sobre_patrimonio_utilizada"] == pytest.approx(0.2)
+    assert resultado["wacc"] == pytest.approx(fcd.calcular_wacc(0.10, 0.2, 1.0))
+    assert resultado["wacc"] != pytest.approx(fcd.calcular_wacc(0.10, 1.0, 1.0))
+    assert resultado["motivo_sem_patrimonio_total"] is None
+
+
+def test_patrimonio_total_maior_que_o_dos_controladores_reduz_o_peso_da_divida_e_o_valor():
+    base = {**PARAMETROS_FCD_BASE, "divida_liquida_sobre_patrimonio": 1.0}
+    so_controladores = fcd.calcular_valor_justo_fcd(**base)
+    com_total = fcd.calcular_valor_justo_fcd(**base, patrimonio_liquido_total=25_000.0)
+
+    # Menos peso na dívida barata: WACC maior, valor menor.
+    assert com_total["wacc"] > so_controladores["wacc"]
+    assert com_total["valor_justo"] < so_controladores["valor_justo"]
+
+
+@pytest.mark.parametrize(
+    ("patrimonio_total", "divida_liquida", "trecho_do_motivo"),
+    [
+        (None, 5000.0, "patrimônio líquido total não encontrado"),
+        (0.0, 5000.0, "zero ou negativo"),
+        (-100.0, 5000.0, "zero ou negativo"),
+        (25_000.0, None, "dívida líquida do Fundamentus indisponível"),
+    ],
+)
+def test_sem_patrimonio_total_valido_os_pesos_usam_a_razao_do_fundamentus(
+    patrimonio_total, divida_liquida, trecho_do_motivo
+):
+    parametros = {
+        **PARAMETROS_FCD_BASE,
+        "divida_liquida_sobre_patrimonio": 1.0,
+        "divida_liquida": divida_liquida,
+    }
+
+    resultado = fcd.calcular_valor_justo_fcd(
+        **parametros, patrimonio_liquido_total=patrimonio_total
+    )
+
+    assert resultado["divida_liquida_sobre_patrimonio_utilizada"] == 1.0
+    assert resultado["wacc"] == pytest.approx(fcd.calcular_wacc(0.10, 1.0, 1.0))
+    assert trecho_do_motivo in resultado["motivo_sem_patrimonio_total"]
+
+
+def test_motivo_recebido_do_chamador_vale_quando_nao_ha_patrimonio_total():
+    resultado = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, motivo_sem_patrimonio_total="A empresa não tem balanço."
+    )
+
+    assert resultado["motivo_sem_patrimonio_total"] == "A empresa não tem balanço."
 
 
 def test_calcular_valor_justo_fcd_divida_liquida_negativa_aumenta_o_valor():

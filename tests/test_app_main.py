@@ -508,11 +508,18 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     assert not _metrica_por_label(at, "Bazin (preço teto)").delta
 
 
-def _leitura_balanco_mock(nao_controladores=0.0, disponivel=True, motivo=None):
+def _leitura_balanco_mock(
+    nao_controladores=0.0, disponivel=True, motivo=None, patrimonio_liquido_total=None
+):
     """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
     if not disponivel:
         return {"disponivel": False, "motivo": motivo}
-    return {"disponivel": True, "motivo": None, "nao_controladores": nao_controladores}
+    return {
+        "disponivel": True,
+        "motivo": None,
+        "nao_controladores": nao_controladores,
+        "patrimonio_liquido_total": patrimonio_liquido_total,
+    }
 
 
 def _preparar_fcd_aplicavel(
@@ -625,6 +632,44 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
 
     assert not at.exception
     assert _metrica_por_label(at, "FCD").value != sem_ajuste
+
+
+def test_fcd_com_patrimonio_total_muda_o_valor_e_nao_mostra_aviso_dos_pesos(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    sem_patrimonio_total = _metrica_por_label(at, "FCD").value
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(patrimonio_liquido_total=10_000.0),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != sem_patrimonio_total
+    assert not [c.value for c in at.caption if "Pesos do custo de capital" in c.value]
+
+
+def test_fcd_sem_patrimonio_total_mostra_o_motivo_dos_pesos_na_explicacao_do_cartao(monkeypatch):
+    from avaliador_b3.config import TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(patrimonio_liquido_total=None),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    esperado = TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS.format(
+        motivo="patrimônio líquido total não encontrado no balanço."
+    )
+    assert esperado in [c.value for c in at.caption]
 
 
 def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_na_explicacao_do_cartao(monkeypatch):

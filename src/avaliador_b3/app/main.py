@@ -57,6 +57,7 @@ from avaliador_b3.config import (
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
+    TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
     TOOLTIP_POTENCIAL_CARTAO,
@@ -581,6 +582,11 @@ def _cartao_metodo(
         if motivo_sem_nao_controladores:
             st.caption(
                 TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
+            )
+        motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
+        if motivo_sem_patrimonio_total:
+            st.caption(
+                TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS.format(motivo=motivo_sem_patrimonio_total)
             )
         motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
         if motivo_crescimento_ipca:
