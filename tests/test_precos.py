@@ -248,6 +248,75 @@ def test_obter_historico_forcar_atualizacao_ignora_cache_valido(tmp_path, monkey
     assert ticker_falso.chamadas == 2
 
 
+def _historico_com_fechamentos(fechamentos):
+    indice = pd.date_range(
+        "2026-09-10", periods=len(fechamentos), name="Date", tz="America/Sao_Paulo"
+    )
+    return pd.DataFrame(
+        {
+            "Open": fechamentos,
+            "High": fechamentos,
+            "Low": fechamentos,
+            "Close": fechamentos,
+            "Volume": [1000] * len(fechamentos),
+            "Dividends": [0.0] * len(fechamentos),
+            "Stock Splits": [0.0] * len(fechamentos),
+        },
+        index=indice,
+    )
+
+
+def test_obter_historico_descarta_ultima_linha_sem_fechamento_e_preco_atual_vem_da_anterior(
+    tmp_path, monkeypatch
+):
+    # Última linha só com volume, como o Yahoo devolveu em 03/10/2026.
+    ticker_falso = _TickerFalso(resultado=_historico_com_fechamentos([49.1, 49.9, float("nan")]))
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    df = precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+    assert len(df) == 2
+    assert df["Close"].iloc[-1] == pytest.approx(49.9)
+
+
+def test_obter_historico_descarta_linha_sem_fechamento_no_meio_da_serie(tmp_path, monkeypatch):
+    ticker_falso = _TickerFalso(resultado=_historico_com_fechamentos([49.1, float("nan"), 49.9]))
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    df = precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+    assert list(df["Close"]) == [49.1, 49.9]
+
+
+def test_obter_historico_so_com_fechamento_vazio_levanta_falha_fonte_preco(tmp_path, monkeypatch):
+    nan = float("nan")
+    ticker_falso = _TickerFalso(resultado=_historico_com_fechamentos([nan, nan]))
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    with pytest.raises(precos.FalhaFontePreco, match="sem nenhum preço de fechamento"):
+        precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+    assert not (tmp_path / "precos" / "PETR4.SA_3mo.csv").exists()
+
+
+def test_obter_historico_cache_com_linha_sem_fechamento_e_limpo_na_leitura(tmp_path, monkeypatch):
+    caminho = tmp_path / "precos" / "PETR4.SA_3mo.csv"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(
+        "data,Close,Volume\n"
+        "2026-10-01 03:00:00+00:00,49.9,100\n"
+        "2026-10-02 03:00:00+00:00,,200\n",
+        encoding="utf-8",
+    )
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    df = precos.obter_historico("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
+
+    assert list(df["Close"]) == [49.9]
+    assert ticker_falso.chamadas == 0
+
+
 def test_obter_historico_levanta_ticker_invalido_quando_resultado_vazio(tmp_path, monkeypatch):
     ticker_falso = _TickerFalso(resultado=pd.DataFrame())
     monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)

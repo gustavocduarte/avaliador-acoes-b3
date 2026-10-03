@@ -89,6 +89,12 @@ def _cache_valido(caminho: Path, ttl_segundos: int) -> bool:
     return idade_segundos < ttl_segundos
 
 
+def _sem_fechamento_vazio(historico: pd.DataFrame) -> pd.DataFrame:
+    """Tira as linhas sem preço de fechamento. O Yahoo às vezes devolve a
+    última linha só com volume, e o preço atual sairia vazio."""
+    return historico.dropna(subset=["Close"]).reset_index(drop=True)
+
+
 def obter_historico(
     ticker: str,
     periodo: str = "3mo",
@@ -105,7 +111,9 @@ def obter_historico(
     `periodo` segue a convenção do yfinance ("5d", "1mo", "3mo", "1y", ...).
 
     Levanta `TickerInvalido` se o ticker não existir, ou `FalhaFontePreco`
-    se a busca falhar por outro motivo (rate limit, erro de rede, etc.).
+    se a busca falhar por outro motivo (rate limit, erro de rede, etc.) ou
+    se nenhuma linha tiver preço de fechamento. Linhas sem fechamento são
+    descartadas, na busca e na leitura do cache.
 
     `delay_segundos` é aplicado antes de cada requisição real (não em
     cache hit) — existe pra não bater rápido demais no yfinance quando o
@@ -129,7 +137,9 @@ def obter_historico(
     caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache, auto_adjust)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
-        return pd.read_csv(caminho, parse_dates=["data"])
+        em_cache = _sem_fechamento_vazio(pd.read_csv(caminho, parse_dates=["data"]))
+        if not em_cache.empty:
+            return em_cache
 
     if delay_segundos > 0:
         time.sleep(delay_segundos)
@@ -153,7 +163,12 @@ def obter_historico(
             "ou deslistado."
         )
 
-    historico = historico.reset_index().rename(columns={"Date": "data"})
+    historico = _sem_fechamento_vazio(historico.reset_index().rename(columns={"Date": "data"}))
+    if historico.empty:
+        raise FalhaFontePreco(
+            f"O Yahoo Finance devolveu {ticker_yahoo!r} sem nenhum preço de "
+            "fechamento — tente de novo mais tarde."
+        )
     # Tickers fora do Brasil (ex: "BZ=F", petróleo, fuso America/New_York)
     # observam horário de verão — um histórico de meses/anos atravessa a
     # transição e mistura offsets diferentes (-04:00/-05:00) na mesma
