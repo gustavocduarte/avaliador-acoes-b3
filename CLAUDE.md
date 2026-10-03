@@ -11,3 +11,4 @@
 - Nos testes de interface, selecionar botões pelo texto (label), nunca pela posição.
 - Testes não gravam em `data/` nem acessam a rede.
 - Arquivos temporários, scripts de investigação e testes descartáveis ficam em `%TEMP%`, nunca dentro do repositório.
+- Nunca usar `git stash` com trabalho não commitado; para comparar com o `HEAD` (ex.: contar testes), usar um `git worktree` temporário em `%TEMP%`.
