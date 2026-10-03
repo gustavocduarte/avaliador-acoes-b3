@@ -10,3 +10,4 @@
 - Constantes (prazos, limites, timeouts, URLs) ficam em `src/avaliador_b3/config.py`.
 - Nos testes de interface, selecionar botões pelo texto (label), nunca pela posição.
 - Testes não gravam em `data/` nem acessam a rede.
+- Arquivos temporários, scripts de investigação e testes descartáveis ficam em `%TEMP%`, nunca dentro do repositório.
