@@ -16,6 +16,9 @@ data/processed/*
 # tempo; atualizar rodando o screener de novo e commitando o CSV resultante
 # quando fizer sentido, não é regerado automaticamente no deploy.
 !data/processed/screener.csv
+# Rodada em andamento e rodada rejeitada pela checagem (ver rodar_screener).
+data/processed/screener.csv.novo
+data/processed/screener.rejeitado.csv
 
 # Python
 __pycache__/

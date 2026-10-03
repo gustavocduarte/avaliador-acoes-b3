@@ -682,6 +682,30 @@ AVISO_PRECO_INDISPONIVEL = (
     "Preço atual indisponível: a fonte de preços não trouxe um valor válido "
     "agora, então o potencial não foi calculado. Tente de novo mais tarde."
 )
+
+# Checagem da rodada do screener antes de substituir o screener.csv: com mais
+# ações sem preço, ou com falha de fonte, do que estes limites, a rodada é
+# descartada e o resultado anterior fica.
+LIMITE_ACOES_SEM_PRECO_SCREENER = 5
+LIMITE_ACOES_COM_FALHA_SCREENER = 5
+FONTE_FUNDAMENTUS = "Fundamentus"
+FONTE_CVM = "CVM"
+FONTE_YAHOO = "Yahoo"
+FONTE_BCB = "Banco Central"
+TEXTO_SCREENER_CONCLUIDO = "Screener concluído — resultado salvo em disco."
+TEXTO_SCREENER_CONCLUIDO_COM_FALHAS = (
+    "Screener concluído com falhas de fonte em: {acoes}. Nessas ações, algum "
+    "método pode ter ficado de fora."
+)
+MOTIVO_RODADA_SEM_PRECO = "{quantidade} ações sem preço (limite: {limite})."
+MOTIVO_RODADA_COM_FALHA_DE_FONTE = (
+    "{quantidade} ações com falha de fonte (limite: {limite}); por fonte: {por_fonte}."
+)
+MOTIVO_RODADA_LINHAS_FALTANDO = "{linhas} linhas para {universo} ações do universo."
+TEXTO_RODADA_DESCARTADA = (
+    "Rodada descartada: {motivo} O resultado anterior foi mantido. A rodada "
+    "descartada ficou em {caminho} para diagnóstico."
+)
 MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO = (
     "Não foi possível identificar o gasto em imobilizado e intangível "
     "(capex) na demonstração de fluxo de caixa da empresa, e sem ele o "

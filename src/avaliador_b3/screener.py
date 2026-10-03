@@ -36,6 +36,7 @@ requisição real (decisão alinhada com o usuário antes de implementar).
 from __future__ import annotations
 
 import csv
+import os
 import warnings
 from pathlib import Path
 
@@ -53,7 +54,16 @@ from avaliador_b3.config import (
     DESCONTO_EXTREMO_LIMITE_INFERIOR,
     DESCONTO_EXTREMO_LIMITE_SUPERIOR,
     FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS,
+    FONTE_BCB,
+    FONTE_CVM,
+    FONTE_FUNDAMENTUS,
+    FONTE_YAHOO,
+    LIMITE_ACOES_COM_FALHA_SCREENER,
+    LIMITE_ACOES_SEM_PRECO_SCREENER,
     MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
+    MOTIVO_RODADA_COM_FALHA_DE_FONTE,
+    MOTIVO_RODADA_LINHAS_FALTANDO,
+    MOTIVO_RODADA_SEM_PRECO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
 )
@@ -142,6 +152,46 @@ class DisjuntorFundamentus:
 
     def registrar_resposta(self) -> None:
         self.falhas_seguidas = 0
+
+
+class FalhasDeFonte:
+    """Ações com falha de fonte numa rodada, e a fonte de cada uma. Uma
+    instância por rodada (criada em `rodar_screener`): ticker que o
+    Fundamentus não encontra, empresa sem DFC e ações sem método aplicável
+    não são falha de fonte e não entram aqui."""
+
+    FONTES = (FONTE_FUNDAMENTUS, FONTE_CVM, FONTE_YAHOO, FONTE_BCB)
+
+    def __init__(self) -> None:
+        self._fontes_por_ticker: dict[str, list[str]] = {}
+
+    def registrar(self, ticker: str, fonte: str) -> None:
+        fontes = self._fontes_por_ticker.setdefault(ticker, [])
+        if fonte not in fontes:
+            fontes.append(fonte)
+
+    def por_ticker(self) -> dict[str, list[str]]:
+        return {ticker: list(fontes) for ticker, fontes in self._fontes_por_ticker.items()}
+
+    def total(self) -> int:
+        return len(self._fontes_por_ticker)
+
+    def contagem_por_fonte(self) -> dict[str, int]:
+        return {
+            fonte: sum(fonte in fontes for fontes in self._fontes_por_ticker.values())
+            for fonte in self.FONTES
+        }
+
+
+class RodadaScreenerRejeitada(Exception):
+    """A rodada não passou na checagem mínima e não substituiu o resultado
+    anterior. `motivo` diz o que falhou; `caminho_rejeitado` é onde ficou a
+    rodada descartada."""
+
+    def __init__(self, motivo: str, caminho_rejeitado: Path) -> None:
+        super().__init__(motivo)
+        self.motivo = motivo
+        self.caminho_rejeitado = caminho_rejeitado
 
 
 COLUNAS_RESULTADO = [
@@ -243,6 +293,7 @@ def _calcular_linha_ticker(
     erro_deteccao_ano_fcd: str | None,
     diretorio_cache: Path,
     disjuntor_fundamentus: DisjuntorFundamentus | None = None,
+    falhas_de_fonte: FalhasDeFonte | None = None,
 ) -> dict:
     """Roda o pipeline completo (Graham, Bazin, FCD, combinado) pra UM
     ticker. Cada fonte é buscada com tratamento de erro isolado — uma
@@ -254,11 +305,13 @@ def _calcular_linha_ticker(
     Só levanta exceção pra fora se nem o preço (o dado mais básico, sem o
     qual não dá nem pra montar a linha) puder ser obtido.
     """
+    falhas = falhas_de_fonte if falhas_de_fonte is not None else FalhasDeFonte()
     historico = obter_historico(
         ticker, periodo=PERIODO_HISTORICO_COMPORTAMENTO, diretorio_cache=diretorio_cache
     )
     preco_atual = float(historico["Close"].iloc[-1])
     if not preco_valido(preco_atual):
+        falhas.registrar(ticker, FONTE_YAHOO)
         return _linha_erro(ticker, MENSAGEM_PRECO_INDISPONIVEL_SCREENER)
 
     beta = None
@@ -270,18 +323,26 @@ def _calcular_linha_ticker(
             beta = calcular_beta(historico_beta, historico_ibovespa_beta)
         except (TickerInvalido, FalhaFontePreco):
             beta = None
+            falhas.registrar(ticker, FONTE_YAHOO)
+    else:
+        falhas.registrar(ticker, FONTE_YAHOO)
 
     indicadores = None
     fundamentus_pulado = disjuntor_fundamentus is not None and disjuntor_fundamentus.aberto
-    if not fundamentus_pulado:
+    if fundamentus_pulado:
+        falhas.registrar(ticker, FONTE_FUNDAMENTUS)
+    else:
         try:
             indicadores = obter_indicadores(ticker, diretorio_cache=diretorio_cache)
             if disjuntor_fundamentus is not None:
                 disjuntor_fundamentus.registrar_resposta()
-        except (TickerNaoEncontrado, EstruturaPaginaMudou):
+        except (TickerNaoEncontrado, EstruturaPaginaMudou) as erro:
             if disjuntor_fundamentus is not None:
                 disjuntor_fundamentus.registrar_resposta()
+            if isinstance(erro, EstruturaPaginaMudou):
+                falhas.registrar(ticker, FONTE_FUNDAMENTUS)
         except requests.RequestException:
+            falhas.registrar(ticker, FONTE_FUNDAMENTUS)
             if disjuntor_fundamentus is not None:
                 disjuntor_fundamentus.registrar_falha_de_rede()
 
@@ -310,6 +371,7 @@ def _calcular_linha_ticker(
         dividendos = obter_dividendos(ticker, diretorio_cache=diretorio_cache)
     except (TickerInvalido, FalhaFontePreco):
         dividendos = None
+        falhas.registrar(ticker, FONTE_YAHOO)
 
     cnpj = None
     segmento_setorial = None
@@ -346,7 +408,9 @@ def _calcular_linha_ticker(
             proporcao_reinvestimento_percentual = calcular_proporcao_reinvestimento_percentual(
                 resultado_fcf["cfo_atual"], resultado_fcf["cfi_atual"]
             )
-        except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada, requests.RequestException):
+        except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada, requests.RequestException) as erro:
+            if isinstance(erro, requests.RequestException):
+                falhas.registrar(ticker, FONTE_CVM)
             fluxos_fcd = montar_fluxos_fcd(None)
             ano_referencia_fcd = None
 
@@ -382,6 +446,7 @@ def _calcular_linha_ticker(
             "motivo_nao_aplicavel": MOTIVO_FUNDAMENTUS_INDISPONIVEL,
         }
     elif ano_mais_recente_fcd is None and erro_deteccao_ano_fcd is not None and cnpj:
+        falhas.registrar(ticker, FONTE_CVM)
         resultado_fcd = {
             "aplicavel": False,
             "valor_justo": None,
@@ -402,6 +467,7 @@ def _calcular_linha_ticker(
             ticker=ticker,
         )
     else:
+        falhas.registrar(ticker, FONTE_BCB)
         resultado_fcd = {
             "aplicavel": False,
             "valor_justo": None,
@@ -449,11 +515,12 @@ def _calcular_linha_ticker(
     }
 
 
-def rodar_screener(
-    tickers: list[str] | None = None,
-    ano_mais_recente_fcd: int | None = None,
-    diretorio_cache: Path = DATA_RAW_DIR,
-    caminho_saida: Path = CAMINHO_SAIDA_PADRAO,
+def _executar_rodada(
+    tickers: list[str],
+    ano_mais_recente_fcd: int | None,
+    diretorio_cache: Path,
+    caminho_saida: Path,
+    falhas_de_fonte: FalhasDeFonte,
 ) -> pd.DataFrame:
     """Roda o screener completo e devolve a tabela ordenada por
     `desconto_percentual` (potencial de valorização) decrescente (ação com
@@ -479,10 +546,6 @@ def rodar_screener(
     disso o arquivo em disco nunca refletia a ordenação, só o retorno da
     função em memória.
     """
-    if tickers is None:
-        universo = obter_universo_ibovespa(diretorio_cache=diretorio_cache)
-        tickers = list(universo["ticker"])
-
     catalogo_emissores = obter_catalogo_emissores(diretorio_cache=diretorio_cache)
 
     try:
@@ -552,8 +615,10 @@ def rodar_screener(
                     erro_deteccao_ano_fcd=erro_deteccao_ano_fcd,
                     diretorio_cache=diretorio_cache,
                     disjuntor_fundamentus=disjuntor_fundamentus,
+                    falhas_de_fonte=falhas_de_fonte,
                 )
             except (TickerInvalido, FalhaFontePreco) as erro:
+                falhas_de_fonte.registrar(ticker, FONTE_YAHOO)
                 linha = _linha_erro(ticker, f"Preço: {erro}")
             except Exception as erro:  # nunca deixa uma ação derrubar o screener inteiro
                 linha = _linha_erro(ticker, f"Erro inesperado: {erro}")
@@ -586,3 +651,72 @@ def rodar_screener(
     resultado_ordenado.to_csv(caminho_saida, index=False)
 
     return resultado_ordenado
+
+
+def rodar_screener(
+    tickers: list[str] | None = None,
+    ano_mais_recente_fcd: int | None = None,
+    diretorio_cache: Path = DATA_RAW_DIR,
+    caminho_saida: Path = CAMINHO_SAIDA_PADRAO,
+) -> pd.DataFrame:
+    """Roda o screener (ver `_executar_rodada`) sem tocar no resultado
+    anterior até a rodada passar numa checagem mínima.
+
+    A rodada é gravada em `<caminho_saida>.novo`. No fim, se houver uma linha
+    por ação do universo, no máximo `LIMITE_ACOES_SEM_PRECO_SCREENER` ações
+    sem preço e no máximo `LIMITE_ACOES_COM_FALHA_SCREENER` ações com falha
+    de fonte (ver `FalhasDeFonte`), o arquivo novo substitui `caminho_saida`.
+    Se não passar, vira `<nome>.rejeitado.csv` (sobrescrito a cada rejeição),
+    `caminho_saida` fica como estava e `RodadaScreenerRejeitada` é levantada.
+    Uma exceção no meio da rodada apaga o arquivo novo, que seria parcial.
+
+    O DataFrame devolvido traz em `attrs["falhas_de_fonte"]` as ações com
+    falha de fonte da rodada ({ticker: [fontes]})."""
+    if tickers is None:
+        universo = obter_universo_ibovespa(diretorio_cache=diretorio_cache)
+        tickers = list(universo["ticker"])
+
+    falhas_de_fonte = FalhasDeFonte()
+    caminho_novo = caminho_saida.with_name(caminho_saida.name + ".novo")
+    caminho_rejeitado = caminho_saida.with_name(caminho_saida.stem + ".rejeitado.csv")
+
+    try:
+        resultado = _executar_rodada(
+            tickers, ano_mais_recente_fcd, diretorio_cache, caminho_novo, falhas_de_fonte
+        )
+    except BaseException:
+        caminho_novo.unlink(missing_ok=True)
+        raise
+
+    motivos = []
+    if len(resultado) != len(tickers):
+        motivos.append(
+            MOTIVO_RODADA_LINHAS_FALTANDO.format(linhas=len(resultado), universo=len(tickers))
+        )
+    sem_preco = int(resultado["preco_atual"].isna().sum())
+    if sem_preco > LIMITE_ACOES_SEM_PRECO_SCREENER:
+        motivos.append(
+            MOTIVO_RODADA_SEM_PRECO.format(
+                quantidade=sem_preco, limite=LIMITE_ACOES_SEM_PRECO_SCREENER
+            )
+        )
+    if falhas_de_fonte.total() > LIMITE_ACOES_COM_FALHA_SCREENER:
+        por_fonte = ", ".join(
+            f"{fonte}: {quantidade}"
+            for fonte, quantidade in falhas_de_fonte.contagem_por_fonte().items()
+        )
+        motivos.append(
+            MOTIVO_RODADA_COM_FALHA_DE_FONTE.format(
+                quantidade=falhas_de_fonte.total(),
+                limite=LIMITE_ACOES_COM_FALHA_SCREENER,
+                por_fonte=por_fonte,
+            )
+        )
+
+    if motivos:
+        os.replace(caminho_novo, caminho_rejeitado)
+        raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado)
+
+    os.replace(caminho_novo, caminho_saida)
+    resultado.attrs["falhas_de_fonte"] = falhas_de_fonte.por_ticker()
+    return resultado

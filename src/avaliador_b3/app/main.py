@@ -53,6 +53,9 @@ from avaliador_b3.config import (
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_EXPANDER_SIMULADOR,
+    TEXTO_RODADA_DESCARTADA,
+    TEXTO_SCREENER_CONCLUIDO,
+    TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
     TOOLTIP_POTENCIAL_CARTAO,
@@ -114,6 +117,7 @@ from avaliador_b3.screener import (
     DeteccaoAnoCvmFalhouWarning,
     FundamentusIndisponivelWarning,
     MacroIndisponivelWarning,
+    RodadaScreenerRejeitada,
     rodar_screener,
 )
 
@@ -1722,10 +1726,14 @@ with aba_screener:
         # categoria diferente) — por isso, ao sair do bloco, cada um é
         # reemitido pro canal normal antes de filtrar só os de detecção do
         # ano, preservando o comportamento de log de todos os outros.
+        resultado_rodada = rodada_rejeitada = None
         with warnings.catch_warnings(record=True) as avisos_capturados:
             warnings.simplefilter("always")
             with st.spinner("Rodando o screener — isso leva alguns minutos..."):
-                rodar_screener()
+                try:
+                    resultado_rodada = rodar_screener()
+                except RodadaScreenerRejeitada as erro:
+                    rodada_rejeitada = erro
         for aviso in avisos_capturados:
             warnings.warn_explicit(aviso.message, aviso.category, aviso.filename, aviso.lineno)
         # Mesmo tratamento pros avisos "globais" (afetam a rodada inteira,
@@ -1748,8 +1756,30 @@ with aba_screener:
             # nesta mesma execução — guarda em session_state pra mostrar
             # DEPOIS do rerun, não aqui.
             st.session_state["avisos_screener_globais"] = avisos_globais
-        st.success("Screener concluído — resultado salvo em disco.")
-        st.rerun()
+        if rodada_rejeitada is not None:
+            # Sem rerun: a mensagem fica na tela, e a tabela abaixo continua com o
+            # resultado anterior, que a rodada descartada não substituiu.
+            st.error(
+                TEXTO_RODADA_DESCARTADA.format(
+                    motivo=rodada_rejeitada.motivo, caminho=rodada_rejeitada.caminho_rejeitado
+                )
+            )
+        else:
+            falhas_de_fonte = getattr(resultado_rodada, "attrs", {}).get("falhas_de_fonte", {})
+            if falhas_de_fonte:
+                acoes_com_falha = ", ".join(
+                    f"{ticker} ({', '.join(fontes)})"
+                    for ticker, fontes in sorted(falhas_de_fonte.items())
+                )
+                mensagem = TEXTO_SCREENER_CONCLUIDO_COM_FALHAS.format(acoes=acoes_com_falha)
+            else:
+                mensagem = TEXTO_SCREENER_CONCLUIDO
+            st.session_state["mensagem_rodada_screener"] = mensagem
+            st.rerun()
+
+    mensagem_rodada = st.session_state.pop("mensagem_rodada_screener", None)
+    if mensagem_rodada:
+        st.success(mensagem_rodada)
 
     for aviso in st.session_state.pop("avisos_screener_globais", []):
         st.warning(aviso)

@@ -1968,6 +1968,78 @@ def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
     assert "BCB fora do ar (simulado)" in avisos[0]
 
 
+def test_botao_screener_rodada_rejeitada_mostra_o_motivo_e_o_arquivo_rejeitado(monkeypatch):
+    from pathlib import Path
+
+    from avaliador_b3.screener import RodadaScreenerRejeitada
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    def rodar_screener_falso(*args, **kwargs):
+        raise RodadaScreenerRejeitada(
+            "40 ações com falha de fonte (limite: 5); "
+            "por fonte: Fundamentus: 40, CVM: 0, Yahoo: 1.",
+            Path("data/processed/screener.rejeitado.csv"),
+        )
+
+    monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
+
+    assert not at.exception
+    erros = [e.value for e in at.error if e.value.startswith("Rodada descartada")]
+    assert len(erros) == 1
+    assert "Fundamentus: 40, CVM: 0, Yahoo: 1" in erros[0]
+    assert "screener.rejeitado.csv" in erros[0]
+    assert not [s for s in at.success if "Screener concluído" in s.value]
+
+
+def test_botao_screener_rodada_aceita_lista_as_acoes_com_falha_de_fonte(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    def rodar_screener_falso(*args, **kwargs):
+        resultado = pd.DataFrame()
+        resultado.attrs["falhas_de_fonte"] = {"WEGE3": ["Yahoo"], "VALE3": ["Fundamentus"]}
+        return resultado
+
+    monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
+
+    assert not at.exception
+    mensagens = [s.value for s in at.success if s.value.startswith("Screener concluído")]
+    assert len(mensagens) == 1
+    assert "VALE3 (Fundamentus), WEGE3 (Yahoo)" in mensagens[0]
+
+
+def test_botao_screener_rodada_sem_falhas_mostra_so_a_mensagem_de_conclusao(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr("avaliador_b3.screener.rodar_screener", lambda *a, **k: pd.DataFrame())
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
+
+    assert not at.exception
+    assert "Screener concluído — resultado salvo em disco." in [s.value for s in at.success]
+
+
 def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypatch):
     # A coluna "Dividendos vs. histórico" fica vazia tanto quando o Bazin
     # não se aplica quanto (raramente) quando a mediana dos 5 anos sai

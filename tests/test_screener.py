@@ -16,6 +16,9 @@ from avaliador_b3.ingest.precos import TickerInvalido
 # uma constante.
 ANO_FCD_MOCK = 2025
 
+# A fixture `ambiente_feliz` troca `screener._buscar_macro`; os testes de BCB usam a real.
+_BUSCAR_MACRO_REAL = screener._buscar_macro
+
 
 def _historico(fechamentos: list[float]) -> pd.DataFrame:
     datas = pd.date_range("2026-01-01", periods=len(fechamentos), freq="D")
@@ -705,6 +708,247 @@ def test_rodar_screener_preco_atual_invalido_vira_linha_de_erro_sem_potencial(
     assert linha_ruim["erro"] == MENSAGEM_PRECO_INDISPONIVEL_SCREENER
     assert pd.isna(linha_ruim["desconto_percentual"])
     assert pd.isna(linha_ruim["valor_combinado"])
+
+
+# --- Checagem da rodada antes de substituir o screener.csv ---------------------
+
+CONTEUDO_ANTIGO = "ticker\nANTIGO\n"
+
+
+def _rodar_com_oficial_antigo(tmp_path, tickers=("AAAA4", "BBBB4")):
+    oficial = tmp_path / "screener.csv"
+    oficial.write_text(CONTEUDO_ANTIGO, encoding="utf-8")
+    resultado = screener.rodar_screener(
+        tickers=list(tickers), diretorio_cache=tmp_path, caminho_saida=oficial
+    )
+    return oficial, resultado
+
+
+def _sem_preco_no_bbbb4(monkeypatch):
+    def historico(ticker, periodo, diretorio_cache=None):
+        ultimo = float("nan") if ticker == "BBBB4" else 40.0
+        return _historico([38.0, 39.0, 39.5, 40.5, ultimo])
+
+    monkeypatch.setattr(screener, "obter_historico", historico)
+
+
+def _fundamentus_fora_do_ar(monkeypatch, tickers_afetados=None):
+    def indicadores(ticker, **kwargs):
+        if tickers_afetados is not None and ticker not in tickers_afetados:
+            return _indicadores()
+        resposta = type("RespostaFalsa", (), {"status_code": 503})()
+        raise requests.HTTPError("503 Server Error", response=resposta)
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores)
+
+
+def test_rodada_boa_substitui_o_oficial_sem_deixar_arquivo_novo(ambiente_feliz, tmp_path):
+    oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+    assert not (tmp_path / "screener.csv.novo").exists()
+    assert not (tmp_path / "screener.rejeitado.csv").exists()
+    assert resultado.attrs["falhas_de_fonte"] == {}
+
+
+def test_rodada_com_mais_acoes_sem_preco_que_o_limite_e_rejeitada(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+
+    with pytest.raises(screener.RodadaScreenerRejeitada, match="1 ações sem preço") as excecao:
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert excecao.value.caminho_rejeitado == tmp_path / "screener.rejeitado.csv"
+    assert list(pd.read_csv(excecao.value.caminho_rejeitado)["ticker"]) == ["AAAA4", "BBBB4"]
+    assert not (tmp_path / "screener.csv.novo").exists()
+
+
+def test_rodada_com_acoes_sem_preco_no_limite_e_aceita(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 1)
+    monkeypatch.setattr(screener, "LIMITE_ACOES_COM_FALHA_SCREENER", 1)
+    _sem_preco_no_bbbb4(monkeypatch)
+
+    oficial, _ = _rodar_com_oficial_antigo(tmp_path)
+
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+
+
+def test_rejeicao_sobrescreve_o_arquivo_rejeitado_anterior(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+    (tmp_path / "screener.rejeitado.csv").write_text("velho\n", encoding="utf-8")
+
+    with pytest.raises(screener.RodadaScreenerRejeitada):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert "AAAA4" in (tmp_path / "screener.rejeitado.csv").read_text(encoding="utf-8")
+
+
+def test_excecao_no_meio_da_rodada_apaga_o_arquivo_novo_e_preserva_o_oficial(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def indicadores(ticker, **kwargs):
+        if ticker == "BBBB4":
+            raise KeyboardInterrupt
+        return _indicadores()
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores)
+
+    with pytest.raises(KeyboardInterrupt):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert not (tmp_path / "screener.csv.novo").exists()
+    assert not (tmp_path / "screener.rejeitado.csv").exists()
+
+
+def test_rodada_com_falhas_de_fundamentus_acima_do_limite_e_rejeitada(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_COM_FALHA_SCREENER", 1)
+    _fundamentus_fora_do_ar(monkeypatch)
+
+    with pytest.raises(screener.RodadaScreenerRejeitada) as excecao:
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert "2 ações com falha de fonte (limite: 1)" in excecao.value.motivo
+    assert "Fundamentus: 2, CVM: 0, Yahoo: 0" in excecao.value.motivo
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+
+
+def test_acoes_sem_nenhum_metodo_aplicavel_nao_contam_como_falha_de_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Graham sem lucro, Bazin sem dividendos e FCD com fluxo negativo: a linha
+    # fica com "nenhum método aplicável", mas nenhuma fonte falhou.
+    monkeypatch.setattr(screener, "LIMITE_ACOES_COM_FALHA_SCREENER", 0)
+    monkeypatch.setattr(screener, "obter_indicadores", lambda ticker, **kw: _indicadores(lpa=-1.0))
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: _resultado_fcf_cvm(
+            ano_mais_recente, cfo=-100_000.0, capex=200_000.0
+        ),
+    )
+
+    oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado["erro"].str.startswith("Nenhum dos três métodos").all()
+    assert resultado["sucesso"].all()
+    assert resultado.attrs["falhas_de_fonte"] == {}
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+
+
+def test_bcb_fora_do_ar_com_valor_guardado_nao_conta_como_falha_de_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Mesmo caso da rodada de 03/10/2026: o BCB falhou, mas há Selic/IPCA guardados.
+    monkeypatch.setattr(screener, "_buscar_macro", _BUSCAR_MACRO_REAL)
+    monkeypatch.setattr(screener, "LIMITE_ACOES_COM_FALHA_SCREENER", 0)
+    monkeypatch.setattr(
+        screener,
+        "obter_selic_e_ipca",
+        lambda diretorio_cache: bcb_sgs.ResultadoMacro(
+            selic_meta=0.1375,
+            ipca_12m=0.0422,
+            data_ipca=pd.Timestamp("2026-08-01"),
+            usou_valor_guardado=True,
+            data_busca=pd.Timestamp("2026-09-29"),
+        ),
+    )
+
+    with pytest.warns(screener.MacroIndisponivelWarning, match="usando a Selic e o IPCA"):
+        oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado.attrs["falhas_de_fonte"] == {}
+    assert resultado["fcd_valor_justo"].notna().all()
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+
+
+def test_bcb_fora_do_ar_sem_valor_guardado_conta_como_falha_e_rejeita_a_rodada(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def sem_valor_guardado(diretorio_cache):
+        raise RuntimeError("BCB fora do ar e sem valor guardado")
+
+    monkeypatch.setattr(screener, "_buscar_macro", _BUSCAR_MACRO_REAL)
+    monkeypatch.setattr(screener, "obter_selic_e_ipca", sem_valor_guardado)
+    monkeypatch.setattr(screener, "LIMITE_ACOES_COM_FALHA_SCREENER", 1)
+
+    with (
+        pytest.warns(screener.MacroIndisponivelWarning, match="Selic/IPCA indisponíveis"),
+        pytest.raises(screener.RodadaScreenerRejeitada) as excecao,
+    ):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert "Banco Central: 2" in excecao.value.motivo
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+
+
+def test_ticker_que_o_fundamentus_nao_encontra_nao_conta_como_falha_de_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def indicadores(ticker, **kwargs):
+        raise screener.TickerNaoEncontrado("não encontrado")
+
+    monkeypatch.setattr(screener, "obter_indicadores", indicadores)
+
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado.attrs["falhas_de_fonte"] == {}
+
+
+def test_duas_rodadas_seguidas_nao_compartilham_falhas_de_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _fundamentus_fora_do_ar(monkeypatch, tickers_afetados={"AAAA4"})
+    _, primeira = _rodar_com_oficial_antigo(tmp_path)
+    monkeypatch.setattr(screener, "obter_indicadores", lambda ticker, **kw: _indicadores())
+
+    _, segunda = _rodar_com_oficial_antigo(tmp_path)
+
+    assert primeira.attrs["falhas_de_fonte"] == {"AAAA4": ["Fundamentus"]}
+    assert segunda.attrs["falhas_de_fonte"] == {}
+
+
+def test_falhas_de_fonte_registram_a_fonte_de_cada_acao(ambiente_feliz, tmp_path, monkeypatch):
+    def dividendos(ticker, **kwargs):
+        if ticker == "BBBB4":
+            raise TickerInvalido("sem dividendos")
+        return _dividendos_vazio()
+
+    def cvm_fora_do_ar(cnpj, ano_mais_recente, anos_historico_crescimento, **kw):
+        if cnpj == "CNPJ-AAAA4":
+            raise requests.ConnectionError("CVM fora do ar")
+        return _resultado_fcf_cvm(ano_mais_recente)
+
+    monkeypatch.setattr(screener, "obter_dividendos", dividendos)
+    monkeypatch.setattr(screener, "obter_fluxo_caixa_livre_com_fallback", cvm_fora_do_ar)
+
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado.attrs["falhas_de_fonte"] == {"AAAA4": ["CVM"], "BBBB4": ["Yahoo"]}
+
+
+def test_coletor_de_falhas_conta_cada_acao_uma_vez_e_separa_por_fonte():
+    falhas = screener.FalhasDeFonte()
+
+    falhas.registrar("AAAA4", "Fundamentus")
+    falhas.registrar("AAAA4", "Fundamentus")
+    falhas.registrar("AAAA4", "CVM")
+    falhas.registrar("BBBB4", "Fundamentus")
+
+    assert falhas.total() == 2
+    assert falhas.contagem_por_fonte() == {
+        "Fundamentus": 2,
+        "CVM": 1,
+        "Yahoo": 0,
+        "Banco Central": 0,
+    }
+    assert falhas.por_ticker() == {"AAAA4": ["Fundamentus", "CVM"], "BBBB4": ["Fundamentus"]}
 
 
 def test_rodar_screener_trata_excecao_inesperada_sem_derrubar_as_demais(
