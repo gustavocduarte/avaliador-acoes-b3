@@ -556,6 +556,8 @@ O Simulador é uma **estimativa, não uma previsão**. Os valores de cada cenár
 12. **Participação de não controladores:** verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida. Se não subtrai, o valor de holdings com minoritários relevantes (hipótese principal para a CSAN3 seguir em 30,03 contra preço de 3,72) fica superestimado. Medir depois, nas 76, o peso dos não controladores sobre o patrimônio.
 13. **Juros de arrendamento em 6.01:** na alt3, definir se a soma de volta dos juros pagos em 6.01 inclui os juros de arrendamento. Proposta: incluir quando o arrendamento está dentro da dívida do Fundamentus; não incluir quando está fora.
 14. **Mesmo tipo de demonstração nos dois anos do crescimento:** quando o ano de referência e o ano-base usam tipos diferentes e o mesmo tipo existe nos dois, usar o mesmo tipo (caso ASAI3: 4,2% → 10,8%).
+15. **Patrimônio usado nos pesos do WACC:** o índice Dív Líq / Patrim do Fundamentus usa o patrimônio dos controladores (seção 11.3). Proposta: usar o patrimônio líquido total (controladores + não controladores), coerente com o fluxo e a dívida consolidados. Os pesos a valor de mercado continuam como limitação do P09.
+16. **Número de ações divergente da CVM:** EGIE3 (+24%), VALE3 (+4,3%) e AXIA3 (−3,9%) têm no Fundamentus um número de ações diferente do da composição de capital da CVM (seção 11.4). Investigar a causa (bonificação, cancelamento de tesouraria, classes de ações) e o efeito no FCD por ação, como no P06.
 
 **Hipóteses não confirmadas deste relatório (para o item 4 e 5):** composição da "Dív. Líquida" do Fundamentus (arrendamento e aplicações financeiras); moeda do prêmio do Damodaran; dupla contagem do risco-país; peso do valor terminal de ~55% (da auditoria, não reconferido).
 
@@ -578,11 +580,13 @@ Cada decisão está ligada ao número da pergunta em aberto da seção 8 que ela
 | 9 — Vocabulário "Potencial" (P11) | **Aprovado** o vocabulário da seção 6; a coluna `desconto_percentual` continua no CSV. | Decidido; implementado no commit `26e8002` |
 | 10 — Implementação do capex por descrição | Implementar com a alt3 decidida (pergunta 2), com fixtures e teste de cobertura. Nos zips locais, o capex é identificado em 63 das 64 empresas não financeiras em 2025 (a exceção é a IGTI11) e em 63 de 63 em 2020. | Decidido; implementado no commit `78f671e` |
 | 11 — Teste frágil (`tests/test_conftest.py:14`) | Corrigir agora, em etapa própria: o teste não pode depender de o arquivo real existir ou não. | Decidido; corrigido no commit `e29e83b` |
-| 12 — Participação de não controladores | Verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida; medir depois, nas 76, o peso dos não controladores sobre o patrimônio. | Em aberto |
+| 12 — Participação de não controladores | Verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida; medir depois, nas 76, o peso dos não controladores sobre o patrimônio. | Investigado (seção 11) |
 | 13 — Juros de arrendamento em 6.01 na alt3 | A soma de volta considera só linhas dedicadas a juros de empréstimos, financiamentos e debêntures em 6.01. Linhas de juros de arrendamento e linhas mistas (principal e juros, ou juros de arrendamento e de outra dívida) ficam de fora, independentemente de o arrendamento estar dentro da dívida do Fundamentus. Isso simplifica a proposta original, que incluía os juros de arrendamento quando o arrendamento está na dívida. A decisão vale até a etapa do arrendamento como dívida, quando será revista. Onde o arrendamento já está dentro da dívida do Fundamentus (PETR4 e CSAN3), gera uma pequena dupla contagem: os juros do arrendamento continuam descontados do fluxo e o passivo também é subtraído na dívida líquida. Caso conhecido: MRVE3, cuja única linha de juros em 6.01 mistura terrenos e arrendamentos (cerca de R$ 70,9 mi) e não entra na soma. | Decidido; implementado no commit `78f671e` |
 | 14 — Mesmo tipo de demonstração nos dois anos do crescimento | Quando o ano de referência e o ano-base usam demonstrações diferentes e a do ano de referência existe, com valores, também no ano-base, o ano-base usa a mesma; senão vale a escolha padrão. Com a alt3, o crescimento da ASAI3 passa de 19,5% para 15,1% e o FCD de R$ 44,53 para R$ 36,55 (o 4,2% → 10,8% da seção 10.6 era do fluxo antigo, 6.01 + 6.02). TIMS3, BRAP4 e SANB11 trocam a demonstração do ano-base sem efeito relevante (no SANB11 o crescimento já estava no piso de −20% e o FCD não se aplica). SBSP3 não muda: a consolidada de 2020 não existe com valores. | Decidido; implementado no commit `77530c4` |
+| 15 — Patrimônio usado nos pesos do WACC | Usar o patrimônio líquido total (controladores + não controladores), coerente com o fluxo e a dívida consolidados. Os pesos a valor de mercado continuam como limitação do P09. | Em aberto |
+| 16 — Número de ações divergente da CVM | Investigar a causa nas ações EGIE3 (+24%), VALE3 (+4,3%) e AXIA3 (−3,9%) (bonificação, cancelamento de tesouraria, classes de ações) e o efeito no FCD por ação, como no P06. | Em aberto |
 
-**Em aberto:** perguntas 5, 8 e 12; a etapa do arrendamento na dívida líquida (pergunta 2); e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
+**Em aberto:** perguntas 5, 8, 15 e 16; a decisão da pergunta 12 (investigada na seção 11); a etapa do arrendamento na dívida líquida (pergunta 2); e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
 
 **Fora desta rodada:** a regeneração do `data/processed/screener.csv`, que ainda reflete o cálculo anterior à alt3, e a etapa do arrendamento na dívida líquida.
 
@@ -682,3 +686,131 @@ Para as 76 ações (74 CNPJs), comparei a demonstração escolhida em 2025 (ano 
 Notas: (i) o SANB11 também tem diferença de **método**: em 2025 a DFC consolidada existe só no método direto (MD, FCF R$ 1.669 mi) e a ordem MI-antes-de-MD escolhe a individual indireta; como banco, o FCD não se aplica, então não afeta nenhum valor justo. (ii) Entre as ações com FCD aplicável, a diferença é de **tipo** (consolidada contra individual), não de método.
 
 **TIMS3, em particular.** Em 2020 foi usada a **consolidada** (MI/con); em 2025, depois da correção, a **individual** (MI/ind). Isso **não** explica o salto de 4,2% para 23,9%: em 2020 as duas demonstrações trazem o mesmo FCF (R$ 3.381 mi), então o CAGR é 23,9% com qualquer combinação. O salto vem de o FCF de 2025 ter passado de 0 para R$ 9.879 mi: antes da correção o fluxo atual era zero, o CAGR não era calculável (`fcd.py:141`, fluxo atual ≤ 0) e o crescimento caía para o IPCA (4,2%). Com a correção, o crescimento passa a ser o CAGR de 23,9% (limite de 30%). Quem quiser olhar com cautela o FCD de R$ 57,67 deve considerar que 23,9% por 5 anos é um crescimento alto para uma telecom.
+
+
+---
+
+## 11. Pergunta 12: participação de não controladores (03/10/2026)
+
+Investigação só de leitura; nada no código, nos testes ou em `data/` foi alterado. Scripts e dados em `%TEMP%\investigacao_p12`. Fontes: CVM, balanço consolidado (BPP) do ITR de 30/06/2026 (a mesma data-base da dívida do Fundamentus); CVM, DRE consolidada da DFP de 2025; composição de capital do ITR de 30/06/2026; caches do Fundamentus e `screener.csv` de 03/10/2026 (commit `23f0e16`). O universo é o das 53 ações com FCD aplicável (6 bancos, 3 seguradoras, ITSA4, IGTI11 e 12 com fluxo ≤ 0 não têm FCD). Não controladores e controladores abaixo são os rótulos da CVM: conta 2.03.09 do balanço ("Participação dos Acionistas Não Controladores") e linhas 3.11.01 e 3.11.02 da DRE.
+
+### 11.1 Do valor da empresa ao valor por ação (CONFIRMADO no código)
+
+| Passo | Onde |
+|---|---|
+| Valor presente dos 5 anos explícitos | `fcd.py:343-347` |
+| Valor terminal e seu valor presente | `fcd.py:349-350` |
+| Valor da empresa (Enterprise Value) = soma dos dois | `fcd.py:352` (`valor_total`) |
+| **Única dedução:** dívida líquida do Fundamentus (Dív. Líquida = 2.01.04 + 2.02.01 − 1.01.01 − 1.01.02, ver seção 10.2) | `fcd.py:357-359` |
+| Valor por ação = `valor_total` ÷ número de ações | `fcd.py:363` |
+
+O número de ações vem do campo "Nro. Ações" do Fundamentus (`config.py:245`), convertido para a base da cotação nas units (`fundamentus.py:119-151`) e passado em `app/main.py:985` e `:1032` e em `screener.py:351` e `:460`. **A participação dos não controladores não é subtraída em nenhum ponto**: uma busca por "controlador" e "minorit" em `src/` não encontra tratamento nenhum. Como o fluxo de caixa usado é o consolidado (6.01 e capex da empresa inteira), o valor da empresa inclui a parte que pertence aos minoritários das controladas, e o valor por ação a atribui toda aos acionistas da empresa.
+
+### 11.2 Peso dos não controladores nas ações com FCD (CONFIRMADO nos dados)
+
+Participação dos não controladores ÷ patrimônio líquido total consolidado (2.03), em 30/06/2026. 12 das 53 empresas não têm não controladores, 2 (ASAI3 e BRAP4) ficaram sem balanço consolidado na base e 27 têm até 10%; **11 passam de 10%**:
+
+| Ticker | Não controladores (R$ bi) | PL total (R$ bi) | Peso |
+|---|---|---|---|
+| CSAN3 | 26,94 | 31,91 | 84,4% |
+| GOAU4 | 34,56 | 53,80 | 64,2% |
+| KLBN11 | 6,49 | 15,97 | 40,6% |
+| BEEF3 | 0,60 | 2,18 | 27,6% |
+| CURY3 | 0,39 | 2,05 | 19,2% |
+| MBRF3 | 2,40 | 13,79 | 17,4% |
+| ENGI11 | 3,49 | 22,98 | 15,2% |
+| DIRR3 | 0,41 | 2,74 | 15,0% |
+| USIM5 | 2,89 | 23,65 | 12,2% |
+| MRVE3 | 0,62 | 5,20 | 12,0% |
+| UGPA3 | 2,07 | 20,03 | 10,3% |
+
+Logo abaixo do corte: AURE3 (9,8%), EMBJ3 (9,7%) e RDOR3 (9,6%). Os demais ficam em 7% ou menos (EGIE3 6,7%, WEGE3 6,6%, CPFE3 4,0%, VALE3 2,4%). **Limitação:** ASAI3 e BRAP4 não têm balanço consolidado no ITR de 30/06/2026 na base usada e ficaram sem medida.
+
+### 11.3 O patrimônio do Fundamentus é só o dos controladores (CONFIRMADO nos dados)
+
+O "Patrim. Líq" do Fundamentus (`config.py:251`, cache `patrimonio_liquido`) é o **patrimônio atribuído aos controladores** (2.03 menos 2.03.09), não o total. Nas 51 empresas não financeiras com não controladores, o valor do Fundamentus bate com o dos controladores (diferença de até 1%) em 51 e com o total em nenhuma (as 23 que também batem com o total têm não controladores abaixo de 1%). Os 6 bancos não batem com nenhum dos dois (estrutura de balanço diferente; o FCD não se aplica a eles).
+
+| Ticker | PL no Fundamentus (R$ bi) | PL total CVM | PL controladores CVM | Não controladores |
+|---|---|---|---|---|
+| CSAN3 | 4,968 | 31,910 | 4,968 | 26,942 |
+| KLBN11 | 9,487 | 15,974 | 9,487 | 6,487 |
+| ENEV3 | 20,356 | 21,998 | 20,356 | 1,642 |
+| MBRF3 | 11,384 | 13,786 | 11,384 | 2,403 |
+| BEEF3 | 1,579 | 2,182 | 1,579 | 0,603 |
+| CURY3 | 1,655 | 2,049 | 1,655 | 0,394 |
+| DIRR3 | 2,327 | 2,737 | 2,327 | 0,410 |
+
+**Consequência nos pesos do WACC (CONFIRMADO).** O WACC usa o índice "Dív Líq / Patrim" do Fundamentus (`config.py:240`; `fcd.py:175-185` e `:198`), e nas 53 empresas com FCD esse índice é exatamente a dívida líquida (consolidada, com os financiamentos de todas as controladas) dividida pelo patrimônio **dos controladores** (diferença menor que 0,02). Com não controladores relevantes, a dívida total é comparada com um patrimônio sem a parte dos minoritários, e o peso da dívida (barata, pós-imposto) sobe e puxa o WACC para baixo. Na CSAN3 o índice é 9,57 (dívida líquida 47,53 bi ÷ 4,97 bi), contra 1,49 com o patrimônio total.
+
+### 11.4 Número de ações (CONFIRMADO nos dados, com ressalvas)
+
+Comparação do "Nro. Ações" do Fundamentus com a composição de capital da CVM de 30/06/2026 (a data mais recente disponível; ações integralizadas, com a tesouraria à parte):
+
+- **CSAN3:** Fundamentus 3.966.570.000, CVM 3.966.570.932. O mesmo número consta em 31/12/2025, 31/03/2026 e 30/06/2026, então **não há aumento de capital que ainda não esteja refletido até 30/06/2026**. A tesouraria caiu de 47,6 milhões (31/03) para 22,2 milhões de ações (30/06), 0,56% do total; descontando a tesouraria, o FCD sobe de R$ 29,96 para R$ 30,13 (+0,6%), efeito mínimo e de sinal contrário ao que explicaria a distância para o preço. Um aumento de capital depois de 30/06/2026 não aparece nos arquivos disponíveis (HIPÓTESE não testável aqui).
+- **Escala:** para várias empresas (por exemplo ABEV3, VALE3, AXIA3, LREN3) o arquivo da CVM informa a composição em milhares (razão de 1.000 contra o Fundamentus), e para as units a razão é a da unit (KLBN11 e ENGI11, 0,20: 1 unit = 5 ações; TAEE11, 1/3: 1 unit = 3 ações), coerente com a conversão do `fundamentus.py:119-151`.
+- **Das 11 empresas acima de 10%**, CSAN3, GOAU4 (−0,2%), BEEF3, CURY3, DIRR3, UGPA3, USIM5 e MRVE3 batem com a CVM (diferença abaixo de 1%, corrigida a escala); MBRF3 fica 1,5% abaixo do total, mas bate (0,998) descontada a tesouraria; KLBN11 e ENGI11 batem pela razão da unit.
+- **Fora do padrão e sem relação com a pergunta 12 (HIPÓTESE; não investigado):** EGIE3 com 1.416 mi de ações no Fundamentus contra 1.142 mi na CVM (+24%); VALE3 +4,3% e AXIA3 −3,9%. Registrado como pergunta 16 (seções 8 e 9).
+
+### 11.5 CSAN3 decomposta (R$ por ação; ações 3,9666 bi)
+
+| Item | Valor |
+|---|---|
+| Valor da empresa (FCD antes da dívida) | R$ 166,37 bi (R$ 41,94 por ação) |
+| Dívida líquida (Fundamentus) | R$ 47,53 bi (R$ 11,98 por ação) |
+| Valor do acionista (FCD atual) | R$ 118,84 bi = **R$ 29,96 por ação** |
+| Não controladores (valor contábil) | R$ 26,94 bi (R$ 6,79 por ação; 84,4% do PL total) |
+| PL total / PL dos controladores | R$ 31,91 bi / R$ 4,97 bi |
+| Preço | R$ 3,72 (preço de partida desta pergunta; R$ 3,98 no `screener.csv` de 03/10) |
+
+Distância de R$ 26,24 entre o FCD (29,96) e o preço (3,72), por fator, na ordem de aplicação (os dois efeitos não dependem da ordem, porque o desconto dos não controladores é uma subtração fixa por ação):
+
+| Fator | Efeito no FCD por ação | Parte da distância |
+|---|---|---|
+| Pesos do WACC com o PL total no lugar do PL dos controladores (índice 9,57 para 1,49; WACC de 11,96% para 17,04%) | −18,15 (29,96 para 11,81) | 69% |
+| Subtrair os não controladores pelo valor contábil | −6,79 (para 5,02) | 26% |
+| Número de ações (descontando a tesouraria) | +0,17, em sentido contrário | — |
+| **Restante** em relação ao preço (5,02 contra 3,72) | 1,30 | 5% |
+
+Nenhum dos fatores acima mexe no fluxo de caixa projetado. A hipótese do número de ações **não** explica a distância. A subtração dos não controladores explica cerca de um quarto, e o **maior fator é o peso da dívida no WACC**, que decorre de a mesma base de patrimônio (controladores) ser usada para ponderar uma dívida consolidada.
+
+### 11.6 Duas formas de ajuste, com a função existente
+
+Calculadas importando `calcular_valor_justo_fcd` sem alteração: o ajuste **A** passa `divida_liquida + não controladores` (valor contábil de 30/06/2026) como dívida a deduzir; o **B** multiplica o FCD atual pela fração do lucro de 2025 atribuída aos controladores (3.11.01 ÷ 3.11, DRE consolidada da DFP). Para comparação, a coluna **C** só troca o índice dos pesos do WACC para dívida líquida ÷ PL total, e a coluna **A + patrimônio total nos pesos do WACC** (A+C) aplica os dois, também com a função existente importada sem alteração. R$ por ação, preços do `screener.csv` de 03/10/2026:
+
+| Ticker | Preço | FCD atual | A (não controladores) | B (fração do lucro) | Fração do lucro dos controladores | C (WACC com PL total) | A + patrimônio total nos pesos do WACC |
+|---|---|---|---|---|---|---|---|
+| CSAN3 | 3,98 | 29,96 | 23,17 | 28,57 | 95,4% (prejuízo) | 11,81 | 5,02 |
+| GOAU4 | 11,24 | 0,50 | −25,63 | 0,17 | 33,7% | −0,15 | −26,28 |
+| KLBN11 | 18,02 | 48,51 | 43,31 | 0,00 | 0% (linhas zeradas) | 41,62 | 36,42 |
+| BEEF3 | 3,92 | 38,43 | 37,82 | 36,72 | 95,5% | 36,24 | 35,64 |
+| CURY3 | 27,30 | 34,36 | 33,08 | 31,00 | 90,2% | 34,36 | 33,08 |
+| MBRF3 | 16,78 | 30,99 | 29,25 | 14,55 | 47,0% | 28,40 | 26,66 |
+| ENGI11 | 53,37 | −63,11 | −70,03 | −44,51 | 70,5% | −63,21 | −70,13 |
+| DIRR3 | 10,03 | 2,42 | 1,63 | 1,95 | 80,6% | 2,35 | 1,57 |
+| USIM5 | 7,13 | 4,58 | 2,27 | 4,84 | 105,8% (prejuízo dos minoritários) | 4,58 | 2,27 |
+| MRVE3 | 5,44 | −14,13 | −15,24 | −14,12 | 100% (prejuízo) | −14,15 | −15,25 |
+| UGPA3 | 38,19 | 24,08 | 22,23 | 23,25 | 96,5% | 23,43 | 21,58 |
+
+**Casos em que o resultado combinado (A + patrimônio total nos pesos do WACC) fica negativo:** GOAU4 (−26,28), ENGI11 (−70,13) e MRVE3 (−15,25).
+
+- **GOAU4:** é o único em que o ajuste muda o sinal (FCD atual de R$ 0,50 para −26,28). O valor do acionista no FCD é de apenas R$ 0,66 bi (0,50 por ação × 1.322,7 mi de ações), e os não controladores valem R$ 34,56 bi no balanço (R$ 26,13 por ação), cerca de 52 vezes mais. O balanço consolidado é o da Metalúrgica Gerdau (denominação na CVM; a Gerdau S.A., GGBR4, também está no universo), com 64% do patrimônio em não controladores: subtrair o valor contábil dos minoritários de um fluxo desse tamanho dá um valor sem sentido econômico, porque a responsabilidade do acionista é limitada e a ação não vale menos que zero. A tela já tem o aviso "Valor justo zero ou negativo" para esses casos.
+- **ENGI11 e MRVE3:** já eram negativos (−63,11 e −14,13) e continuam; a dedução soma −6,9 e −1,1 por ação, e a causa do sinal vem do fluxo e da dívida, não dos minoritários.
+- **Decisão em aberto (não tomada aqui):** se o valor negativo deve ser mostrado como está, com o aviso, ou limitado a zero. A recomendação do A não depende disso.
+- **CSAN3** fica positivo com o ajuste combinado (R$ 5,02 contra o preço de R$ 3,98).
+
+**Recomendação: A (subtrair o valor contábil dos não controladores junto com a dívida líquida).**
+
+- **Motivo:** o fluxo e o valor da empresa são consolidados, então a parte dos minoritários tem de sair do mesmo jeito que a dívida; é um dado de balanço padronizado (conta 2.03.09), disponível para todas as empresas com FCD e na mesma data-base da dívida, sem depender do sinal do lucro.
+- **Limitações do A:** usa o valor **contábil**, que costuma ser menor que o de mercado dos minoritários (na CSAN3, Rumo e Compass; a subtração tende a ficar curta); pode deixar o valor muito negativo quando os não controladores são grandes e o fluxo pequeno (GOAU4 vai de 0,50 para −25,63); e só entra na dedução, sem ajustar o peso do WACC.
+- **Limitações do B:** depende do lucro de **um** ano e perde o sentido com prejuízo (CSAN3, MRVE3 e USIM5 dão frações de 95%, 100% e 106%, que não representam participação nenhuma); na KLBN11 a CVM publica as linhas "atribuído a controladores e a não controladores" zeradas, e o B zera o valor; multiplica o valor do acionista (já depois da dívida) por uma fração do lucro, em vez de retirar a parte dos minoritários do valor da empresa; e a fração do lucro nem sempre acompanha a do patrimônio (MBRF3: 47% do lucro e 83% do patrimônio são dos controladores).
+- **Pesos do WACC (achado desta investigação; precisa de decisão à parte):** a coluna C mostra que corrigir o denominador do índice Dív Líq / Patrim (patrimônio total no lugar do dos controladores) pesa mais que o ajuste A nas empresas com muitos minoritários (CSAN3 −18,15 contra −6,79; KLBN11 −6,89 contra −5,20; BEEF3 −2,19 contra −0,61). É o complemento coerente do A (registrado como pergunta 15, seções 8 e 9): dívida e minoritários saem do valor da empresa, e o custo de capital passa a ser ponderado pela estrutura consolidada. É uma decisão separada do A.
+
+### 11.7 Confirmado e hipóteses
+
+**Dependência comum de dados.** O ajuste A, a pergunta 15 (pesos do WACC com o patrimônio total) e o arrendamento como dívida (pergunta 2, etapa seguinte à alt3) dependem do mesmo dado novo: o balanço consolidado da CVM (BPP) na data-base da dívida do Fundamentus de cada empresa (coluna `data_balanco_fundamentus`, hoje 30/06/2026). Os três devem ser implementados sobre **uma única leitura** do ITR/DFP, por exemplo uma função que devolve, para uma empresa e uma data, o patrimônio líquido total (2.03), a participação dos não controladores (2.03.09 ou a conta equivalente, identificada pela descrição) e o passivo de arrendamento, em vez de três leituras separadas do mesmo zip.
+
+**CONFIRMADO no código:** a única dedução entre o valor da empresa e o valor por ação é a dívida líquida (`fcd.py:357-359`); a participação dos não controladores não é subtraída em lugar nenhum de `src/`; os pesos do WACC usam o índice Dív Líq / Patrim do Fundamentus (`fcd.py:175-185`, `:198`).
+
+**CONFIRMADO nos dados (CVM e Fundamentus de 30/06/2026):** o "Patrim. Líq" e o índice do Fundamentus usam o patrimônio dos controladores (51 de 51 empresas não financeiras com não controladores; índice = dívida líquida ÷ PL dos controladores nas 53 com FCD); 11 empresas com FCD passam de 10% de não controladores, com a CSAN3 em 84,4%; o número de ações da CSAN3 do Fundamentus é igual ao da CVM nas três datas disponíveis (31/12/2025, 31/03/2026 e 30/06/2026); a decomposição da seção 11.5.
+
+**HIPÓTESE (não testada):** o valor de mercado dos minoritários da CSAN3 (Rumo e Compass) é maior que o contábil de R$ 26,9 bi; um aumento de capital da Cosan depois de 30/06/2026; as diferenças de número de ações de EGIE3, VALE3 e AXIA3; e a origem do restante de R$ 1,30 da CSAN3 contra o preço (por exemplo, premissas de fluxo e crescimento, ver seção 5).
