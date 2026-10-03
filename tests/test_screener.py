@@ -48,7 +48,9 @@ def _indicadores(
     }
 
 
-def _leitura_balanco(nao_controladores=0.0, patrimonio_liquido_total=None):
+def _leitura_balanco(
+    nao_controladores=0.0, patrimonio_liquido_total=None, arrendamento_fora_da_divida=0.0
+):
     """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
     return {
         "disponivel": True,
@@ -56,6 +58,7 @@ def _leitura_balanco(nao_controladores=0.0, patrimonio_liquido_total=None):
         "data_base": "2026-06-30",
         "nao_controladores": nao_controladores,
         "patrimonio_liquido_total": patrimonio_liquido_total,
+        "arrendamento_fora_da_divida": arrendamento_fora_da_divida,
     }
 
 
@@ -500,6 +503,25 @@ def test_calcular_linha_ticker_usa_o_patrimonio_total_nos_pesos_do_wacc(
     com_patrimonio_total = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
 
     assert com_patrimonio_total != pytest.approx(sem_patrimonio_total)
+
+
+def test_calcular_linha_ticker_soma_o_arrendamento_fora_da_divida_a_divida_liquida(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener, "obter_indicadores", lambda ticker, **kw: _indicadores(divida_liquida=200.0)
+    )
+    sem_arrendamento = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+    monkeypatch.setattr(
+        screener,
+        "obter_leitura_balanco",
+        lambda *a, **kw: _leitura_balanco(arrendamento_fora_da_divida=4_000.0),
+    )
+
+    com_arrendamento = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+
+    # numero_acoes = 1.000 no `_indicadores()` padrão.
+    assert com_arrendamento == pytest.approx(sem_arrendamento - 4_000.0 / 1_000.0)
 
 
 def test_calcular_linha_ticker_passa_data_base_e_acoes_do_fundamentus_para_a_leitura(

@@ -56,6 +56,7 @@ from avaliador_b3.config import (
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
+    TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TICKER_PETROLEO_BRENT,
@@ -583,6 +584,9 @@ def _cartao_metodo(
             st.caption(
                 TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
             )
+        motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
+        if motivo_sem_arrendamento:
+            st.caption(TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo_sem_arrendamento))
         motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
         if motivo_sem_patrimonio_total:
             st.caption(

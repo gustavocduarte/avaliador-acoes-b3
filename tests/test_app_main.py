@@ -509,7 +509,11 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
 
 
 def _leitura_balanco_mock(
-    nao_controladores=0.0, disponivel=True, motivo=None, patrimonio_liquido_total=None
+    nao_controladores=0.0,
+    disponivel=True,
+    motivo=None,
+    patrimonio_liquido_total=None,
+    arrendamento_fora_da_divida=0.0,
 ):
     """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
     if not disponivel:
@@ -519,6 +523,7 @@ def _leitura_balanco_mock(
         "motivo": None,
         "nao_controladores": nao_controladores,
         "patrimonio_liquido_total": patrimonio_liquido_total,
+        "arrendamento_fora_da_divida": arrendamento_fora_da_divida,
     }
 
 
@@ -632,6 +637,42 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
 
     assert not at.exception
     assert _metrica_por_label(at, "FCD").value != sem_ajuste
+
+
+def test_fcd_soma_o_arrendamento_fora_da_divida_e_nao_mostra_aviso_de_arrendamento(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    sem_arrendamento = _metrica_por_label(at, "FCD").value
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(arrendamento_fora_da_divida=20_000.0),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != sem_arrendamento
+    assert not [c.value for c in at.caption if "passivo de arrendamento" in c.value]
+
+
+def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_do_arrendamento_no_cartao(monkeypatch):
+    from avaliador_b3.config import TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA
+
+    motivo = "A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM."
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(disponivel=False, motivo=motivo),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo) in [c.value for c in at.caption]
 
 
 def test_fcd_com_patrimonio_total_muda_o_valor_e_nao_mostra_aviso_dos_pesos(monkeypatch):

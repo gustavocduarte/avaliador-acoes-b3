@@ -48,6 +48,7 @@ from avaliador_b3.config import (
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
+    MOTIVO_ARRENDAMENTO_INDISPONIVEL,
     MOTIVO_BALANCO_NAO_LIDO,
     MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
     MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
@@ -169,6 +170,12 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
         return {
             "nao_controladores": leitura_balanco["nao_controladores"],
             "motivo_sem_nao_controladores": None,
+            "arrendamento_fora_da_divida": leitura_balanco.get("arrendamento_fora_da_divida"),
+            "motivo_sem_arrendamento": (
+                None
+                if leitura_balanco.get("arrendamento_fora_da_divida") is not None
+                else MOTIVO_ARRENDAMENTO_INDISPONIVEL
+            ),
             "patrimonio_liquido_total": patrimonio_total,
             "motivo_sem_patrimonio_total": (
                 None if patrimonio_total is not None else MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL
@@ -177,6 +184,8 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
     return {
         "nao_controladores": None,
         "motivo_sem_nao_controladores": motivo,
+        "arrendamento_fora_da_divida": None,
+        "motivo_sem_arrendamento": motivo,
         "patrimonio_liquido_total": None,
         "motivo_sem_patrimonio_total": motivo,
     }
@@ -290,6 +299,8 @@ def calcular_valor_justo_fcd(
     motivo_sem_nao_controladores: str | None = None,
     patrimonio_liquido_total: float | None = None,
     motivo_sem_patrimonio_total: str | None = None,
+    arrendamento_fora_da_divida: float | None = None,
+    motivo_sem_arrendamento: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -331,6 +342,12 @@ def calcular_valor_justo_fcd(
     consolidado e inclui a parte dos sócios minoritários das controladas.
     `None` mantém o cálculo sem esse desconto (`motivo_sem_nao_controladores`
     diz por quê). O resultado pode ser negativo e não é limitado a zero.
+    O passivo de arrendamento que ficou fora da dívida do Fundamentus
+    (`arrendamento_fora_da_divida`) é somado à dívida líquida só na dedução do
+    valor do acionista; os pesos do WACC seguem sem ele, enquanto forem pesos
+    contábeis (mais dívida contábil baixaria o WACC e empurraria o valor para
+    cima). Sem ele (ou sem dívida líquida) o cálculo segue sem a dedução e
+    `motivo_sem_arrendamento` diz por quê.
     Os pesos do WACC usam dívida líquida ÷ `patrimonio_liquido_total` (patrimônio
     dos controladores mais os não controladores, do balanço consolidado). Sem ele
     (ou com patrimônio não positivo), vale `divida_liquida_sobre_patrimonio` do
@@ -382,6 +399,7 @@ def calcular_valor_justo_fcd(
         }
 
     beta_utilizado = beta if beta is not None else BETA_PADRAO
+    arrendamento_deduzido = arrendamento_fora_da_divida is not None and divida_liquida is not None
     razao_pesos, motivo_sem_patrimonio_total = _razao_divida_patrimonio_para_pesos(
         divida_liquida,
         patrimonio_liquido_total,
@@ -430,6 +448,8 @@ def calcular_valor_justo_fcd(
     divida_liquida_deduzida = divida_liquida is not None
     if divida_liquida_deduzida:
         valor_total -= divida_liquida
+    if arrendamento_deduzido:
+        valor_total -= arrendamento_fora_da_divida
     nao_controladores_deduzidos = nao_controladores is not None
     if nao_controladores_deduzidos:
         valor_total -= nao_controladores
@@ -439,6 +459,17 @@ def calcular_valor_justo_fcd(
         "valor_justo": valor_total / numero_acoes,
         "motivo_nao_aplicavel": None,
         "divida_liquida_deduzida": divida_liquida_deduzida,
+        "arrendamento_deduzido": arrendamento_deduzido,
+        "motivo_sem_arrendamento": (
+            None
+            if arrendamento_deduzido
+            else motivo_sem_arrendamento
+            or (
+                MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL
+                if arrendamento_fora_da_divida is not None
+                else None
+            )
+        ),
         "nao_controladores_deduzidos": nao_controladores_deduzidos,
         "motivo_sem_nao_controladores": (
             None if nao_controladores_deduzidos else motivo_sem_nao_controladores

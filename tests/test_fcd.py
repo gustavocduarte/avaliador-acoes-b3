@@ -519,11 +519,14 @@ def test_ajustes_do_balanco_com_leitura_disponivel_trazem_nao_controladores_e_pa
         "disponivel": True,
         "nao_controladores": 26_942.0,
         "patrimonio_liquido_total": 31_910.0,
+        "arrendamento_fora_da_divida": 5_140.0,
     }
 
     assert fcd.montar_ajustes_balanco(leitura) == {
         "nao_controladores": 26_942.0,
         "motivo_sem_nao_controladores": None,
+        "arrendamento_fora_da_divida": 5_140.0,
+        "motivo_sem_arrendamento": None,
         "patrimonio_liquido_total": 31_910.0,
         "motivo_sem_patrimonio_total": None,
     }
@@ -545,6 +548,8 @@ def test_ajustes_do_balanco_com_leitura_indisponivel_trazem_o_motivo():
     assert fcd.montar_ajustes_balanco(leitura) == {
         "nao_controladores": None,
         "motivo_sem_nao_controladores": "A empresa não tem balanço consolidado.",
+        "arrendamento_fora_da_divida": None,
+        "motivo_sem_arrendamento": "A empresa não tem balanço consolidado.",
         "patrimonio_liquido_total": None,
         "motivo_sem_patrimonio_total": "A empresa não tem balanço consolidado.",
     }
@@ -555,6 +560,92 @@ def test_ajustes_do_balanco_sem_leitura_trazem_o_motivo_de_nao_lido():
 
     assert ajustes["nao_controladores"] is None
     assert "não foi lido" in ajustes["motivo_sem_nao_controladores"]
+
+
+def test_fcd_soma_o_arrendamento_fora_da_divida_a_divida_liquida():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    com_arrendamento = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, arrendamento_fora_da_divida=3000.0
+    )
+
+    assert com_arrendamento["arrendamento_deduzido"] is True
+    assert com_arrendamento["motivo_sem_arrendamento"] is None
+    assert com_arrendamento["valor_justo"] == pytest.approx(
+        sem_ajuste["valor_justo"] - 3000.0 / 100.0
+    )
+
+
+def test_arrendamento_nao_entra_nos_pesos_do_wacc():
+    base = {**PARAMETROS_FCD_BASE, "divida_liquida_sobre_patrimonio": 1.0}
+    sem_arrendamento = fcd.calcular_valor_justo_fcd(**base, patrimonio_liquido_total=25_000.0)
+    com_arrendamento = fcd.calcular_valor_justo_fcd(
+        **base, patrimonio_liquido_total=25_000.0, arrendamento_fora_da_divida=5_000.0
+    )
+
+    # Só a dívida líquida (5.000) ÷ patrimônio total (25.000): arrendamento não pesa.
+    assert com_arrendamento["divida_liquida_sobre_patrimonio_utilizada"] == pytest.approx(0.2)
+    assert com_arrendamento["wacc"] == pytest.approx(sem_arrendamento["wacc"])
+    assert com_arrendamento["valor_justo"] == pytest.approx(
+        sem_arrendamento["valor_justo"] - 5_000.0 / 100.0
+    )
+
+
+def test_arrendamento_reduz_o_valor_do_acionista_com_os_pesos_do_patrimonio_total():
+    sem_arrendamento = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, patrimonio_liquido_total=25_000.0
+    )
+    com_arrendamento = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE,
+        patrimonio_liquido_total=25_000.0,
+        arrendamento_fora_da_divida=2_000.0,
+    )
+
+    assert com_arrendamento["valor_justo"] < sem_arrendamento["valor_justo"]
+
+
+def test_arrendamento_nao_muda_os_pesos_quando_so_vale_a_razao_do_fundamentus():
+    base = {**PARAMETROS_FCD_BASE, "divida_liquida_sobre_patrimonio": 1.0}
+
+    resultado = fcd.calcular_valor_justo_fcd(**base, arrendamento_fora_da_divida=5_000.0)
+
+    assert resultado["divida_liquida_sobre_patrimonio_utilizada"] == 1.0
+
+
+def test_arrendamento_zero_nao_muda_o_valor():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    com_zero = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, arrendamento_fora_da_divida=0.0)
+
+    assert com_zero["valor_justo"] == pytest.approx(sem_ajuste["valor_justo"])
+    assert com_zero["arrendamento_deduzido"] is True
+
+
+def test_sem_leitura_do_arrendamento_o_calculo_segue_e_traz_o_motivo():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    resultado = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, motivo_sem_arrendamento="A empresa não tem balanço."
+    )
+
+    assert resultado["valor_justo"] == pytest.approx(sem_ajuste["valor_justo"])
+    assert resultado["arrendamento_deduzido"] is False
+    assert resultado["motivo_sem_arrendamento"] == "A empresa não tem balanço."
+
+
+def test_arrendamento_sem_divida_liquida_nao_e_deduzido_e_diz_por_que():
+    resultado = fcd.calcular_valor_justo_fcd(
+        **{**PARAMETROS_FCD_BASE, "divida_liquida": None}, arrendamento_fora_da_divida=3000.0
+    )
+
+    assert resultado["arrendamento_deduzido"] is False
+    assert "dívida líquida do Fundamentus indisponível" in resultado["motivo_sem_arrendamento"]
+
+
+def test_ajustes_do_balanco_sem_arrendamento_na_leitura_trazem_o_motivo_dele():
+    leitura = {"disponivel": True, "nao_controladores": 0.0, "patrimonio_liquido_total": 10.0}
+
+    ajustes = fcd.montar_ajustes_balanco(leitura)
+
+    assert ajustes["arrendamento_fora_da_divida"] is None
+    assert "passivo de arrendamento não encontrado" in ajustes["motivo_sem_arrendamento"]
 
 
 def test_pesos_do_wacc_usam_divida_liquida_sobre_o_patrimonio_total():
