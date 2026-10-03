@@ -360,6 +360,7 @@ def calcular_acoes_em_circulacao(
                 fundamentus=_fmt_acoes(acoes_fundamentus),
             ),
             "aviso_divergencia": None,
+            "descartada_por_divergencia": True,
             **base,
         }
     if divergencia > LIMITE_DIVERGENCIA_ACOES:

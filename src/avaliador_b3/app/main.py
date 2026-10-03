@@ -53,10 +53,12 @@ from avaliador_b3.config import (
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_EXPANDER_SIMULADOR,
+    TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
+    TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
@@ -580,19 +582,33 @@ def _cartao_metodo(
             )
         else:
             st.caption("Aplicável")
+        # Sem balanço da CVM, os três ajustes que dependem dele ficam de fora pelo mesmo
+        # motivo: uma legenda só, em vez de três iguais.
         motivo_sem_nao_controladores = resultado.get("motivo_sem_nao_controladores")
-        if motivo_sem_nao_controladores:
+        motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
+        motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
+        motivos_do_balanco = {
+            motivo_sem_nao_controladores,
+            motivo_sem_arrendamento,
+            motivo_sem_patrimonio_total,
+        }
+        balanco_inteiro_indisponivel = (
+            len(motivos_do_balanco) == 1 and None not in motivos_do_balanco
+        )
+        if balanco_inteiro_indisponivel:
+            st.caption(
+                TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo_sem_nao_controladores)
+            )
+        elif motivo_sem_nao_controladores:
             st.caption(
                 TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
             )
         motivo_sem_acoes = resultado.get("motivo_sem_acoes_em_circulacao")
         if motivo_sem_acoes:
             st.caption(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo_sem_acoes))
-        motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
-        if motivo_sem_arrendamento:
+        if motivo_sem_arrendamento and not balanco_inteiro_indisponivel:
             st.caption(TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo_sem_arrendamento))
-        motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
-        if motivo_sem_patrimonio_total:
+        if motivo_sem_patrimonio_total and not balanco_inteiro_indisponivel:
             st.caption(
                 TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS.format(motivo=motivo_sem_patrimonio_total)
             )
@@ -1019,6 +1035,12 @@ with aba_analisar:
             )
         if erro_ano_fcd:
             st.warning(erro_ano_fcd)
+        # Número de ações do Fundamentus que não bate com a CVM (oferta, bonificação ou
+        # cancelamento depois da data-base) ou número da CVM descartado por divergir demais.
+        if leitura_balanco and leitura_balanco.get("aviso_divergencia_acoes"):
+            st.warning(leitura_balanco["aviso_divergencia_acoes"])
+        elif (leitura_balanco or {}).get("detalhe_acoes", {}).get("descartada_por_divergencia"):
+            st.warning(leitura_balanco["motivo_acoes"])
 
         lpa = indicadores["lpa"] if indicadores else None
         vpa = indicadores["vpa"] if indicadores else None
@@ -1292,7 +1314,8 @@ with aba_analisar:
                 "métodos, mesmo quando são saudáveis. Separar o investimento que "
                 "só mantém a empresa do que a faz crescer exigiria um dado que a "
                 "fonte não informa de forma padronizada. No cartão do FCD, a "
-                "porcentagem reinvestida no ano aparece logo abaixo do valor.\n\n"
+                "porcentagem reinvestida no ano aparece logo abaixo do valor. "
+                f"{TEXTO_FCD_AJUSTES_DO_BALANCO}\n\n"
                 "**Valor combinado** — média simples só dos métodos que se aplicam à "
                 "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
                 "heurística: os pesos são iguais por simplicidade, não porque exista "
@@ -1341,8 +1364,11 @@ with aba_analisar:
                 col_f.metric(
                     "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
                 )
+                acoes_em_circulacao = ajustes_balanco["acoes_em_circulacao"]
                 valores_mercado_firma = calcular_valor_mercado_e_firma(
-                    preco_atual, numero_acoes, divida_liquida
+                    preco_atual,
+                    acoes_em_circulacao if acoes_em_circulacao is not None else numero_acoes,
+                    divida_liquida,
                 )
                 col_g, col_h = st.columns(2)
                 col_g.metric(
@@ -1357,6 +1383,12 @@ with aba_analisar:
                     "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
                 )
                 col_j.metric("Valor de firma", _fmt_bilhoes(valores_mercado_firma["valor_firma"]))
+                if leitura_balanco and ajustes_balanco["motivo_sem_acoes_em_circulacao"]:
+                    st.caption(
+                        TEXTO_SEM_ACOES_EM_CIRCULACAO.format(
+                            motivo=ajustes_balanco["motivo_sem_acoes_em_circulacao"]
+                        )
+                    )
                 st.caption(
                     "Indicadores individuais ausentes (\"N/D\") — comum em bancos, onde o "
                     "Fundamentus não reporta alguns desses índices no mesmo formato."

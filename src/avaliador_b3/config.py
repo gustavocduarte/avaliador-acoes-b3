@@ -486,6 +486,26 @@ MOTIVO_ARRENDAMENTO_INDISPONIVEL = "passivo de arrendamento não encontrado no b
 MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL = "patrimônio líquido total não encontrado no balanço."
 MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO = "patrimônio líquido total zero ou negativo."
 MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL = "dívida líquida do Fundamentus indisponível."
+TEXTO_SEM_AJUSTES_DO_BALANCO = (
+    "Sem os ajustes do balanço da CVM (não controladores, arrendamento e "
+    "patrimônio total nos pesos do custo de capital): {motivo}"
+)
+TEXTO_FCD_AJUSTES_DO_BALANCO = (
+    "Do valor da empresa saem a dívida líquida (do Fundamentus), o passivo de "
+    "arrendamento que ficou fora dessa dívida e a participação dos sócios não "
+    "controladores das empresas controladas, pelo valor contábil do balanço "
+    "consolidado da CVM. O custo de capital pesa a dívida líquida contra o "
+    "patrimônio total (dos controladores e dos não controladores), pelos valores "
+    "contábeis e sem o arrendamento. O valor por ação usa as ações em circulação "
+    "(capital integralizado menos tesouraria, da composição de capital da CVM), e "
+    "o Graham e o valor de mercado usam o mesmo número. Balanço e ações são da "
+    "data-base do balanço do Fundamentus (a mesma de 'Saúde financeira'); "
+    "ofertas, bonificações e cancelamentos de ações depois dessa data só entram no "
+    "balanço seguinte, e a página avisa quando o número de ações do Fundamentus "
+    "difere do da CVM. Se a CVM não trouxer o balanço, o FCD segue sem esses "
+    "ajustes e o cartão diz o motivo. O resultado pode ser negativo (aviso 'Valor "
+    "justo zero ou negativo') e não é limitado a zero."
+)
 TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA = (
     "Sem o desconto do passivo de arrendamento que está fora da dívida: {motivo}"
 )

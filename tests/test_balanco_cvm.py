@@ -380,6 +380,7 @@ def test_divergencia_implausivel_deixa_o_numero_indisponivel():
     r = _acoes(_capital(1206.361e6, 1.794e6), 296.7286e6, fator=7)
 
     assert r["acoes"] is None
+    assert r["descartada_por_divergencia"] is True
     assert "provável erro de escala ou de fator de unit" in r["motivo"]
     assert "mantido o do Fundamentus" in r["motivo"]
 

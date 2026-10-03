@@ -643,6 +643,122 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
     assert _metrica_por_label(at, "FCD").value != sem_ajuste
 
 
+def test_valor_de_mercado_e_de_firma_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    # Preço 50 x 100 ações do Fundamentus; firma = mercado + dívida líquida 50.000.
+    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 5.000,00"
+    assert _metrica_por_label(at, "Valor de firma").value == "R$ 55.000,00"
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(acoes_em_circulacao=80.0),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 4.000,00"
+    assert _metrica_por_label(at, "Valor de firma").value == "R$ 54.000,00"
+    assert not [c.value for c in at.caption if "ações em circulação da CVM" in c.value]
+
+
+def test_valor_de_mercado_sem_acoes_em_circulacao_usa_o_fundamentus_e_mostra_o_motivo(
+    monkeypatch,
+):
+    from avaliador_b3.config import TEXTO_SEM_ACOES_EM_CIRCULACAO
+
+    motivo = "Tesouraria de 53% do capital na composição da CVM, acima do limite de 20%."
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(acoes_em_circulacao=None, motivo_acoes=motivo),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 5.000,00"
+    legendas = [c.value for c in at.caption]
+    # Uma no cartão do FCD e outra em "Saúde financeira", com o mesmo motivo.
+    assert legendas.count(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo)) == 2
+
+
+def test_pagina_avisa_quando_o_numero_de_acoes_do_fundamentus_diverge_da_cvm(monkeypatch):
+    aviso = "O número de ações do Fundamentus (1.416,38 mi) difere em +24,0% do da CVM."
+    leitura = {**_leitura_balanco_mock(acoes_em_circulacao=80.0), "aviso_divergencia_acoes": aviso}
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0, leitura_balanco=leitura)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert aviso in [w.value for w in at.warning]
+
+
+def test_pagina_mostra_o_motivo_quando_o_numero_da_cvm_e_descartado_por_divergir_demais(
+    monkeypatch,
+):
+    motivo = (
+        "O número de ações da CVM (172,08 mi) difere +72% do do Fundamentus (296,73 mi): "
+        "provável erro de escala ou de fator de unit; mantido o do Fundamentus."
+    )
+    leitura = {
+        **_leitura_balanco_mock(acoes_em_circulacao=None, motivo_acoes=motivo),
+        "detalhe_acoes": {"descartada_por_divergencia": True},
+    }
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0, leitura_balanco=leitura)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert motivo in [w.value for w in at.warning]
+
+
+def test_pagina_nao_mostra_aviso_de_acoes_quando_o_numero_bate(monkeypatch):
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(acoes_em_circulacao=98.0),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [w.value for w in at.warning if "número de ações" in w.value.lower()]
+
+
+def test_expander_do_fcd_explica_os_ajustes_do_balanco_e_as_acoes_em_circulacao(monkeypatch):
+    from avaliador_b3.config import TEXTO_FCD_AJUSTES_DO_BALANCO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "**Valor combinado**" in m.value]
+    assert len(blocos) == 1
+    assert TEXTO_FCD_AJUSTES_DO_BALANCO in blocos[0]
+    for trecho in (
+        "participação dos sócios não controladores",
+        "passivo de arrendamento",
+        "patrimônio total",
+        "ações em circulação",
+        "data-base do balanço do Fundamentus",
+    ):
+        assert trecho in blocos[0]
+
+
 def test_fcd_e_graham_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     at = AppTest.from_file(CAMINHO_APP)
@@ -702,8 +818,8 @@ def test_fcd_soma_o_arrendamento_fora_da_divida_e_nao_mostra_aviso_de_arrendamen
     assert not [c.value for c in at.caption if "passivo de arrendamento" in c.value]
 
 
-def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_do_arrendamento_no_cartao(monkeypatch):
-    from avaliador_b3.config import TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA
+def test_fcd_sem_leitura_do_balanco_mostra_uma_legenda_so_com_o_motivo(monkeypatch):
+    from avaliador_b3.config import TEXTO_SEM_AJUSTES_DO_BALANCO
 
     motivo = "A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM."
     _preparar_fcd_aplicavel(
@@ -716,7 +832,9 @@ def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_do_arrendamento_no_cartao(mo
     at.run(timeout=60)
 
     assert not at.exception
-    assert TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo) in [c.value for c in at.caption]
+    legendas = [c.value for c in at.caption]
+    assert legendas.count(TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo)) == 1
+    assert not [c for c in legendas if "Sem o desconto" in c or "Pesos do custo de capital" in c]
 
 
 def test_fcd_com_patrimonio_total_muda_o_valor_e_nao_mostra_aviso_dos_pesos(monkeypatch):
@@ -758,7 +876,7 @@ def test_fcd_sem_patrimonio_total_mostra_o_motivo_dos_pesos_na_explicacao_do_car
 
 
 def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_na_explicacao_do_cartao(monkeypatch):
-    from avaliador_b3.config import TEXTO_SEM_DESCONTO_NAO_CONTROLADORES
+    from avaliador_b3.config import TEXTO_SEM_AJUSTES_DO_BALANCO
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -774,7 +892,7 @@ def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_na_explicacao_do_cartao(monk
 
     assert not at.exception
     assert _metrica_por_label(at, "FCD").value != "—"
-    esperado = TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(
+    esperado = TEXTO_SEM_AJUSTES_DO_BALANCO.format(
         motivo="A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM."
     )
     assert esperado in [c.value for c in at.caption]
