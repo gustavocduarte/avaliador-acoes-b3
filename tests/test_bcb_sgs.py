@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3.ingest import _retry, bcb_sgs
+from avaliador_b3.ingest import _retry, bcb_sgs, ibge_sidra
 
 
 def test_montar_url_sem_datas():
@@ -558,6 +558,146 @@ def test_rest_com_ipca_incompleto_e_soap_completo_usa_o_soap(monkeypatch, tmp_pa
     assert ipca == pytest.approx(0.042234527370682784)  # os 12 meses completos do SOAP
     assert (fonte_selic, fonte_ipca) == ("BCB (API)", "BCB (SOAP)")
     assert "IPCA voltou com 5 leitura(s)" in caplog.text
+
+
+def _sidra_responde(monkeypatch, chamadas=None):
+    texto = (CAMINHO_FIXTURES / "ibge_sidra_ipca_mensal.json").read_text("utf-8")
+
+    def sidra(meses):
+        if chamadas is not None:
+            chamadas.append(meses)
+        return ibge_sidra._parsear_resposta_sidra(texto)
+
+    monkeypatch.setattr(bcb_sgs, "obter_ipca_mensal_sidra", sidra)
+
+
+def _selic_rest_ok_e_ipca_rest_fora(monkeypatch):
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-10-01")], "valor": [13.75]})
+
+    def obter_serie_falso(codigo, *args, **kwargs):
+        if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"]:
+            return selic_df
+        raise requests.ConnectionError("IPCA fora do ar no REST (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+
+
+def _soap_ipca_fora_do_ar(monkeypatch):
+    def post(url, timeout, pausas, data, headers):
+        if ">433<" in data.decode("utf-8"):
+            raise requests.ConnectionError("IPCA fora do ar no SOAP (simulado)")
+        return _RespostaSoapFalsa(_soap_selic())
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", post)
+
+
+def test_rest_e_soap_do_ipca_falham_e_o_sidra_responde(monkeypatch, tmp_path, caplog):
+    _selic_rest_ok_e_ipca_rest_fora(monkeypatch)
+    _soap_ipca_fora_do_ar(monkeypatch)
+    _sidra_responde(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger="avaliador_b3.ingest.bcb_sgs"):
+        selic, ipca, data_ipca, fonte_selic, fonte_ipca = bcb_sgs._buscar_selic_e_ipca(
+            HOJE_FIXO, tmp_path
+        )
+
+    assert ipca == pytest.approx(0.042234527370682784)
+    assert data_ipca == pd.Timestamp("2026-08-01")  # o mês de referência vem junto
+    assert (fonte_selic, fonte_ipca) == ("BCB (API)", "IBGE (SIDRA)")
+    assert "do BCB (SOAP)" in caplog.text
+
+
+def test_selic_pelo_soap_e_ipca_pelo_sidra_quando_o_ipca_falha_no_bcb_inteiro(
+    monkeypatch, tmp_path
+):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_ipca_fora_do_ar(monkeypatch)
+    _sidra_responde(monkeypatch)
+
+    resultado = bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    assert resultado[0] == pytest.approx(0.1375)
+    assert resultado[3:] == ("BCB (SOAP)", "IBGE (SIDRA)")
+
+
+def test_ipca_incompleto_no_rest_e_no_soap_cai_no_sidra_completo(monkeypatch, tmp_path):
+    ipca_incompleto = pd.DataFrame(
+        {"data": pd.date_range("2026-04-01", periods=5, freq="MS"), "valor": [0.3] * 5}
+    )
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-10-01")], "valor": [13.75]})
+
+    def obter_serie_falso(codigo, *args, **kwargs):
+        if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"]:
+            return selic_df
+        return ipca_incompleto
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+    _soap_responde(monkeypatch, ipca=_soap_ipca_so_com_os_ultimos_meses())
+    _sidra_responde(monkeypatch)
+
+    resultado = bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    assert resultado[1] == pytest.approx(0.042234527370682784)
+    assert resultado[3:] == ("BCB (API)", "IBGE (SIDRA)")
+
+
+def test_sidra_nao_e_consultado_quando_o_soap_traz_o_ipca(monkeypatch, tmp_path):
+    chamadas_sidra = []
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+    _sidra_responde(monkeypatch, chamadas=chamadas_sidra)
+
+    bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    assert chamadas_sidra == []
+
+
+def test_sidra_so_pede_o_ipca_e_a_selic_nao_tem_fonte_equivalente(monkeypatch, tmp_path):
+    # BCB inteiro fora do ar: sem Selic, o SIDRA sozinho não resolve e cai no valor guardado.
+    chamadas_sidra = []
+    _rest_fora_do_ar(monkeypatch)
+
+    def soap_fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("www3.bcb.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", soap_fora_do_ar)
+    _sidra_responde(monkeypatch, chamadas=chamadas_sidra)
+    _semear_ultimo_macro(tmp_path, dias_atras=3)
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+    assert chamadas_sidra == []
+
+
+def test_todas_as_fontes_do_ipca_falham_e_cai_no_valor_guardado(monkeypatch, tmp_path):
+    _selic_rest_ok_e_ipca_rest_fora(monkeypatch)
+    _soap_ipca_fora_do_ar(monkeypatch)
+
+    def sidra_fora_do_ar(meses):
+        raise requests.ConnectionError("apisidra.ibge.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "obter_ipca_mensal_sidra", sidra_fora_do_ar)
+    _semear_ultimo_macro(tmp_path, dias_atras=3)
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+
+
+def test_obter_selic_e_ipca_com_o_sidra_grava_a_fonte_do_ipca(monkeypatch, tmp_path):
+    _selic_rest_ok_e_ipca_rest_fora(monkeypatch)
+    _soap_ipca_fora_do_ar(monkeypatch)
+    _sidra_responde(monkeypatch)
+
+    resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert (resultado.fonte_selic, resultado.fonte_ipca) == ("BCB (API)", "IBGE (SIDRA)")
+    gravado = json.loads((tmp_path / "bcb" / "ultimo_macro.json").read_text())
+    assert gravado["fonte_ipca"] == "IBGE (SIDRA)"
+    assert gravado["data_ipca"] == "2026-08-01"
 
 
 def test_obter_selic_e_ipca_pelo_soap_nao_usa_o_valor_guardado_e_grava_as_fontes(

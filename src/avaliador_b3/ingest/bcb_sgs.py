@@ -28,10 +28,12 @@ from avaliador_b3.config import (
     DATA_RAW_DIR,
     FONTE_BCB_API,
     FONTE_BCB_SOAP,
+    FONTE_IBGE,
     FONTE_VALOR_GUARDADO,
     JANELA_BUSCA_IPCA_DIAS,
     JANELA_BUSCA_SELIC_DIAS,
     JANELA_BUSCA_SELIC_SOAP_DIAS,
+    MESES_BUSCA_IPCA_SIDRA,
     MESES_IPCA_ACUMULADO,
     PAUSAS_RETRY_FONTE_SECUNDARIA_SEGUNDOS,
     PAUSAS_RETRY_SEGUNDOS,
@@ -42,6 +44,7 @@ from avaliador_b3.config import (
     VALIDADE_MACRO_GUARDADO_DIAS,
 )
 from avaliador_b3.ingest._retry import get_com_retry, post_com_retry
+from avaliador_b3.ingest.ibge_sidra import obter_ipca_mensal_sidra
 
 _log = logging.getLogger(__name__)
 
@@ -359,7 +362,8 @@ def _buscar_selic_e_ipca(
     hoje: datetime, diretorio_cache: Path
 ) -> tuple[float, float, pd.Timestamp, str, str]:
     """Selic meta, IPCA 12m, mês do IPCA e a fonte de cada um, pela cadeia: BCB (API),
-    depois BCB (SOAP). Selic e IPCA podem vir de fontes diferentes."""
+    BCB (SOAP) e, só para o IPCA, IBGE (SIDRA). Selic e IPCA podem vir de fontes
+    diferentes; o mês de referência do IPCA vem junto."""
     falhas: dict = {}
     fmt = "%d/%m/%Y"
 
@@ -393,11 +397,17 @@ def _buscar_selic_e_ipca(
         df = obter_serie_soap(SERIES_BCB_SGS["ipca_mensal"], inicio, hoje.strftime(fmt))
         return _ipca_12m_do_dataframe(_ate_hoje(df, hoje))
 
+    def ipca_sidra() -> tuple[float, pd.Timestamp]:
+        return _ipca_12m_do_dataframe(
+            _ate_hoje(obter_ipca_mensal_sidra(MESES_BUSCA_IPCA_SIDRA), hoje)
+        )
+
     fonte_selic, selic_meta = _percorrer_fontes(
         [(FONTE_BCB_API, selic_api), (FONTE_BCB_SOAP, selic_soap)], falhas
     )
     fonte_ipca, (ipca_12m, data_ipca) = _percorrer_fontes(
-        [(FONTE_BCB_API, ipca_api), (FONTE_BCB_SOAP, ipca_soap)], falhas
+        [(FONTE_BCB_API, ipca_api), (FONTE_BCB_SOAP, ipca_soap), (FONTE_IBGE, ipca_sidra)],
+        falhas,
     )
     return selic_meta, ipca_12m, data_ipca, fonte_selic, fonte_ipca
 
@@ -406,8 +416,8 @@ def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
     """Selic meta (decimal) e IPCA acumulado 12 meses (decimal) — função
     única usada tanto pelo app quanto pelo screener.
 
-    Cadeia de fontes: BCB (API), BCB (SOAP) e, por último, o valor com sucesso
-    guardado em disco (`_caminho_ultimo_macro`), contanto que tenha no máximo
+    Cadeia de fontes: BCB (API), BCB (SOAP), IBGE (SIDRA, só o IPCA) e, por último, o valor
+    com sucesso guardado em disco (`_caminho_ultimo_macro`), contanto que tenha no máximo
     `VALIDADE_MACRO_GUARDADO_DIAS`. Cada fonte tenta de novo sozinha em falha temporária
     (5xx, timeout, conexão — ver `ingest._retry`), e IPCA com menos de 12 meses conta como
     falha daquela fonte. Falhas intermediárias só vão para o log. Sem nenhuma fonte nem

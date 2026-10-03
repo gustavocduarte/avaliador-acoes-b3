@@ -1228,6 +1228,13 @@ TIMEOUT_SEGUNDOS_BCB_SOAP = 10
 PAUSAS_RETRY_FONTE_SECUNDARIA_SEGUNDOS = (2,)
 # Janela de busca da Selic no SOAP: a meta vigente é o último valor até hoje.
 JANELA_BUSCA_SELIC_SOAP_DIAS = 15
+# Terceira fonte, só do IPCA: a API SIDRA do IBGE (tabela 1737, variável 63, IPCA mensal).
+# Os meses são os mesmos da série 433 do BCB, e o acumulado de 12 meses sai do mesmo
+# cálculo. Busca 14 meses (mínimo de 12, mais uma folga de publicação).
+URL_IBGE_SIDRA_IPCA_MENSAL = "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/63/p/last%20{meses}"
+TIMEOUT_SEGUNDOS_IBGE = 10
+MESES_BUSCA_IPCA_SIDRA = 14
+FONTE_IBGE = "IBGE (SIDRA)"
 FONTE_BCB_API = "BCB (API)"
 FONTE_BCB_SOAP = "BCB (SOAP)"
 FONTE_VALOR_GUARDADO = "valor guardado de {data}"
