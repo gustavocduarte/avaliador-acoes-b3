@@ -43,6 +43,13 @@ from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivel
 # (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não uma constante.
 ANO_FCD_MOCK = 2025
 
+# Campos de capex e juros pagos do resultado do FCF; os testes de interface ainda
+# não os usam.
+EXTRAS_FCF_MOCK = {
+    "capex_atual": {"status": "nao_identificado", "valor": None, "linhas": []},
+    "juros_pagos_atual": {"valor": 0.0, "linhas": []},
+}
+
 # Caminho absoluto: AppTest.from_file resolve caminho relativo contra o
 # arquivo que CHAMA from_file (este arquivo de teste), não contra o cwd do
 # pytest — relativo a "tests/" ficaria errado.
@@ -524,9 +531,14 @@ def _preparar_fcd_aplicavel(
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            {"fcf_atual": 1_000_000.0, "cfo_atual": 1_200_000.0, "cfi_atual": -200_000.0}
+            {
+                "fcf_atual": 1_000_000.0,
+                "cfo_atual": 1_200_000.0,
+                "cfi_atual": -200_000.0,
+                **EXTRAS_FCF_MOCK,
+            }
             if ano == ANO_FCD_MOCK
-            else {"fcf_atual": 800_000.0}
+            else {"fcf_atual": 800_000.0, **EXTRAS_FCF_MOCK}
         ),
     )
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _obter_serie_bcb_falso)
@@ -581,7 +593,12 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
     def obter_fluxo_caixa_livre_com_fallback(cnpj, ano, *args, **kwargs):
         if ano == ANO_FCD_MOCK:
             raise CnpjNaoEncontrado("não encontrado no ano mais recente")
-        return {"fcf_atual": 800_000.0, "cfo_atual": 900_000.0, "cfi_atual": -100_000.0}
+        return {
+            "fcf_atual": 800_000.0,
+            "cfo_atual": 900_000.0,
+            "cfi_atual": -100_000.0,
+            **EXTRAS_FCF_MOCK,
+        }
 
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre", obter_fluxo_caixa_livre_com_fallback
@@ -609,9 +626,14 @@ def _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual: float, cfi_atual: float) -
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            {"fcf_atual": cfo_atual + cfi_atual, "cfo_atual": cfo_atual, "cfi_atual": cfi_atual}
+            {
+                "fcf_atual": cfo_atual + cfi_atual,
+                "cfo_atual": cfo_atual,
+                "cfi_atual": cfi_atual,
+                **EXTRAS_FCF_MOCK,
+            }
             if ano == ANO_FCD_MOCK
-            else {"fcf_atual": 800_000.0}
+            else {"fcf_atual": 800_000.0, **EXTRAS_FCF_MOCK}
         ),
     )
 

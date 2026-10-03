@@ -342,7 +342,100 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # KeyError pra qualquer CNPJ/ano já cacheado. Começa em 1 porque esse cache
 # nunca teve controle de versão antes (diferente do Fundamentus, que já
 # tinha passado por uma mudança de schema sem esse mecanismo).
-VERSAO_SCHEMA_CVM_FCF = 2
+VERSAO_SCHEMA_CVM_FCF = 3
+
+# --- Capex e juros pagos da DFC, por descrição das subcontas ---
+#
+# 6.01 e 6.02 vêm pelo código; o capex (6.02.xx) e os juros pagos (6.01.xx)
+# vêm da DESCRIÇÃO da subconta, que cada empresa escreve de um jeito. Os
+# termos abaixo são fragmentos de regex aplicados à descrição normalizada
+# (sem acento, minúscula).
+#
+# Capex = linhas de 6.02.xx que citam TERMOS_CAPEX, sem nenhum dos
+# TERMOS_CAPEX_EXCLUIDOS (venda, baixa, recebimento...) nem dos
+# TERMOS_NAO_CAPEX (participações, controladas...). "Redução" só entra
+# quando a linha também diz "acréscimo" (valor líquido de compras).
+TERMOS_CAPEX = (
+    "imobilizado",
+    "intangivel",
+    "intangiveis",
+    "ativos? fixos?",
+    "capex",
+    "propriedades? para investimento",
+    "ativos? de contrato",
+    "ativos? contratu(?:al|ais)",
+    "concess",
+    "ativo biologico",
+    "bens do ativo",
+    "obras",
+    "infraestrutura",
+)
+TERMOS_CAPEX_EXCLUIDOS = (
+    "venda",
+    "alienacao",
+    "baixa",
+    "recebimento",
+    "resgate",
+    "dividendo",
+    "valores mobiliarios",
+    "titulos",
+    "emprestimo",
+    "financiamento",
+)
+TERMOS_NAO_CAPEX = (
+    "participac",
+    "controlad",
+    "coligad",
+    r"\bempresas?\b",
+    "negocio",
+    r"\bacoes\b",
+    r"\bcotas\b",
+    "investidas",
+    "joint",
+    r"\bfundos\b",
+    "sociedade",
+    "combinacao",
+    "caixa adquirido",
+    "incorporac",
+)
+TERMO_CAPEX_REDUCAO = "reducao"
+TERMO_CAPEX_ACRESCIMO = "acrescimo"
+
+# Juros pagos em 6.01 = linhas dedicadas a juros (TERMOS_JUROS) pagos
+# (TERMOS_JUROS_PAGOS) de empréstimos, financiamentos e debêntures. Ficam
+# de fora juros de arrendamento (TERMOS_ARRENDAMENTO), juros recebidos,
+# rendimentos de aplicações e juros sobre capital próprio
+# (TERMOS_JUROS_EXCLUIDOS) e linhas mistas de principal e juros
+# (TERMOS_JUROS_MISTOS).
+TERMOS_JUROS = ("juros", "encargos")
+TERMOS_JUROS_PAGOS = (
+    "pago",
+    "pagos",
+    "pagamento",
+    "pagamentos",
+    "desembolso",
+    "amortiza",
+    "liquida",
+)
+TERMOS_JUROS_EXCLUIDOS = (
+    "recebid",
+    "receb",
+    "capital proprio",
+    "jcp",
+    "dividend",
+    "ativos",
+    "aplicac",
+    "provisao",
+    "apropriad",
+    "despesa",
+    "variac",
+    "monetaria",
+    "cambia",
+    "partes relacionadas",
+    "derivativ",
+)
+TERMOS_JUROS_MISTOS = ("principal",)
+TERMOS_ARRENDAMENTO = ("arrendamento", "leasing", "alugue", "locacao", "locacoes")
 
 # Catálogo de emissores da B3 (todos os tipos de ativo negociado, não só
 # ações do Ibovespa) — usado para o crosswalk ticker (B3) -> CNPJ (CVM).

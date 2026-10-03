@@ -18,6 +18,12 @@ CNPJ_SINTETICO_SO_INDIVIDUAL = "00.000.000/0001-00"
 CNPJ_SINTETICO_DFC_MI_IND = "00.000.000/0002-00"
 CNPJ_SINTETICO_DFC_MD_CON = "00.000.000/0003-00"
 
+# Campos de capex e juros pagos do resultado do FCF, nos mocks do fallback.
+EXTRAS_FCF_MOCK = {
+    "capex_atual": {"status": "nao_identificado", "valor": None, "linhas": []},
+    "juros_pagos_atual": {"valor": 0.0, "linhas": []},
+}
+
 
 class _RespostaStreamFalsa:
     def __init__(self, conteudo: bytes, status_ok: bool = True):
@@ -755,8 +761,8 @@ def test_obter_fluxo_caixa_livre_com_fallback_usa_ano_mais_recente_quando_empres
     def obter_falso(cnpj, ano, *a, **k):
         chamadas.append(ano)
         if ano == 2025:
-            return {"fcf_atual": 100.0, "cfo_atual": 60.0, "cfi_atual": -30.0}
-        return {"fcf_atual": 80.0}
+            return {"fcf_atual": 100.0, "cfo_atual": 60.0, "cfi_atual": -30.0, **EXTRAS_FCF_MOCK}
+        return {"fcf_atual": 80.0, **EXTRAS_FCF_MOCK}
 
     monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
 
@@ -783,9 +789,9 @@ def test_obter_fluxo_caixa_livre_com_fallback_cai_um_ano_so_pra_empresa_ausente(
         if ano == 2025:
             raise cvm.CnpjNaoEncontrado("não encontrado em 2025")
         if ano == 2024:
-            return {"fcf_atual": 100.0, "cfo_atual": 70.0, "cfi_atual": -20.0}
+            return {"fcf_atual": 100.0, "cfo_atual": 70.0, "cfi_atual": -20.0, **EXTRAS_FCF_MOCK}
         if ano == 2019:
-            return {"fcf_atual": 80.0}
+            return {"fcf_atual": 80.0, **EXTRAS_FCF_MOCK}
         raise AssertionError(f"ano inesperado: {ano}")
 
     monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
@@ -848,3 +854,203 @@ def test_obter_fluxo_caixa_livre_com_fallback_propaga_cnpj_nao_encontrado_nos_do
             anos_historico_crescimento=5,
             diretorio_cache=tmp_path,
         )
+
+# --- Capex e juros pagos por descrição das subcontas -------------------------
+#
+# Descrições reais (DFP 2025) citadas na investigação do FCD; valores em MIL.
+
+
+def _linhas_com_subcontas(*subcontas):
+    base = [
+        _linha("6.01", "Caixa Líquido Atividades Operacionais", "1000"),
+        _linha("6.02", "Caixa Líquido Atividades de Investimento", "-300"),
+    ]
+    return base + [_linha(codigo, descricao, valor) for codigo, descricao, valor in subcontas]
+
+
+def test_extrair_capex_uma_linha_de_imobilizado_e_intangivel():
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisições de ativos imobilizados e intangíveis", "-108714"),
+        ("6.02.02", "Aplicações financeiras e recursos vinculados", "-312"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["status"] == "identificado"
+    assert capex["valor"] == pytest.approx(108714.0 * 1000)
+    assert [linha["codigo"] for linha in capex["linhas"]] == ["6.02.01"]
+    assert capex["linhas"][0]["descricao"] == "Aquisições de ativos imobilizados e intangíveis"
+
+
+def test_extrair_capex_soma_imobilizado_e_intangivel_separados():
+    linhas = _linhas_com_subcontas(
+        ("6.02.02", "Imobilizado", "-2563"),
+        ("6.02.03", "Intangível", "-128"),
+        ("6.02.04", "Aplicações no imobilizado, intangível e ativo contratual", "-5644"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["status"] == "identificado"
+    assert capex["valor"] == pytest.approx((2563 + 128 + 5644) * 1000.0)
+    assert len(capex["linhas"]) == 3
+
+
+def test_extrair_capex_reconhece_ativo_contratual_e_ativos_de_contrato():
+    linhas = _linhas_com_subcontas(
+        ("6.02.03", "Adições de ativo contratual", "-4964"),
+        ("6.02.04", "Aquisições de ativos de contrato", "-1937"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["valor"] == pytest.approx((4964 + 1937) * 1000.0)
+
+
+def test_extrair_capex_nao_conta_a_linha_filha_quando_a_pai_ja_entrou():
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisição de imobilizado e intangível", "-500"),
+        ("6.02.01.01", "Aquisição de imobilizado", "-400"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["valor"] == pytest.approx(500.0 * 1000)
+
+
+def test_extrair_capex_ignora_venda_de_imobilizado_como_falso_positivo():
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisição de imobilizado", "-1000"),
+        ("6.02.02", "Recebimento pela venda de imobilizado", "300"),
+        ("6.02.03", "Alienação de bens do imobilizado e intangível", "64"),
+        ("6.02.04", "Caixa recebido na venda de ativos imobilizado e intangível", "9"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["valor"] == pytest.approx(1000.0 * 1000)
+    assert len(capex["linhas"]) == 1
+
+
+def test_extrair_capex_so_venda_de_imobilizado_nao_e_capex():
+    linhas = _linhas_com_subcontas(("6.02.01", "Venda de imobilizado", "300"))
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex == {"status": "nao_identificado", "valor": None, "linhas": []}
+
+
+def test_extrair_capex_nao_identificado_quando_a_linha_nao_cita_imobilizado_nem_intangivel():
+    # Caso real da IGTI11: "Aquisições de Ativo Não Circulante" mistura imobilizado
+    # e propriedades para investimento sem dizer qual — não é identificado.
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisições de Ativo Não Circulante", "-1104"),
+        ("6.02.02", "Venda de Ativo Permanente", "310"),
+        ("6.02.08", "Aplicações Financeiras Mantidas para Negociação", "264"),
+    )
+
+    capex = cvm._extrair_capex(linhas)
+
+    assert capex["status"] == "nao_identificado"
+    assert capex["valor"] is None
+
+
+def test_extrair_capex_ignora_aquisicao_de_participacao():
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisição de controladas, líquido do caixa adquirido", "-616"),
+        ("6.02.02", "Aumento de capital em empresas do imobilizado", "-10"),
+    )
+
+    assert cvm._extrair_capex(linhas)["status"] == "nao_identificado"
+
+
+def test_extrair_juros_pagos_linhas_dedicadas_de_6_01():
+    linhas = _linhas_com_subcontas(
+        ("6.01.03.01", "Encargos de dívidas e debêntures pagos", "-2085"),
+        ("6.01.03.02", "Juros pagos sobre empréstimos e financiamentos", "-300"),
+    )
+
+    juros = cvm._extrair_juros_pagos_6_01(linhas)
+
+    assert juros["valor"] == pytest.approx(2385.0 * 1000)
+    assert len(juros["linhas"]) == 2
+
+
+def test_extrair_juros_pagos_nao_conta_a_linha_filha_quando_a_pai_ja_entrou():
+    linhas = _linhas_com_subcontas(
+        ("6.01.03", "Juros pagos", "-300"),
+        ("6.01.03.01", "Juros pagos de empréstimos", "-300"),
+    )
+
+    assert cvm._extrair_juros_pagos_6_01(linhas)["valor"] == pytest.approx(300.0 * 1000)
+
+
+def test_extrair_juros_pagos_ignora_juros_de_arrendamento():
+    linhas = _linhas_com_subcontas(
+        ("6.01.03.03", "Juros de arrendamento por direito de uso pagos", "-279"),
+        ("6.01.03.04", "Pagamento de juros de arrendamento mercantil", "-100"),
+        (
+            "6.01.03.05",
+            "Juros pagos de empréstimos, financiamentos, debêntures e arrendamentos",
+            "-50",
+        ),
+    )
+
+    juros = cvm._extrair_juros_pagos_6_01(linhas)
+
+    assert juros == {"valor": 0.0, "linhas": []}
+
+
+def test_extrair_juros_pagos_ignora_juros_recebidos_rendimentos_jcp_e_linhas_mistas():
+    linhas = _linhas_com_subcontas(
+        ("6.01.03.01", "Juros recebidos", "50"),
+        ("6.01.02.02", "Dividendo e juros sobre o capital próprio recebidos", "285"),
+        ("6.01.03.02", "Rendimentos de aplicações financeiras", "10"),
+        ("6.01.03.03", "Juros sobre capital próprio pagos", "-40"),
+        ("6.01.03.04", "Pagamento de principal e juros de empréstimos", "-900"),
+        (
+            "6.01.01.05",
+            "Encargos de dívidas, juros, variações monetárias e cambiais líquidas",
+            "4793",
+        ),
+    )
+
+    assert cvm._extrair_juros_pagos_6_01(linhas) == {"valor": 0.0, "linhas": []}
+
+
+def test_extrair_juros_pagos_so_considera_6_01():
+    linhas = _linhas_com_subcontas(
+        ("6.03.04", "Juros pagos", "-10311"),
+        ("6.01.03.01", "Juros pagos", "-200"),
+    )
+
+    assert cvm._extrair_juros_pagos_6_01(linhas)["valor"] == pytest.approx(200.0 * 1000)
+
+
+def test_montar_resultado_fcf_traz_capex_e_juros_pagos():
+    linhas = _linhas_com_subcontas(
+        ("6.02.01", "Aquisição de imobilizado", "-250"),
+        ("6.01.03.01", "Juros pagos", "-80"),
+    )
+
+    resultado = cvm._montar_resultado_fcf(2024, "con", "MI", linhas)
+
+    assert resultado["capex_atual"]["valor"] == pytest.approx(250.0 * 1000)
+    assert resultado["juros_pagos_atual"]["valor"] == pytest.approx(80.0 * 1000)
+    json.dumps(resultado)  # vai pro cache em JSON
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_2_do_schema(tmp_path, monkeypatch):
+    # Cache da versão anterior não tem capex nem juros pagos: tem que ser refeito.
+    caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text(
+        json.dumps({"versao_schema": 2, "resultado": {"fcf_atual": 999.0}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+    assert "capex_atual" in resultado
+    assert "juros_pagos_atual" in resultado

@@ -32,6 +32,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 import warnings
 import zipfile
 from datetime import datetime
@@ -47,6 +48,16 @@ from avaliador_b3.config import (
     DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE,
     FATOR_ESCALA_MOEDA_CVM,
     TAMANHO_CNPJ,
+    TERMO_CAPEX_ACRESCIMO,
+    TERMO_CAPEX_REDUCAO,
+    TERMOS_ARRENDAMENTO,
+    TERMOS_CAPEX,
+    TERMOS_CAPEX_EXCLUIDOS,
+    TERMOS_JUROS,
+    TERMOS_JUROS_EXCLUIDOS,
+    TERMOS_JUROS_MISTOS,
+    TERMOS_JUROS_PAGOS,
+    TERMOS_NAO_CAPEX,
     URL_CVM_DFP_ZIP,
     VERSAO_SCHEMA_CVM_FCF,
 )
@@ -64,6 +75,20 @@ TIMEOUT_SEGUNDOS = 60
 TAMANHO_PEDACO_DOWNLOAD = 256 * 1024
 CODIFICACAO_CVM = "iso-8859-1"
 PADRAO_CONTA_NIVEL_2 = re.compile(r"^3\.\d{2}$")
+
+
+def _padrao(termos: tuple[str, ...]) -> re.Pattern:
+    return re.compile("|".join(termos))
+
+
+PADRAO_CAPEX = _padrao(TERMOS_CAPEX)
+PADRAO_CAPEX_EXCLUIDO = _padrao(TERMOS_CAPEX_EXCLUIDOS)
+PADRAO_NAO_CAPEX = _padrao(TERMOS_NAO_CAPEX)
+PADRAO_JUROS = _padrao(TERMOS_JUROS)
+PADRAO_JUROS_PAGOS = _padrao(TERMOS_JUROS_PAGOS)
+PADRAO_JUROS_EXCLUIDO = _padrao(TERMOS_JUROS_EXCLUIDOS)
+PADRAO_JUROS_MISTO = _padrao(TERMOS_JUROS_MISTOS)
+PADRAO_ARRENDAMENTO = _padrao(TERMOS_ARRENDAMENTO)
 
 
 class ErroCVM(Exception):
@@ -398,6 +423,88 @@ def _escolher_dfc(
     return primeira
 
 
+def _normalizar_descricao(texto: str) -> str:
+    """Descrição sem acento, em minúscula e com espaços únicos."""
+    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", sem_acento.lower()).strip()
+
+
+def _sem_ancestral_marcado(linhas: list[dict]) -> list[dict]:
+    """Tira a linha filha quando a pai também foi marcada (sem contar duas vezes)."""
+    codigos = [linha["codigo"] for linha in linhas]
+    return [
+        linha
+        for linha in linhas
+        if not any(
+            linha["codigo"] != outro and linha["codigo"].startswith(outro + ".")
+            for outro in codigos
+        )
+    ]
+
+
+def _extrair_capex(linhas_periodo: list[dict]) -> dict:
+    """Capex do período: compras de imobilizado e intangível nas subcontas de
+    6.02, identificadas pela descrição (ver `config.TERMOS_CAPEX`). Várias
+    linhas são somadas. Devolve `status` ("identificado" ou
+    "nao_identificado"), `valor` (positivo, ou `None`) e as `linhas` usadas."""
+    candidatas = []
+    for linha in linhas_periodo:
+        codigo = linha["CD_CONTA"]
+        if not codigo.startswith("6.02."):
+            continue
+        descricao = _normalizar_descricao(linha["DS_CONTA"])
+        if PADRAO_CAPEX_EXCLUIDO.search(descricao):
+            continue
+        if TERMO_CAPEX_REDUCAO in descricao and TERMO_CAPEX_ACRESCIMO not in descricao:
+            continue
+        if PADRAO_CAPEX.search(descricao) and not PADRAO_NAO_CAPEX.search(descricao):
+            candidatas.append(
+                {
+                    "codigo": codigo,
+                    "descricao": linha["DS_CONTA"],
+                    "valor": _valor_conta(linha, ContaFluxoCaixaNaoEncontrada),
+                }
+            )
+    usadas = [linha for linha in _sem_ancestral_marcado(candidatas) if linha["valor"] <= 0]
+    if not usadas:
+        return {"status": "nao_identificado", "valor": None, "linhas": []}
+    return {
+        "status": "identificado",
+        "valor": -sum(linha["valor"] for linha in usadas),
+        "linhas": usadas,
+    }
+
+
+def _extrair_juros_pagos_6_01(linhas_periodo: list[dict]) -> dict:
+    """Juros pagos de empréstimos, financiamentos e debêntures nas subcontas de
+    6.01 (ver `config.TERMOS_JUROS`): só linhas dedicadas, sem juros de
+    arrendamento, juros recebidos, rendimentos, juros sobre capital próprio
+    nem linhas mistas de principal e juros. `valor` é positivo (0 se não
+    houver linha) e `linhas` traz as usadas."""
+    candidatas = []
+    for linha in linhas_periodo:
+        codigo = linha["CD_CONTA"]
+        if not codigo.startswith("6.01."):
+            continue
+        descricao = _normalizar_descricao(linha["DS_CONTA"])
+        if (
+            PADRAO_JUROS.search(descricao)
+            and PADRAO_JUROS_PAGOS.search(descricao)
+            and not PADRAO_JUROS_EXCLUIDO.search(descricao)
+            and not PADRAO_ARRENDAMENTO.search(descricao)
+            and not PADRAO_JUROS_MISTO.search(descricao)
+        ):
+            candidatas.append(
+                {
+                    "codigo": codigo,
+                    "descricao": linha["DS_CONTA"],
+                    "valor": _valor_conta(linha, ContaFluxoCaixaNaoEncontrada),
+                }
+            )
+    usadas = _sem_ancestral_marcado(candidatas)
+    return {"valor": -sum(linha["valor"] for linha in usadas) if usadas else 0.0, "linhas": usadas}
+
+
 def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
     linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaFluxoCaixaNaoEncontrada)
 
@@ -416,6 +523,8 @@ def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) 
         "fcf_anterior": fcf_anterior,
         "cfo_atual": cfo_atual,
         "cfi_atual": cfi_atual,
+        "capex_atual": _extrair_capex(linhas_atual),
+        "juros_pagos_atual": _extrair_juros_pagos_6_01(linhas_atual),
     }
 
 
@@ -580,8 +689,10 @@ def obter_fluxo_caixa_livre_com_fallback(
             cnpj, ano_base, usar_cache, forcar_atualizacao, diretorio_cache
         )
         fcf_ha_n_anos = resultado_base["fcf_atual"]
+        capex_ha_n_anos = resultado_base["capex_atual"]
+        juros_pagos_ha_n_anos = resultado_base["juros_pagos_atual"]
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
-        fcf_ha_n_anos = None
+        fcf_ha_n_anos = capex_ha_n_anos = juros_pagos_ha_n_anos = None
 
     return {
         "fcf_atual": resultado_atual["fcf_atual"],
@@ -595,6 +706,10 @@ def obter_fluxo_caixa_livre_com_fallback(
         # reinvestimento_percentual).
         "cfo_atual": resultado_atual["cfo_atual"],
         "cfi_atual": resultado_atual["cfi_atual"],
+        "capex_atual": resultado_atual["capex_atual"],
+        "juros_pagos_atual": resultado_atual["juros_pagos_atual"],
+        "capex_ha_n_anos": capex_ha_n_anos,
+        "juros_pagos_ha_n_anos": juros_pagos_ha_n_anos,
     }
 
 
