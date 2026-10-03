@@ -21,6 +21,7 @@ por limitar taxa agressivamente sem isso.
 
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 
@@ -87,6 +88,11 @@ def _cache_valido(caminho: Path, ttl_segundos: int) -> bool:
         return False
     idade_segundos = time.time() - caminho.stat().st_mtime
     return idade_segundos < ttl_segundos
+
+
+def preco_valido(preco: float | None) -> bool:
+    """True se o preço é um número finito e positivo."""
+    return preco is not None and math.isfinite(preco) and preco > 0
 
 
 def _sem_fechamento_vazio(historico: pd.DataFrame) -> pd.DataFrame:

@@ -53,6 +53,7 @@ from avaliador_b3.config import (
     DESCONTO_EXTREMO_LIMITE_INFERIOR,
     DESCONTO_EXTREMO_LIMITE_SUPERIOR,
     FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS,
+    MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
 )
@@ -81,6 +82,7 @@ from avaliador_b3.ingest.precos import (
     obter_dividendos,
     obter_historico,
     obter_historico_ibovespa,
+    preco_valido,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
@@ -256,6 +258,8 @@ def _calcular_linha_ticker(
         ticker, periodo=PERIODO_HISTORICO_COMPORTAMENTO, diretorio_cache=diretorio_cache
     )
     preco_atual = float(historico["Close"].iloc[-1])
+    if not preco_valido(preco_atual):
+        return _linha_erro(ticker, MENSAGEM_PRECO_INDISPONIVEL_SCREENER)
 
     beta = None
     if historico_ibovespa_beta is not None:

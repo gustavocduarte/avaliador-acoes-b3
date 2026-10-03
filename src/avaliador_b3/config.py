@@ -676,6 +676,12 @@ MOTIVO_FCD_HOLDING_FINANCEIRA = (
     "dessas participações. Os outros métodos continuam sendo calculados quando se aplicam."
 )
 TEXTO_COMPLEMENTO_SEM_METODO = "Veja o motivo de cada método nos cartões ao lado."
+# Preço atual vazio, zero ou negativo (a fonte não trouxe um preço válido).
+MENSAGEM_PRECO_INDISPONIVEL_SCREENER = "Preço atual indisponível"
+AVISO_PRECO_INDISPONIVEL = (
+    "Preço atual indisponível: a fonte de preços não trouxe um valor válido "
+    "agora, então o potencial não foi calculado. Tente de novo mais tarde."
+)
 MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO = (
     "Não foi possível identificar o gasto em imobilizado e intangível "
     "(capex) na demonstração de fluxo de caixa da empresa, e sem ele o "

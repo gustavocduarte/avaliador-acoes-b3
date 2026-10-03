@@ -30,6 +30,7 @@ from avaliador_b3.carteira import (
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
     COR_GRAFICO_CONTEXTO,
     COR_GRAFICO_FUNDO,
@@ -98,6 +99,7 @@ from avaliador_b3.ingest.precos import (
     obter_dividendos,
     obter_historico,
     obter_historico_ibovespa,
+    preco_valido,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
@@ -952,7 +954,11 @@ with aba_analisar:
             preco_atual = None
         else:
             preco_atual = float(historico_preco_atual["Close"].iloc[-1])
-            st.metric("Preço atual", _fmt_bilhoes(preco_atual))
+            if preco_valido(preco_atual):
+                st.metric("Preço atual", _fmt_bilhoes(preco_atual))
+            else:
+                st.warning(AVISO_PRECO_INDISPONIVEL)
+                preco_atual = None
 
         if erro_indicadores:
             st.warning(f"Fundamentus: {erro_indicadores}")

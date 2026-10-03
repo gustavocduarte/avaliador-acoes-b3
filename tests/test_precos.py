@@ -248,6 +248,15 @@ def test_obter_historico_forcar_atualizacao_ignora_cache_valido(tmp_path, monkey
     assert ticker_falso.chamadas == 2
 
 
+@pytest.mark.parametrize(
+    "preco, esperado",
+    [(49.9, True), (0.01, True), (0.0, False), (-3.0, False), (float("nan"), False),
+     (float("inf"), False), (None, False)],
+)
+def test_preco_valido(preco, esperado):
+    assert precos.preco_valido(preco) is esperado
+
+
 def _historico_com_fechamentos(fechamentos):
     indice = pd.date_range(
         "2026-09-10", periods=len(fechamentos), name="Date", tz="America/Sao_Paulo"

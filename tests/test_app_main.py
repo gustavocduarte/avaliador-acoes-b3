@@ -350,6 +350,28 @@ def _historico_por_periodo(fechamentos_por_periodo: dict[str, float]):
     return _fake
 
 
+def test_pagina_da_acao_com_preco_atual_vazio_mostra_aviso_e_nao_calcula_potencial(
+    monkeypatch,
+):
+    from avaliador_b3.config import AVISO_PRECO_INDISPONIVEL
+
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": float("nan"), "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert AVISO_PRECO_INDISPONIVEL in [w.value for w in at.warning]
+    assert not [m for m in at.metric if m.label == "Preço atual"]
+    assert not _metrica_por_label(at, "Valor combinado").delta
+
+
 def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     # Regressão: o histórico diário mais longo (period="3mo", usado pra
     # volume/volatilidade) atrasa um pregão inteiro no yfinance, mesmo já

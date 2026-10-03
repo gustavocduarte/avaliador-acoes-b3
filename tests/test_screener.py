@@ -5,6 +5,7 @@ import pytest
 import requests
 
 from avaliador_b3 import screener
+from avaliador_b3.config import MENSAGEM_PRECO_INDISPONIVEL_SCREENER
 from avaliador_b3.ingest import bcb_sgs
 from avaliador_b3.ingest.precos import TickerInvalido
 
@@ -678,6 +679,32 @@ def test_rodar_screener_isola_erro_de_preco_de_uma_acao_e_continua_as_demais(
     assert not linha_falha["sucesso"]
     assert "Preço" in linha_falha["erro"]
     assert "ticker de teste inválido" in linha_falha["erro"]
+
+
+@pytest.mark.parametrize("preco_invalido", [float("nan"), 0.0, -5.0])
+def test_rodar_screener_preco_atual_invalido_vira_linha_de_erro_sem_potencial(
+    ambiente_feliz, tmp_path, monkeypatch, preco_invalido
+):
+    def historico_com_preco_invalido(ticker, periodo, diretorio_cache=None):
+        if ticker == "BBBB4":
+            return _historico([38.0, 39.0, 39.5, 40.5, preco_invalido])
+        return _historico([38.0, 39.0, 39.5, 40.5, 40.0])
+
+    monkeypatch.setattr(screener, "obter_historico", historico_com_preco_invalido)
+
+    resultado = screener.rodar_screener(
+        tickers=["AAAA4", "BBBB4"],
+        diretorio_cache=tmp_path,
+        caminho_saida=tmp_path / "screener.csv",
+    )
+
+    linha_ok = resultado[resultado["ticker"] == "AAAA4"].iloc[0]
+    linha_ruim = resultado[resultado["ticker"] == "BBBB4"].iloc[0]
+    assert linha_ok["sucesso"]
+    assert not linha_ruim["sucesso"]
+    assert linha_ruim["erro"] == MENSAGEM_PRECO_INDISPONIVEL_SCREENER
+    assert pd.isna(linha_ruim["desconto_percentual"])
+    assert pd.isna(linha_ruim["valor_combinado"])
 
 
 def test_rodar_screener_trata_excecao_inesperada_sem_derrubar_as_demais(
