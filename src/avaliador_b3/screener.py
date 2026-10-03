@@ -394,6 +394,7 @@ def _calcular_linha_ticker(
             beta=beta,
             divida_liquida=divida_liquida,
             segmento_setorial=segmento_setorial,
+            ticker=ticker,
         )
     else:
         resultado_fcd = {

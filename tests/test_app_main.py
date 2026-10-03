@@ -632,8 +632,48 @@ def test_caption_reinvestimento_caso_normal(monkeypatch):
     assert captions[0] == f"Em {ANO_FCD_MOCK}, reinvestiu 30% do caixa gerado pela operação."
 
 
-def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
+def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada_metodo(
+    monkeypatch,
+):
+    from avaliador_b3.config import MOTIVO_FCD_FLUXO_NAO_POSITIVO, TEXTO_COMPLEMENTO_SEM_METODO
+
+    # FCD não aplicável (fluxo negativo), Graham sem LPA/VPA e Bazin sem dividendos.
     _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=-500_000.0, cfi_atual=-100_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: {
+            "lpa": None,
+            "vpa": None,
+            "numero_acoes": 100.0,
+            "roe_percentual": 15.0,
+            "margem_liquida_percentual": 10.0,
+            "liquidez_corrente": 1.2,
+            "crescimento_receita_5a_percentual": 8.0,
+            "divida_liquida_sobre_patrimonio": 0.5,
+            "divida_liquida": 50_000.0,
+            "data_balanco_fundamentus": "2026-06-30",
+        },
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # Sem caixa vermelha de erro: é um aviso neutro, e cada cartão traz o seu motivo.
+    assert not [e.value for e in at.error if "Valor combinado" in e.value]
+    avisos = [i.value for i in at.info if i.value.startswith("Valor combinado:")]
+    assert len(avisos) == 1
+    assert avisos[0].endswith(TEXTO_COMPLEMENTO_SEM_METODO)
+    assert not [m for m in at.metric if m.label == "Valor combinado"]
+    captions = [c.value for c in at.caption]
+    assert f"Não aplicável: {MOTIVO_FCD_FLUXO_NAO_POSITIVO}" in captions
+
+
+def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
+    # Caixa operacional negativo com FCF positivo (a empresa vendeu mais
+    # ativos do que a operação consumiu): o FCD continua aplicável, já que
+    # com FCF zero ou negativo ele não é calculado.
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=-500_000.0, cfi_atual=900_000.0)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
@@ -1602,6 +1642,63 @@ def _escrever_screener_falso_dobra_e_sem_cenario(caminho) -> None:
         },
     ]
     pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+
+
+def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
+    monkeypatch, tmp_path
+):
+    import avaliador_b3.screener as screener_mod
+    from avaliador_b3.screener import COLUNAS_RESULTADO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "aviso_desconto_extremo": "",
+    }
+    linhas = [
+        # Sem nenhum método aplicável, como o screener grava (ex.: ação só com FCD
+        # e fluxo de caixa negativo). Vem primeiro no arquivo de propósito.
+        base
+        | {
+            "ticker": "SEMM3",
+            "erro": "Nenhum dos três métodos (Graham, Bazin, FCD) é aplicável a essa ação.",
+            "preco_atual": 5.4,
+            "metodos_utilizados": "",
+        },
+        base
+        | {
+            "ticker": "NORM4",
+            "erro": "",
+            "preco_atual": 40.0,
+            "valor_combinado": 60.0,
+            "desconto_percentual": 50.0,
+            "metodos_utilizados": "graham",
+            "graham_valor_justo": 60.0,
+        },
+    ]
+    caminho_screener_falso = tmp_path / "screener.csv"
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho_screener_falso, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [e.value for e in at.error if "Nenhum dos três métodos" in e.value]
+    tabelas = [df for df in at.dataframe if "desconto_percentual" in df.value.columns]
+    assert len(tabelas) == 1
+    tabela = tabelas[0].value
+    # No fim da tabela, com potencial indisponível e o motivo na coluna de observação.
+    assert list(tabela["ticker"]) == ["NORM4", "SEMM3"]
+    linha_sem_metodo = tabela.loc[tabela["ticker"] == "SEMM3"].iloc[0]
+    assert linha_sem_metodo["desconto_percentual"] == "N/D"
+    assert linha_sem_metodo["erro"].startswith("Nenhum dos três métodos")
+    rotulos = json.loads(tabelas[0].proto.columns)
+    assert rotulos["erro"]["label"] == "Observação"
 
 
 def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs):

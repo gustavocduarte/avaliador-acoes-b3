@@ -560,17 +560,38 @@ ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 # aplicáveis normalmente (não dependem de estrutura de capital nem de
 # fluxo de caixa operacional do mesmo jeito).
 #
-# Escopo deliberadamente restrito a "Bancos": seguradoras (BBSE3, CXSE3,
-# PSSA3) e outras financeiras (B3SA3 — bolsa/infraestrutura de mercado;
-# ITSA4 — holding cujo principal ativo é participação no Itaú, mas não é
-# ela mesma um banco) ficaram de fora por decisão deliberada, não
-# esquecimento: diferente dos bancos, essas empresas TÊM dívida líquida
-# reportada pelo Fundamentus normalmente (confirmado uma a uma antes
-# dessa decisão), então não compartilham a mesma lacuna de dado nem,
-# necessariamente, a mesma distorção — se o FCD também não faz sentido
-# econômico pra elas é uma questão em aberto, registrada como limitação
-# conhecida, não decidida aqui.
-SEGMENTOS_FCD_NAO_APLICAVEL = {"Bancos"}
+# Seguradoras e a Itaúsa também ficam sem FCD: o caixa de uma seguradora
+# vem de prêmios e sinistros (as reservas técnicas não são dívida
+# comum), e o da Itaúsa, de dividendos das empresas em que participa
+# (principalmente o Itaú Unibanco). O segmento "Seguradoras" da B3 pega
+# só BBSE3, PSSA3 e CXSE3 no Ibovespa; a Itaúsa (segmento "Holdings
+# Diversificadas") é identificada pelo ticker, pra não arrastar outras
+# holdings. B3SA3 (bolsa) segue com FCD, com a limitação documentada.
+SEGMENTOS_FCD_NAO_APLICAVEL = {"Bancos", "Seguradoras"}
+TICKERS_FCD_NAO_APLICAVEL = {"ITSA4"}
+
+# Motivos mostrados na tela quando o FCD não se aplica (o dos bancos fica
+# em modelos/fcd.py, `MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA`).
+MOTIVO_FCD_SEGURADORA = (
+    "Seguradora: o caixa de uma seguradora vem de prêmios recebidos e "
+    "sinistros pagos, e as reservas técnicas não são dívida comum, então "
+    "o fluxo de caixa descontado não tem interpretação confiável aqui. "
+    "Os outros métodos continuam sendo calculados quando se aplicam."
+)
+MOTIVOS_FCD_POR_SEGMENTO = {"Seguradoras": MOTIVO_FCD_SEGURADORA}
+MOTIVO_FCD_HOLDING_FINANCEIRA = (
+    "Holding financeira: o caixa da Itaúsa vem dos dividendos das empresas "
+    "em que ela participa (principalmente o Itaú Unibanco), não de uma "
+    "operação própria, então o fluxo de caixa descontado não mede o valor "
+    "dessas participações. Os outros métodos continuam sendo calculados quando se aplicam."
+)
+TEXTO_COMPLEMENTO_SEM_METODO = "Veja o motivo de cada método nos cartões ao lado."
+MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
+    "O fluxo de caixa livre do último ano foi zero ou negativo; projetá-lo "
+    "para o futuro não dá uma estimativa de valor confiável, então o "
+    "fluxo de caixa descontado não é calculado. Os outros métodos continuam "
+    "sendo calculados quando se aplicam."
+)
 
 # Correção em 2026-09-23 (terceiro achado da mesma revisão externa, ainda
 # no mesmo dia das duas correções acima): o ano de referência do FCD era
@@ -777,8 +798,8 @@ AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
 )
 AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD = (
     "Valor justo zero ou negativo — o FCD saiu negativo, o que acontece "
-    "quando o fluxo de caixa projetado é negativo ou quando a dívida "
-    "líquida supera o valor desse fluxo. Não quer dizer que a ação "
+    "quando a dívida líquida supera o valor do fluxo de caixa projetado. "
+    "Não quer dizer que a ação "
     "valha menos que zero, mas indica que, pelas premissas do modelo, a "
     "geração de caixa não sustenta o preço atual. Confira o "
     "endividamento em 'Saúde financeira'."

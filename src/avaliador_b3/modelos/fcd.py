@@ -10,16 +10,16 @@ pra chegar num valor justo por ação comparável a Graham/Bazin — ver
 `calcular_valor_justo_fcd` pro caso em que a dívida líquida não está
 disponível.
 
-Diferente de Graham/Bazin, o FCD é pensado pra ser "quase sempre
-aplicável" — inclusive pra empresa com prejuízo/FCF negativo atual, que só
-faz o valor calculado sair baixo ou negativo (um resultado válido, não um
-erro). É "não aplicável" quando falta dado essencial pra sequer montar a
-conta (FCF atual ausente na CVM, número de ações ausente no Fundamentus,
-WACC calculado que não é positivo) ou quando a empresa é uma instituição
-financeira (segmento "Bancos", ver `config.SEGMENTOS_FCD_NAO_APLICAVEL`) —
-nesse caso a metodologia (CFO+CFI descontado pelo WACC) não tem
-interpretação econômica válida, já que dívida/depósitos são a própria
-operação do banco, não financiamento externo.
+É "não aplicável" quando falta dado essencial pra sequer montar a conta
+(FCF atual ausente na CVM, número de ações ausente no Fundamentus, WACC
+calculado que não é positivo), quando o FCF do ano de referência é zero
+ou negativo (perpetuar um fluxo negativo não estima valor), ou quando a
+empresa é banco, seguradora ou a Itaúsa (ver
+`config.SEGMENTOS_FCD_NAO_APLICAVEL` e `config.TICKERS_FCD_NAO_APLICAVEL`)
+— nesses casos a metodologia (fluxo de caixa descontado pelo WACC) não tem
+interpretação econômica válida: em bancos a dívida e os depósitos são a
+própria operação, e seguradoras e holdings vivem de prêmios e de
+dividendos de participações, não de um fluxo operacional a descontar.
 
 Premissas de WACC/crescimento documentadas e justificadas em config.py:
 - Custo de capital próprio via CAPM (Selic + Beta × prêmio de risco Brasil).
@@ -47,11 +47,15 @@ from avaliador_b3.config import (
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
+    MOTIVO_FCD_FLUXO_NAO_POSITIVO,
+    MOTIVO_FCD_HOLDING_FINANCEIRA,
+    MOTIVOS_FCD_POR_SEGMENTO,
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
     SPREAD_CREDITO_PADRAO,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
+    TICKERS_FCD_NAO_APLICAVEL,
 )
 
 
@@ -92,6 +96,18 @@ MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA = (
     "expansão do crédito, não com a geração de valor. Graham e Bazin "
     "continuam válidos."
 )
+
+
+def _motivo_exclusao_do_fcd(segmento_setorial: str | None, ticker: str | None) -> str | None:
+    """Motivo pelo qual o FCD não se aplica à empresa (por segmento ou por
+    ticker), ou `None` se a exclusão não vale pra ela."""
+    if segmento_setorial in SEGMENTOS_FCD_NAO_APLICAVEL:
+        return MOTIVOS_FCD_POR_SEGMENTO.get(
+            segmento_setorial, MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA
+        )
+    if ticker in TICKERS_FCD_NAO_APLICAVEL:
+        return MOTIVO_FCD_HOLDING_FINANCEIRA
+    return None
 
 
 def _custo_capital_proprio(selic_meta: float, beta: float) -> float:
@@ -161,6 +177,7 @@ def calcular_valor_justo_fcd(
     beta: float | None = None,
     divida_liquida: float | None = None,
     segmento_setorial: str | None = None,
+    ticker: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -180,12 +197,12 @@ def calcular_valor_justo_fcd(
     do critério e do escopo em `config.SEGMENTOS_FCD_NAO_APLICAVEL`).
 
     Se `segmento_setorial` estiver em `config.SEGMENTOS_FCD_NAO_APLICAVEL`
-    (hoje só "Bancos"), devolve "não aplicável" antes de qualquer cálculo
-    — a metodologia (FCF via CFO+CFI descontado pelo WACC) não tem
-    interpretação econômica válida pra instituição financeira, onde
-    dívida/depósitos são a própria operação, não financiamento externo.
+    (hoje "Bancos" e "Seguradoras") ou `ticker` em
+    `config.TICKERS_FCD_NAO_APLICAVEL` (hoje só ITSA4), devolve "não
+    aplicável" antes de qualquer cálculo, com o motivo da exclusão.
     `segmento_setorial=None` (não resolvido) segue o cálculo normal, não
-    é tratado como exclusão.
+    é tratado como exclusão. Com `fcf_atual` zero ou negativo também é "não
+    aplicável": o FCD só olha entradas do modelo, nunca o preço de mercado.
 
     O fluxo de caixa livre descontado (`valor_total`) é, por construção,
     Enterprise Value — valor da empresa como um todo, dívida incluída —
@@ -209,11 +226,12 @@ def calcular_valor_justo_fcd(
     `taxa_crescimento_explicita`, `taxa_crescimento_perpetuidade`) para
     transparência do cálculo.
     """
-    if segmento_setorial in SEGMENTOS_FCD_NAO_APLICAVEL:
+    motivo_exclusao = _motivo_exclusao_do_fcd(segmento_setorial, ticker)
+    if motivo_exclusao is not None:
         return {
             "aplicavel": False,
             "valor_justo": None,
-            "motivo_nao_aplicavel": MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA,
+            "motivo_nao_aplicavel": motivo_exclusao,
         }
 
     if fcf_atual is None:
@@ -221,6 +239,13 @@ def calcular_valor_justo_fcd(
             "aplicavel": False,
             "valor_justo": None,
             "motivo_nao_aplicavel": "Sem dado de fluxo de caixa livre da CVM para projetar.",
+        }
+
+    if fcf_atual <= 0:
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_FCD_FLUXO_NAO_POSITIVO,
         }
 
     if numero_acoes is None or numero_acoes <= 0:

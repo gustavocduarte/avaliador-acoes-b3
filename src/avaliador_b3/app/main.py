@@ -49,6 +49,7 @@ from avaliador_b3.config import (
     SERIES_BCB_SGS,
     SUBTITULO_POTENCIAL_CARTEIRA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
@@ -1022,6 +1023,7 @@ with aba_analisar:
                 beta=beta,
                 divida_liquida=divida_liquida,
                 segmento_setorial=segmento_setorial,
+                ticker=ticker,
             )
         else:
             resultado_fcd = {
@@ -1122,7 +1124,10 @@ with aba_analisar:
                             f"({_fmt_bilhoes_md(divergencia['diferenca'])} de diferença)."
                         )
             else:
-                st.error(f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']}")
+                st.info(
+                    f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']} "
+                    f"{TEXTO_COMPLEMENTO_SEM_METODO}"
+                )
 
         st.caption(
             "Os valores acima são calculados a partir de fórmulas de valuation "
@@ -1204,12 +1209,15 @@ with aba_analisar:
                 "empresa, o cálculo usa o valor da empresa inteira como aproximação, "
                 "sem deduzir nada, e mostra um aviso na tela. Não se aplica a bancos "
                 "— a dívida e os depósitos são a própria operação do banco, não "
-                "financiamento externo, então a "
+                "financiamento externo — nem a seguradoras e à Itaúsa, cujo caixa "
+                "vem de prêmios e de dividendos de participações; nesses casos a "
                 "lógica de custo de capital do FCD não tem interpretação econômica "
-                "válida aí (Graham e Bazin continuam funcionando normalmente). Fora "
-                "esse caso, é o único dos três que funciona mesmo para empresas sem "
-                "lucro no momento, já que olha geração de caixa futura, não "
-                "resultado contábil passado. O fluxo de caixa usado é o caixa "
+                "válida (Graham e Bazin continuam funcionando normalmente). Também "
+                "não é calculado quando o caixa livre do último ano foi zero ou "
+                "negativo: projetar um fluxo assim não estima valor. Fora esses "
+                "casos, funciona mesmo para empresas sem lucro contábil no "
+                "momento, já que olha geração de caixa, não resultado contábil "
+                "passado. O fluxo de caixa usado é o caixa "
                 "gerado pela operação menos o que foi investido no ano. Por isso, "
                 "empresas em fase de investimento pesado (comuns em energia e "
                 "saneamento) ou com dívida muito alta tendem a ter FCD bem abaixo "
@@ -1781,7 +1789,7 @@ with aba_screener:
                 ),
                 "metodos_utilizados": "Métodos utilizados",
                 "aviso_desconto_extremo": "Aviso",
-                "erro": "Erro",
+                "erro": "Observação",
             },
             hide_index=True,
             use_container_width=True,

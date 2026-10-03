@@ -354,6 +354,54 @@ def test_rodar_screener_disjuntor_nao_abre_se_a_sequencia_de_falhas_de_rede_for_
     assert consultados == tickers
 
 
+def _linha_ticker(ticker, tmp_path):
+    return screener._calcular_linha_ticker(
+        ticker,
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+
+def test_calcular_linha_ticker_fcf_de_referencia_negativo_deixa_o_fcd_de_fora(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos_historico_crescimento, **kw: {
+            "fcf_atual": -300_000.0,
+            "fcf_ha_n_anos": 800_000.0,
+            "ano_referencia_utilizado": ano_mais_recente,
+            "ano_mais_recente_disponivel": ano_mais_recente,
+            "usou_fallback": False,
+            "cfo_atual": -100_000.0,
+            "cfi_atual": -200_000.0,
+        },
+    )
+
+    linha = _linha_ticker("AAAA4", tmp_path)
+
+    assert linha["sucesso"] is True
+    assert linha["fcd_valor_justo"] is None
+    assert "fcd" not in linha["metodos_utilizados"].split(",")
+    assert linha["graham_valor_justo"] is not None  # os outros métodos seguem
+
+
+def test_calcular_linha_ticker_itausa_fica_sem_fcd_e_com_os_demais_metodos(
+    ambiente_feliz, tmp_path
+):
+    linha = _linha_ticker("ITSA4", tmp_path)
+
+    assert linha["fcd_valor_justo"] is None
+    assert "fcd" not in linha["metodos_utilizados"].split(",")
+    assert linha["graham_valor_justo"] is not None
+
+
 def test_calcular_linha_ticker_proporcao_reinvestimento_percentual(ambiente_feliz, tmp_path):
     # ambiente_feliz mocka cfo_atual=1.200.000, cfi_atual=-200.000 ->
     # 200.000/1.200.000 = 16,67% reinvestido.

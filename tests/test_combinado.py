@@ -4,6 +4,7 @@ from avaliador_b3.modelos.combinado import (
     calcular_divergencia_metodos,
     calcular_valor_combinado,
 )
+from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 
 
 def _graham(aplicavel=True, valor_justo=100.0):
@@ -43,6 +44,27 @@ def test_tres_aplicaveis_media_dos_tres():
     assert sorted(resultado["metodos_utilizados"]) == ["bazin", "fcd", "graham"]
     assert resultado["valores_por_metodo"] == {"graham": 100.0, "bazin": 60.0, "fcd": 90.0}
     assert resultado["motivo_nao_aplicavel"] is None
+
+
+def test_fcd_nao_aplicavel_por_exclusao_ou_fluxo_nao_positivo_fica_fora_da_media():
+    # Resultados reais do FCD (não mocks): seguradora, Itaúsa e fluxo de
+    # referência não positivo ficam "não aplicáveis" e o combinado é só o
+    # Graham, nunca uma média com um valor inventado.
+    comum = {"numero_acoes": 100.0, "selic_meta": 0.10, "ipca_12m": 0.04}
+    fcd_nao_aplicaveis = [
+        calcular_valor_justo_fcd(fcf_atual=1000.0, segmento_setorial="Seguradoras", **comum),
+        calcular_valor_justo_fcd(fcf_atual=1000.0, ticker="ITSA4", **comum),
+        calcular_valor_justo_fcd(fcf_atual=-500.0, **comum),
+    ]
+    for resultado_fcd in fcd_nao_aplicaveis:
+        assert resultado_fcd["aplicavel"] is False
+        resultado = calcular_valor_combinado(
+            _graham(valor_justo=100.0), _bazin(aplicavel=False), resultado_fcd
+        )
+
+        assert resultado["aplicavel"] is True
+        assert resultado["valor_combinado"] == pytest.approx(100.0)
+        assert resultado["metodos_utilizados"] == ["graham"]
 
 
 def test_um_inaplicavel_media_dos_dois_restantes():

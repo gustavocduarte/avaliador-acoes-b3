@@ -2,6 +2,9 @@ import pytest
 
 from avaliador_b3.config import (
     ALIQUOTA_IR_CSLL_PADRAO,
+    MOTIVO_FCD_FLUXO_NAO_POSITIVO,
+    MOTIVO_FCD_HOLDING_FINANCEIRA,
+    MOTIVO_FCD_SEGURADORA,
     PREMIO_RISCO_MERCADO_BRASIL,
     SPREAD_CREDITO_PADRAO,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
@@ -202,11 +205,26 @@ def test_calcular_valor_justo_fcd_caminho_feliz_sem_crescimento_bate_formula_fec
     assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)
 
 
-def test_calcular_valor_justo_fcd_aplicavel_com_fcf_negativo():
-    # Empresa com prejuízo atual: o FCD continua aplicável (diferente de
-    # Graham/Bazin), só produz um valor justo baixo/negativo.
+@pytest.mark.parametrize("fcf_atual", [-500.0, 0.0])
+def test_calcular_valor_justo_fcd_fcf_do_ano_de_referencia_nao_positivo_e_nao_aplicavel(
+    fcf_atual,
+):
     resultado = fcd.calcular_valor_justo_fcd(
-        fcf_atual=-500.0,
+        fcf_atual=fcf_atual,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=400.0,
+        divida_liquida_sobre_patrimonio=None,
+    )
+    assert resultado["aplicavel"] is False
+    assert resultado["valor_justo"] is None
+    assert resultado["motivo_nao_aplicavel"] == MOTIVO_FCD_FLUXO_NAO_POSITIVO
+
+
+def test_calcular_valor_justo_fcd_ano_base_negativo_continua_caindo_para_o_ipca():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
         numero_acoes=100.0,
         selic_meta=0.10,
         ipca_12m=0.04,
@@ -214,8 +232,7 @@ def test_calcular_valor_justo_fcd_aplicavel_com_fcf_negativo():
         divida_liquida_sobre_patrimonio=None,
     )
     assert resultado["aplicavel"] is True
-    assert resultado["valor_justo"] < 0
-    assert resultado["taxa_crescimento_explicita"] == pytest.approx(0.04)  # cai pro IPCA
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(0.04)
 
 
 def test_calcular_valor_justo_fcd_sem_historico_cai_para_ipca():
@@ -403,11 +420,7 @@ def test_calcular_valor_justo_fcd_banco_e_nao_aplicavel():
     assert resultado["motivo_nao_aplicavel"] == fcd.MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA
 
 
-def test_calcular_valor_justo_fcd_seguradora_continua_aplicavel():
-    # Só "Bancos" é excluído — seguradoras têm dívida líquida reportada
-    # normalmente pelo Fundamentus (confirmado na investigação que
-    # motivou essa correção) e não compartilham a mesma lacuna de dado
-    # nem, necessariamente, a mesma distorção econômica dos bancos.
+def test_calcular_valor_justo_fcd_seguradora_e_nao_aplicavel():
     resultado = fcd.calcular_valor_justo_fcd(
         fcf_atual=1000.0,
         numero_acoes=100.0,
@@ -415,6 +428,40 @@ def test_calcular_valor_justo_fcd_seguradora_continua_aplicavel():
         ipca_12m=0.04,
         fcf_ha_n_anos=900.0,
         segmento_setorial="Seguradoras",
+    )
+    assert resultado["aplicavel"] is False
+    assert resultado["valor_justo"] is None
+    assert resultado["motivo_nao_aplicavel"] == MOTIVO_FCD_SEGURADORA
+
+
+def test_calcular_valor_justo_fcd_itausa_e_nao_aplicavel_por_ticker():
+    # ITSA4 está no segmento "Holdings Diversificadas": a exclusão é por
+    # ticker, então outra holding do mesmo segmento segue aplicável.
+    comum = {
+        "fcf_atual": 1000.0,
+        "numero_acoes": 100.0,
+        "selic_meta": 0.10,
+        "ipca_12m": 0.04,
+        "fcf_ha_n_anos": 900.0,
+        "segmento_setorial": "Holdings Diversificadas",
+    }
+    itausa = fcd.calcular_valor_justo_fcd(**comum, ticker="ITSA4")
+    outra_holding = fcd.calcular_valor_justo_fcd(**comum, ticker="XXXX3")
+
+    assert itausa["aplicavel"] is False
+    assert itausa["motivo_nao_aplicavel"] == MOTIVO_FCD_HOLDING_FINANCEIRA
+    assert outra_holding["aplicavel"] is True
+
+
+def test_calcular_valor_justo_fcd_bolsa_continua_aplicavel():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        segmento_setorial="Serviços Financeiros Diversos",
+        ticker="B3SA3",
     )
     assert resultado["aplicavel"] is True
     assert resultado["valor_justo"] is not None
