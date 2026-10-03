@@ -519,6 +519,11 @@ Em perto de 1 em cada 4 ações com FCD (16 de 70), o valor calculado fica muito
 - **Arrendamentos:** o pagamento de arrendamentos (aluguéis de longo prazo) não entra no fluxo. A dívida líquida usada vem do Fundamentus e só inclui o arrendamento quando a empresa o registra como empréstimo ou financiamento (é o caso de PETR4 e CSAN3; em RADL3, KLBN11, WEGE3, MGLU3 e TIMS3 ele fica de fora). Onde o arrendamento está na dívida, há uma pequena dupla contagem, porque os juros dele continuam descontados do fluxo. Esse tratamento será revisto quando o arrendamento passar a entrar na dívida de todas as empresas.
 - **Porcentagem "reinvestida":** a frase "reinvestiu X% do caixa gerado" no cartão do FCD usa todo o caixa das atividades de investimento (inclui aplicações e participações), e não só a compra de imobilizado e intangível usada no fluxo. Por isso pode não bater com o fluxo.
 
+## Participação dos não controladores e número de ações
+
+- **Participação dos não controladores:** o FCD parte do fluxo de caixa da empresa inteira (consolidado) e não desconta a parte que pertence aos sócios minoritários das empresas controladas. Em empresas com muitos minoritários (a CSAN3 tem 84% do patrimônio nessa conta), o valor justo por ação sai muito acima do que sobra para os acionistas da própria empresa. Quando esse desconto passar a ser feito, empresas como a GOAU4 (Metalúrgica Gerdau, com 64% do patrimônio em não controladores) podem ficar com valor justo negativo. O valor negativo é mostrado como está, com o aviso "Valor justo zero ou negativo", sem ser limitado a zero: não quer dizer que a ação valha menos que zero, e sim que o fluxo da empresa não cobre a dívida e a parte dos minoritários.
+- **Número de ações:** o número usado no FCD e no Graham vem do Fundamentus e, na maioria das empresas, inclui as ações em tesouraria (as que a própria empresa recomprou e não recebem dividendos). Isso deixa o valor por ação de 1% a 9% abaixo do que seria com as ações em circulação (por exemplo, PRIO3 e YDUQ3). Quando a empresa faz uma oferta de ações depois da data do balanço (EGIE3 e ISAE4, em julho de 2026), o número já inclui as ações novas, mas a dívida e o patrimônio ainda não incluem o dinheiro captado, e o valor por ação sai abaixo do que seria.
+
 ## Bazin e Graham
 
 - O **preço teto do Bazin** é o máximo a pagar para receber 6% ao ano em dividendos; não é uma estimativa de valor. Dividendos extraordinários o distorcem.
@@ -580,13 +585,13 @@ Cada decisão está ligada ao número da pergunta em aberto da seção 8 que ela
 | 9 — Vocabulário "Potencial" (P11) | **Aprovado** o vocabulário da seção 6; a coluna `desconto_percentual` continua no CSV. | Decidido; implementado no commit `26e8002` |
 | 10 — Implementação do capex por descrição | Implementar com a alt3 decidida (pergunta 2), com fixtures e teste de cobertura. Nos zips locais, o capex é identificado em 63 das 64 empresas não financeiras em 2025 (a exceção é a IGTI11) e em 63 de 63 em 2020. | Decidido; implementado no commit `78f671e` |
 | 11 — Teste frágil (`tests/test_conftest.py:14`) | Corrigir agora, em etapa própria: o teste não pode depender de o arquivo real existir ou não. | Decidido; corrigido no commit `e29e83b` |
-| 12 — Participação de não controladores | Verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida; medir depois, nas 76, o peso dos não controladores sobre o patrimônio. | Investigado (seção 11) |
+| 12 — Participação de não controladores | Verificar se o FCD subtrai a participação de não controladores do balanço consolidado, além da dívida líquida; medir depois, nas 76, o peso dos não controladores sobre o patrimônio. **Decisão sobre o ajuste A (03/10/2026):** o valor negativo depois do ajuste A é mostrado com o aviso "Valor justo zero ou negativo", sem limitar a zero; o caso GOAU4 vai para as limitações conhecidas (rascunho na seção 7). | Investigado (seção 11) |
 | 13 — Juros de arrendamento em 6.01 na alt3 | A soma de volta considera só linhas dedicadas a juros de empréstimos, financiamentos e debêntures em 6.01. Linhas de juros de arrendamento e linhas mistas (principal e juros, ou juros de arrendamento e de outra dívida) ficam de fora, independentemente de o arrendamento estar dentro da dívida do Fundamentus. Isso simplifica a proposta original, que incluía os juros de arrendamento quando o arrendamento está na dívida. A decisão vale até a etapa do arrendamento como dívida, quando será revista. Onde o arrendamento já está dentro da dívida do Fundamentus (PETR4 e CSAN3), gera uma pequena dupla contagem: os juros do arrendamento continuam descontados do fluxo e o passivo também é subtraído na dívida líquida. Caso conhecido: MRVE3, cuja única linha de juros em 6.01 mistura terrenos e arrendamentos (cerca de R$ 70,9 mi) e não entra na soma. | Decidido; implementado no commit `78f671e` |
 | 14 — Mesmo tipo de demonstração nos dois anos do crescimento | Quando o ano de referência e o ano-base usam demonstrações diferentes e a do ano de referência existe, com valores, também no ano-base, o ano-base usa a mesma; senão vale a escolha padrão. Com a alt3, o crescimento da ASAI3 passa de 19,5% para 15,1% e o FCD de R$ 44,53 para R$ 36,55 (o 4,2% → 10,8% da seção 10.6 era do fluxo antigo, 6.01 + 6.02). TIMS3, BRAP4 e SANB11 trocam a demonstração do ano-base sem efeito relevante (no SANB11 o crescimento já estava no piso de −20% e o FCD não se aplica). SBSP3 não muda: a consolidada de 2020 não existe com valores. | Decidido; implementado no commit `77530c4` |
 | 15 — Patrimônio usado nos pesos do WACC | Usar o patrimônio líquido total (controladores + não controladores), coerente com o fluxo e a dívida consolidados. Os pesos a valor de mercado continuam como limitação do P09. | Em aberto |
-| 16 — Número de ações divergente da CVM | Investigar a causa nas ações EGIE3 (+24%), VALE3 (+4,3%) e AXIA3 (−3,9%) (bonificação, cancelamento de tesouraria, classes de ações) e o efeito no FCD por ação, como no P06. | Em aberto |
+| 16 — Número de ações divergente da CVM | Investigar a causa nas ações EGIE3 (+24%), VALE3 (+4,3%) e AXIA3 (−3,9%) (bonificação, cancelamento de tesouraria, classes de ações) e o efeito no FCD por ação, como no P06. | Investigado (seção 12) |
 
-**Em aberto:** perguntas 5, 8, 15 e 16; a decisão da pergunta 12 (investigada na seção 11); a etapa do arrendamento na dívida líquida (pergunta 2); e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
+**Em aberto:** perguntas 5, 8 e 15; a decisão da pergunta 16 (investigada na seção 12); a decisão da pergunta 12 (investigada na seção 11); a etapa do arrendamento na dívida líquida (pergunta 2); e, na pergunta 7, o aviso mais forte na tela para FCD extremo (só informativo, não altera o cálculo nem o valor combinado).
 
 **Fora desta rodada:** a regeneração do `data/processed/screener.csv`, que ainda reflete o cálculo anterior à alt3, e a etapa do arrendamento na dívida líquida.
 
@@ -814,3 +819,129 @@ Calculadas importando `calcular_valor_justo_fcd` sem alteração: o ajuste **A**
 **CONFIRMADO nos dados (CVM e Fundamentus de 30/06/2026):** o "Patrim. Líq" e o índice do Fundamentus usam o patrimônio dos controladores (51 de 51 empresas não financeiras com não controladores; índice = dívida líquida ÷ PL dos controladores nas 53 com FCD); 11 empresas com FCD passam de 10% de não controladores, com a CSAN3 em 84,4%; o número de ações da CSAN3 do Fundamentus é igual ao da CVM nas três datas disponíveis (31/12/2025, 31/03/2026 e 30/06/2026); a decomposição da seção 11.5.
 
 **HIPÓTESE (não testada):** o valor de mercado dos minoritários da CSAN3 (Rumo e Compass) é maior que o contábil de R$ 26,9 bi; um aumento de capital da Cosan depois de 30/06/2026; as diferenças de número de ações de EGIE3, VALE3 e AXIA3; e a origem do restante de R$ 1,30 da CSAN3 contra o preço (por exemplo, premissas de fluxo e crescimento, ver seção 5).
+
+
+---
+
+## 12. Pergunta 16: número de ações (03/10/2026)
+
+Investigação só de leitura; nada no código, nos testes ou em `data/` foi alterado. Scripts e dados em `%TEMP%\investigacao_p16`. Fontes: composição do capital da CVM em 7 datas (DFP 2024 e 2025; ITR de 2025 e de 2026, de 31/12/2024 a 30/06/2026; para o ITR de 2025 foi baixado o zip, 31,7 MB); páginas e caches do Fundamentus de 03/10/2026; coluna "Stock Splits" do histórico de 1 ano do Yahoo; balanço consolidado (BPP) do ITR de 30/06/2026; fontes externas, listadas em 12.3 (as páginas que não puderam ser abertas estão marcadas).
+
+### 12.1 De onde vem o número e onde é usado (CONFIRMADO no código)
+
+- **Origem:** campo "Nro. Ações" do Fundamentus (`config.py:245`), convertido para a base da cotação nas units por `_numero_acoes_na_base_da_cotacao` (`fundamentus.py:119-136`, chamada em `fundamentus.py:150-154`): divide o número pelo fator `Nro. Ações × Cotação ÷ Valor de mercado`, que deve ser inteiro (tolerância de 2%, `config.py:232`), senão o número fica indisponível. O site não informa a data a que o número se refere.
+- **Onde é usado:** o FCD por ação (`fcd.py:307` valida, `fcd.py:363` divide; chamadas em `app/main.py:1032` e `screener.py:460`) e o valor de mercado e valor da firma (`app/main.py:1301` para `empresa/valor_mercado.py:29-30`, preço × número de ações).
+- **Graham e Bazin não usam o número diretamente.** O Graham usa o LPA e o VPA do Fundamentus, mas esses são calculados sobre o mesmo número (CONFIRMADO nos dados: VPA × número de ações = patrimônio dos controladores, e LPA × número de ações = lucro dos 12 meses até 30/06/2026, com razão entre 0,99 e 1,01 nas 23 divergentes que dá para conferir; KLBN11 e ASAI3 não dá para conferir o LPA), então o Graham muda na mesma proporção do número. O Bazin usa os dividendos por ação do Yahoo e o preço do Yahoo, na mesma base por ação, e não depende do número.
+- **O número inclui as ações em tesouraria?** Na maioria, sim: 68 das 76 ações ficam a menos de 1% do capital integralizado da CVM (que inclui a tesouraria), contra 51 das 76 a menos de 1% do número em circulação (integralizado menos tesouraria).
+
+### 12.2 Comparação nas 76 ações (CONFIRMADO nos dados)
+
+Referência: composição do capital do ITR de 30/06/2026, em ações ordinárias, preferenciais e tesouraria, com o **número em circulação** (integralizado menos tesouraria) como referência principal. Dois cuidados: em 22 empresas a CVM informa a composição em milhares (razão de 1.000 contra o Fundamentus), o que foi normalizado; e nas units o número do app está na base da unit, então a comparação usa o fator de ações por unit (KLBN11 e ENGI11, 5; IGTI11, 4; TAEE11 e BPAC11, 3; SANB11, 2). Sinal: **positivo = Fundamentus maior que a CVM.** Datas: a CVM é de 30/06/2026; o do Fundamentus não é informado pelo site e, como mostra 12.3, em vários casos é posterior a 30/06.
+
+51 das 76 ficam a menos de 1% do número em circulação. As **25 que passam de 1%** (milhões de ações; "Grupo" explicado em 12.3):
+
+| Ticker | ON (mi) | PN (mi) | Tesouraria (mi) | Integralizado CVM (mi) | Em circulação CVM (mi) | Fundamentus (mi) | vs. em circulação | vs. integralizado | FCD aplicável | Grupo |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ASAI3 | 1.353,5 | 0,0 | 15,1 | 1.353,5 | 1.338,4 | 1.354,4 | +1,2% | +0,1% | sim | A |
+| KLBN11 | 2.312,8 | 3.928,7 | 88,6 | 6.241,5 | 6.152,9 | 6.241,5 | +1,4% | +0,0% | sim | A |
+| ENEV3 | 1.937,0 | 0,0 | 24,0 | 1.937,0 | 1.913,0 | 1.944,4 | +1,6% | +0,4% | não | A |
+| RENT3 | 1.082,6 | 41,6 | 19,6 | 1.124,3 | 1.104,6 | 1.124,3 | +1,8% | +0,0% | sim | A |
+| USIM5 | 705,3 | 547,8 | 22,1 | 1.253,1 | 1.230,9 | 1.253,1 | +1,8% | +0,0% | sim | A |
+| AZZA3 | 206,5 | 0,0 | 4,3 | 206,5 | 202,2 | 206,5 | +2,1% | +0,0% | sim | A |
+| UGPA3 | 1.115,8 | 0,0 | 25,1 | 1.115,8 | 1.090,7 | 1.115,8 | +2,3% | +0,0% | sim | A |
+| SUZB3 | 1.264,1 | 0,0 | 31,0 | 1.264,1 | 1.233,1 | 1.264,1 | +2,5% | +0,0% | sim | A |
+| CEAB3 | 308,2 | 0,0 | 8,2 | 308,2 | 300,0 | 308,2 | +2,7% | -0,0% | sim | A |
+| RDOR3 | 2.240,3 | 0,0 | 60,1 | 2.240,3 | 2.180,2 | 2.240,3 | +2,8% | -0,0% | sim | A |
+| COGN3 | 2.064,3 | 0,0 | 63,0 | 2.064,3 | 2.001,2 | 2.064,3 | +3,2% | +0,0% | sim | A |
+| EMBJ3 | 740,5 | 0,0 | 28,6 | 740,5 | 711,8 | 740,5 | +4,0% | +0,0% | sim | A |
+| CYRE3 | 384,0 | 69,4 | 17,7 | 453,4 | 435,8 | 453,4 | +4,1% | +0,0% | não | A |
+| MULT3 | 513,2 | 0,0 | 22,1 | 513,2 | 491,0 | 513,2 | +4,5% | +0,0% | sim | A |
+| LREN3 | 1.006,8 | 0,0 | 45,6 | 1.006,8 | 961,3 | 1.006,8 | +4,7% | -0,0% | sim | A |
+| HAPV3 | 502,6 | 0,0 | 27,5 | 502,6 | 475,1 | 502,6 | +5,8% | +0,0% | sim | A |
+| YDUQ3 | 274,1 | 0,0 | 19,6 | 274,1 | 254,4 | 274,1 | +7,7% | +0,0% | sim | A |
+| PRIO3 | 872,5 | 0,0 | 74,3 | 872,5 | 798,2 | 872,5 | +9,3% | -0,0% | sim | A |
+| ISAE4 | 238,2 | 420,7 | 0,0 | 658,9 | 658,9 | 703,3 | +6,7% | +6,7% | não | B |
+| EGIE3 | 1.142,3 | 0,0 | 0,0 | 1.142,3 | 1.142,3 | 1.416,4 | +24,0% | +24,0% | sim | B |
+| VALE3 | 4.255,8 | 0,0 | 183,4 | 4.255,8 | 4.255,8 | 4.439,2 | +4,3% | +4,3% | sim | C |
+| AXIA3 | 2.337,0 | 606,2 | 75,9 | 2.943,2 | 2.867,3 | 2.828,6 | -1,3% | -3,9% | sim | D |
+| IGTI11 | 771,0 | 435,4 | 1,8 | 1.206,4 | 1.204,6 | 1.186,9 | -1,5% | -1,6% | não | E |
+| TOTS3 | 599,4 | 0,0 | 26,2 | 599,4 | 573,2 | 579,4 | +1,1% | -3,3% | sim | E |
+| TEND3 | 122,6 | 0,0 | 65,1 | 122,6 | 122,5 | 122,6 | +0,1% | +0,0% | sim | F |
+
+Nota para VALE3 e TEND3: na VALE3 o integralizado de 2026 já vem líquido da tesouraria (ver 12.3), então o "em circulação" é o próprio integralizado; na TEND3, a tesouraria de 65.148 da CVM está em ações, não em milhares (ver 12.3), e o "em circulação" usa 0,065 milhão.
+
+### 12.3 Causas
+
+**Grupo A, tesouraria (18 ações: ASAI3, KLBN11, ENEV3, RENT3, USIM5, AZZA3, UGPA3, SUZB3, CEAB3, RDOR3, COGN3, EMBJ3, CYRE3, MULT3, LREN3, HAPV3, YDUQ3, PRIO3).** O Fundamentus é igual ao capital integralizado da CVM (diferença abaixo de 0,5%), então inclui a tesouraria, de 1,1% (ASAI3) a 8,5% (PRIO3) do capital. Para todas, a divergência é só a tesouraria (CONFIRMADO).
+
+**Grupo B, oferta de ações depois do balanço (EGIE3 e ISAE4).**
+- **EGIE3 (+24,0%).** A CVM mostra 815,928 mi de ações até 30/09/2025 e 1.142,299 mi desde 31/12/2025: bonificação de 40% (1 ação nova para cada 2,5; data ex em 27/11/2025), que o Yahoo também registra como split de 1,4 em 27/11/2025 (CONFIRMADO). O número do Fundamentus, 1.416,38 mi, é igual a 1.142,299 mi mais 274,083 mi de ações novas de uma oferta primária aprovada em 14/07/2026 (274.082.684 ações a R$ 30,50, cerca de R$ 8,36 bi, com total de 1.416.381.520 ações), posterior ao ITR de 30/06/2026. A coincidência é exata e a causa fica CONFIRMADA; os dados da oferta vêm de resultado de busca (a página abaixo respondeu 403 quando aberta): <https://br.advfn.com/jornal/2026/07/engie-brasil-precifica-oferta-de-acoes-em-r-30-50-e-capta-r-8-36-bilhoes-para-reforcar-capital-social>. A bonificação consta do fato relevante de 05/11/2025: <https://www.engie.com.br/wp-content/uploads/2025/11/251105-Fato-Relevante-Aumento-de-Capital-Bonificacao.pdf>.
+- **ISAE4 (+6,7%).** A CVM mostra 658,883 mi de ações, sem mudança desde 2024 (só reclassificação entre ordinárias e preferenciais em 30/06/2026). O Fundamentus tem 703,328 mi, igual a 658,883 mi mais 44,445 mi de uma oferta de ações preferenciais a R$ 27,00 (cerca de R$ 1,2 bi; novas ações negociadas a partir de 27/07/2026; total de 703.327.748 segundo a notícia): <https://www.clubefiinews.com.br/acoes/isa-energia-brasil-aumenta-capital-oferta-publica-acoes-preco-27-reais> (resultado de busca; a página não foi aberta).
+
+**Grupo C, VALE3 (+4,3%).** O conselho aprovou em março de 2026 o cancelamento de 99.847.816 ações em tesouraria, o que leva o capital social a 4.439.159.752 ações ordinárias (e 12 preferenciais especiais) e deixa 170.379.611 em tesouraria (resultado de busca; fontes: <https://br.advfn.com/jornal/2026/03/vale-cancela-quase-100-milhoes-de-acoes-em-tesouraria-e-reduz-base-acionaria-na-b3> e <https://www.seudinheiro.com/2026/bolsa-dolar/vale-vale3-cancela-acoes-mantidas-em-tesouraria-entenda-o-que-significa-para-o-acionista/>). O número do Fundamentus, 4.439,16 mi, é o **capital social total**, com a tesouraria dentro. Na CVM, o campo "integralizado" era 4.539,007 mi até 31/12/2025 (capital emitido, com 270,2 mi em tesouraria) e passou a 4.262,534 mi em 31/03/2026 e 4.255,763 mi em 30/06/2026: **este valor é o capital social menos a tesouraria** (4.439,160 − 183,397 = 4.255,763), ou seja, o campo "integralizado" da Vale já vem líquido a partir de 2026. Consequências: o número em circulação da Vale é 4.255,763 mi (o app está 4,3% acima), e subtrair a tesouraria do "integralizado" da CVM descontaria duas vezes (−4,3%).
+
+**Grupo D, AXIA3 (−1,3%).** O integralizado da CVM foi de 2.915,4 mi (31/12/2025, com 886,9 mi de preferenciais) para 2.943,2 mi (30/06/2026: 2.337,0 mi ordinárias e 606,2 mi preferenciais, depois da conversão das preferenciais A1 e B1 em ordinárias, na razão de 1,1 para 1, em 05/06/2026). Em 16/09/2026 a Axia concluiu a terceira fase do programa de conversão e resgate das preferenciais classe C: 69.886.551 convertidas e 41.648.420 resgatadas e canceladas, com total de 2.874.657.070 ações (2.417.135.038 ordinárias e 457.522.031 preferenciais C): <https://www.suno.com.br/noticias/axia-energia-axia3-resgate-conversao-pncs-mt/> (página aberta). O número do Fundamentus, 2.828,64 mi, não coincide com nenhuma data da CVM; está 46,0 mi abaixo do total de 16/09/2026. **HIPÓTESE:** é a contagem posterior a 16/09 descontada a tesouraria (não confirmada).
+
+**Grupo E (HIPÓTESE, não investigados a fundo).** TOTS3 (+1,1%): o Fundamentus (579,40 mi) fica a 0,08% do número em circulação de 31/03/2026 (579,85 mi) e não do de 30/06 (573,2 mi). IGTI11 (−1,5%, sem FCD): o fator de 4 ações por unit pode estar um pouco fora (a conversão exige fator inteiro).
+
+**Grupo F, TEND3 (erro de dado da CVM, CONFIRMADO).** O ITR de 30/06/2026 (versão 2) informa tesouraria de 65.148 em um capital de 122.578 (ambos supostamente em milhares), o que seria 53% do capital, contra zero em 31/03/2026. Mas o balanço do mesmo ITR mostra "Ações em Tesouraria" de apenas R$ 1,9 milhão, o que dá R$ 0,03 por ação se forem 65,1 milhões de ações e R$ 29,8 por ação (perto do preço de R$ 27 a R$ 28) se forem **65.148 ações**. A tesouraria está em ações e não em milhares: o número em circulação é cerca de 122,5 mi, igual ao do Fundamentus. Usar o campo sem cuidado cortaria o número em 53% e dobraria o valor por ação.
+
+### 12.4 Coerência com o preço (CONFIRMADO nos dados)
+
+O preço usado é o último fechamento do Yahoo (preço nominal do dia, sem ajuste, 01/10/2026 no `screener.csv`; a cotação que aparece no Fundamentus é de 02/10/2026). Eventos no histórico de 1 ano do Yahoo (coluna "Stock Splits"): MGLU3 1,05 (30/12/2025), POMO4 1,1 e COGN3 1,1 (26/12/2025), KLBN11 1,01, ITSA4 1,02, ITUB4 1,03, RADL3 1,02, GOAU4 1,3333, ENGI11 1,1, VBBR3 1,0711, EGIE3 1,4 (27/11/2025) e SBSP3 (1,0296 em 26/12/2025, 1,0016 em 20/03/2026 e 5,0 em 29/04/2026). Para essas ações, o número do Fundamentus e o da CVM estão na mesma base do preço (a menos de 1% do integralizado), com duas exceções, ambas por oferta posterior ao balanço:
+
+- **EGIE3 e ISAE4:** o número de ações e o preço são posteriores à oferta, mas a dívida líquida, o patrimônio e o fluxo são de 30/06/2026, sem o caixa captado. O FCD e o Graham ficam subavaliados por isso. Na EGIE3, o valor do acionista no FCD é R$ 10,52 bi (7,43 × 1.416,38 mi); somando os R$ 8,36 bi captados (HIPÓTESE: o caixa entra inteiro na dívida líquida, sem contar o uso dos recursos), o valor por ação seria R$ 13,33, contra R$ 7,43 hoje e R$ 9,21 com o número de 30/06.
+- **Os demais:** nenhum tem número e preço em bases diferentes; a divergência vem só da tesouraria ou de um erro de dado.
+
+### 12.5 Efeito por método (CONFIRMADO com a função existente)
+
+Recalculado com `calcular_valor_justo_fcd` e `calcular_valor_justo_graham` importadas sem alteração, com o número em circulação da CVM de 30/06/2026 (VALE3: o próprio integralizado; TEND3: tesouraria de 0,065 mi; AXIA3 e demais: integralizado menos tesouraria). No Graham, LPA e VPA são multiplicados pela razão entre o número do Fundamentus e o da CVM. **O Bazin não muda** (dividendos por ação e preço do Yahoo), então **FCD e Graham ficam, hoje, subavaliados em relação ao Bazin** nas ações com tesouraria ou oferta posterior, e todos os três ficam coerentes entre si com o número da CVM de 30/06. Ordenado pelo tamanho da divergência (razão = Fundamentus ÷ referência; potencial em %):
+
+| Ticker | Fundamentus ÷ referência | FCD atual → novo | Graham atual → novo | Bazin (inalterado) | Valor combinado atual → novo | Potencial atual → novo |
+|---|---|---|---|---|---|---|
+| EGIE3 | 1.240 | 7,43 → 9,21 | 25,84 → 32,04 | 18,59 | 17,29 → 19,95 | -41,1% → -32,0% |
+| PRIO3 | 1.093 | 32,64 → 35,67 | 56,78 → 62,06 | — | 44,71 → 48,87 | -27,3% → -20,5% |
+| YDUQ3 | 1.077 | 35,76 → 38,52 | 9,91 → 10,67 | 9,49 | 18,38 → 19,56 | +66,5% → +77,2% |
+| ISAE4 | 1.067 | — | 53,32 → 56,92 | — | 53,32 → 56,92 | +92,7% → +105,7% |
+| HAPV3 | 1.058 | -0,63 → -0,67 | — | — | -0,63 → -0,67 | -109,1% → -109,7% |
+| LREN3 | 1.047 | 26,28 → 27,52 | 18,52 → 19,40 | 15,34 | 20,05 → 20,75 | +74,9% → +81,1% |
+| MULT3 | 1.045 | 1,32 → 1,38 | 28,27 → 29,55 | 19,35 | 16,32 → 16,76 | -48,9% → -47,5% |
+| VALE3 | 1.043 | -2,28 → -2,38 | 48,29 → 50,38 | 93,54 | 46,52 → 47,18 | -33,9% → -33,0% |
+| CYRE3 | 1.041 | — | 49,94 → 51,96 | 45,50 | 47,72 → 48,73 | +75,9% → +79,6% |
+| EMBJ3 | 1.040 | 21,21 → 22,06 | 41,40 → 43,06 | — | 31,30 → 32,56 | -67,7% → -66,4% |
+| COGN3 | 1.032 | 5,64 → 5,82 | 7,13 → 7,36 | — | 6,39 → 6,59 | +173,0% → +181,6% |
+| RDOR3 | 1.028 | -3,16 → -3,25 | 21,15 → 21,74 | 70,13 | 29,37 → 29,54 | -23,4% → -23,0% |
+| CEAB3 | 1.027 | 17,82 → 18,31 | 22,48 → 23,10 | — | 20,15 → 20,70 | +103,7% → +109,3% |
+| SUZB3 | 1.025 | 105,99 → 108,65 | 75,59 → 77,49 | — | 90,79 → 93,07 | +109,9% → +115,1% |
+| UGPA3 | 1.023 | 24,08 → 24,63 | 33,50 → 34,27 | 33,33 | 30,30 → 30,75 | -20,6% → -19,5% |
+| AZZA3 | 1.021 | 53,50 → 54,64 | 37,09 → 37,88 | 41,27 | 43,95 → 44,60 | +136,2% → +139,6% |
+| USIM5 | 1.018 | 4,58 → 4,66 | — | — | 4,58 → 4,66 | -35,8% → -34,7% |
+| RENT3 | 1.018 | 62,98 → 64,10 | 40,68 → 41,40 | 35,49 | 46,38 → 47,00 | +15,3% → +16,8% |
+| ENEV3 | 1.016 | — | 10,85 → 11,03 | — | 10,85 → 11,03 | -61,4% → -60,8% |
+| IGTI11 | 0.985 | — | 28,37 → 27,96 | — | 28,37 → 27,96 | +3,8% → +2,3% |
+| KLBN11 | 1.014 | 48,51 → 49,21 | 8,77 → 8,90 | 19,35 | 25,55 → 25,82 | +41,8% → +43,3% |
+| AXIA3 | 0.987 | 45,30 → 44,69 | 64,36 → 63,49 | 31,49 | 47,05 → 46,56 | -14,7% → -15,6% |
+| ASAI3 | 1.012 | 36,46 → 36,89 | 8,66 → 8,76 | — | 22,56 → 22,82 | +102,1% → +104,5% |
+| TOTS3 | 1.011 | 32,85 → 33,20 | 22,83 → 23,08 | 11,33 | 22,34 → 22,54 | -35,3% → -34,7% |
+| TEND3 | 1.001 | 16,28 → 16,28 | 36,52 → 36,54 | — | 26,40 → 26,41 | -3,9% → -3,8% |
+
+O efeito no valor combinado vai de +0,1% (TEND3) a +15,4% na EGIE3 (17,29 para 19,95) e +9,3% na PRIO3 (44,71 para 48,87); em nenhuma das 25 o sinal do valor combinado muda. AXIA3 (−1,1%) e IGTI11 (−1,5%) são as únicas com redução.
+
+### 12.6 Proposta
+
+1. **Qual número usar:** ações **em circulação** (capital integralizado menos tesouraria) da composição do capital do ITR ou DFP mais recente, na **mesma data-base do balanço** usado para a dívida líquida e o patrimônio (a coluna `data_balanco_fundamentus`, hoje 30/06/2026). Assim FCD, Graham, valor de mercado e valor da firma ficam coerentes entre si e com a dívida e o patrimônio.
+2. **Units:** manter o tratamento atual (P06): o número da CVM é dividido pelo fator inteiro de ações por unit calculado com os dados do Fundamentus (`Nro. Ações × Cotação ÷ Valor de mercado`), e fator não inteiro continua deixando o número indisponível.
+3. **Graham:** reescalar LPA e VPA do Fundamentus pela razão entre o número do Fundamentus e o da CVM (verificado em 12.1), ou recalculá-los com os dados da mesma leitura (lucro dos 12 meses e patrimônio dos controladores ÷ número em circulação).
+4. **Salvaguardas** (os dados mostraram os três problemas): (a) **escala:** se a razão contra o Fundamentus ficar perto de 1.000, dividir a composição por 1.000 (22 empresas); (b) **tesouraria improvável:** se a tesouraria passar de 20% do capital (TEND3: 53%), não usar o campo, cair no número do Fundamentus e registrar o motivo; (c) **integralizado já líquido** (VALE3 em 2026): se integralizado mais tesouraria for igual ao número do Fundamentus (diferença menor que 0,5%), tratar o integralizado como o número em circulação; (d) **divergência acima de 2%** entre o número final e o do Fundamentus: registrar a causa provável (oferta ou conversão depois do balanço) e manter o número de 30/06.
+5. **Eventos depois do balanço (EGIE3, ISAE4):** com o número de 30/06, o valor por ação fica coerente com a dívida e o patrimônio de 30/06 (e aproximadamente igual ao valor pós-oferta quando as ações novas são emitidas perto do valor da ação), sem o efeito da oferta feita a preço diferente do valor. Fica como limitação conhecida (rascunho na seção 7).
+6. **A leitura do ITR planejada na seção 11.7 pode trazer o número de ações.** O arquivo de composição do capital (`itr_cia_aberta_composicao_capital_2026.csv`) está no mesmo zip do balanço e da DRE, tem a mesma data-base e a mesma versão mais recente, e separa ordinárias, preferenciais e tesouraria. Uma única função poderia devolver, para uma empresa e uma data, o patrimônio total, os não controladores, o passivo de arrendamento e o número de ações em circulação. **É melhor que o Fundamentus para a coerência** (data-base igual à da dívida e do patrimônio, fonte oficial, tesouraria separada), com custos: a escala heterogênea, o campo ambíguo da Vale e a defasagem de até um trimestre para eventos recentes. O Fundamentus fica como verificação cruzada.
+
+### 12.7 Confirmado e hipóteses
+
+**CONFIRMADO no código:** origem, conversão e usos do número (12.1).
+
+**CONFIRMADO nos dados:** 51 das 76 ações a menos de 1% do número em circulação e 25 acima; o Fundamentus inclui a tesouraria na maioria (68 de 76 a menos de 1% do integralizado); LPA e VPA do Fundamentus são calculados sobre o mesmo número; bonificação da EGIE3 (CVM e Yahoo); número do EGIE3 e do ISAE4 iguais ao total posterior às ofertas; VALE3 igual ao capital social total, com o "integralizado" da CVM de 2026 já líquido; erro de escala na tesouraria da TEND3 (incoerência com o balanço); efeitos de 12.5.
+
+**CONFIRMADO por fonte externa (resultados de busca, páginas indicadas em 12.3):** oferta de ações da EGIE3 (14/07/2026) e da ISAE4 (julho/2026), cancelamento de ações da Vale (março/2026), conversão e resgate de PNC da AXIA3 (16/09/2026, única página aberta).
+
+**HIPÓTESE (não confirmada):** o número da AXIA3 do Fundamentus ser a contagem de 16/09/2026 descontada a tesouraria; o número da TOTS3 ser o em circulação de 31/03/2026; o fator de unit do IGTI11; o caixa da oferta da EGIE3 entrar integralmente na dívida líquida (pro forma de R$ 13,33).
