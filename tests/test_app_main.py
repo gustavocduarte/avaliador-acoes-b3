@@ -32,6 +32,7 @@ from avaliador_b3.config import (
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
 )
+from avaliador_b3.ingest.bcb_sgs import ResultadoMacro
 from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
@@ -650,6 +651,67 @@ def test_rest_do_bcb_fora_do_ar_e_soap_respondendo_nao_mostra_aviso_de_falha_na_
     textos = [w.value for w in at.warning] + [e.value for e in at.error]
     termos_do_bcb = ("api.bcb.gov.br", "BCB", "Banco Central", "Selic", "IPCA")
     assert not [t for t in textos if any(termo in t for termo in termos_do_bcb)]
+    # A origem efetiva aparece como informação (não como aviso).
+    assert [i.value for i in at.info if "Selic e IPCA obtidos" in i.value] == [
+        "Selic e IPCA obtidos pelo serviço SOAP do Banco Central."
+    ]
+
+
+def _macro_de_teste(**campos):
+    base = dict(
+        selic_meta=0.1375,
+        ipca_12m=0.042,
+        data_ipca=pd.Timestamp("2026-08-01"),
+        usou_valor_guardado=False,
+        data_busca=pd.Timestamp("2026-10-03"),
+    )
+    return ResultadoMacro(**{**base, **campos})
+
+
+def test_aviso_de_fonte_do_macro_por_combinacao_de_fontes():
+    from avaliador_b3.app.main import _aviso_fonte_macro
+
+    assert _aviso_fonte_macro(_macro_de_teste()) == ""  # API REST: nada a avisar
+    assert (
+        _aviso_fonte_macro(_macro_de_teste(fonte_selic="BCB (SOAP)", fonte_ipca="BCB (SOAP)"))
+        == "Selic e IPCA obtidos pelo serviço SOAP do Banco Central."
+    )
+    assert (
+        _aviso_fonte_macro(_macro_de_teste(fonte_selic="BCB (SOAP)", fonte_ipca="IBGE (SIDRA)"))
+        == "Selic obtida pelo serviço SOAP do Banco Central. IPCA obtido pelo IBGE (SIDRA)."
+    )
+    assert (
+        _aviso_fonte_macro(_macro_de_teste(fonte_ipca="IBGE (SIDRA)"))
+        == "IPCA obtido pelo IBGE (SIDRA)."
+    )
+    guardado = _macro_de_teste(usou_valor_guardado=True, fonte_selic="valor guardado de 01/10/2026")
+    assert _aviso_fonte_macro(guardado) == ""
+
+
+def test_arquivo_de_referencia_mostra_aviso_com_a_data_na_pagina(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    fonte = "arquivo de referência de 20/09/2026"
+    referencia = _macro_de_teste(
+        usou_valor_guardado=True,
+        data_busca=pd.Timestamp("2026-09-20"),
+        fonte_selic=fonte,
+        fonte_ipca=fonte,
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.bcb_sgs.obter_selic_e_ipca", lambda *a, **kw: referencia
+    )
+    st.cache_data.clear()
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert any(
+        w.value
+        == "Banco Central indisponível agora. Usando a Selic e o IPCA do arquivo de referência "
+        "do projeto, obtidos em 20/09/2026."
+        for w in at.warning
+    )
 
 
 def test_fcd_com_leitura_do_balanco_nao_mostra_aviso_de_nao_controladores(monkeypatch):

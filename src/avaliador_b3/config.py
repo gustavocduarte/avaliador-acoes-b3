@@ -1196,7 +1196,8 @@ VALIDADE_MACRO_GUARDADO_DIAS = 45
 NOME_ARQUIVO_MACRO_REFERENCIA = "macro_referencia.json"
 CAMINHO_MACRO_REFERENCIA = DATA_PROCESSED_DIR / NOME_ARQUIVO_MACRO_REFERENCIA
 VALIDADE_MACRO_REFERENCIA_DIAS = 90
-FONTE_ARQUIVO_REFERENCIA = "arquivo de referência de {data}"
+PREFIXO_FONTE_ARQUIVO_REFERENCIA = "arquivo de referência"
+FONTE_ARQUIVO_REFERENCIA = PREFIXO_FONTE_ARQUIVO_REFERENCIA + " de {data}"
 
 # Pausas entre novas tentativas em erro temporário (5xx, timeout, conexão
 # — ver ingest._retry.get_com_retry), compartilhadas por toda fonte que
@@ -1249,6 +1250,19 @@ FONTE_IBGE = "IBGE (SIDRA)"
 FONTE_BCB_API = "BCB (API)"
 FONTE_BCB_SOAP = "BCB (SOAP)"
 FONTE_VALOR_GUARDADO = "valor guardado de {data}"
+
+# Textos da tela sobre a origem da Selic e do IPCA quando não vêm da API REST do Banco Central.
+FRASE_FONTE_MACRO = {
+    FONTE_BCB_SOAP: "pelo serviço SOAP do Banco Central",
+    FONTE_IBGE: "pelo IBGE (SIDRA)",
+}
+AVISO_MACRO_MESMA_FONTE = "Selic e IPCA obtidos {frase}."
+AVISO_MACRO_SELIC_FONTE = "Selic obtida {frase}."
+AVISO_MACRO_IPCA_FONTE = "IPCA obtido {frase}."
+AVISO_MACRO_ARQUIVO_REFERENCIA = (
+    "Banco Central indisponível agora. Usando a Selic e o IPCA do arquivo de referência "
+    "do projeto, obtidos em {data}."
+)
 
 # Timeout de cada tentativa de requisição ao Fundamentus. Pior caso por
 # ação: 3 tentativas × 30s + pausas de 2s e 5s = 97s.

@@ -30,6 +30,10 @@ from avaliador_b3.carteira import (
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    AVISO_MACRO_ARQUIVO_REFERENCIA,
+    AVISO_MACRO_IPCA_FONTE,
+    AVISO_MACRO_MESMA_FONTE,
+    AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
     COR_GRAFICO_CONTEXTO,
@@ -37,11 +41,13 @@ from avaliador_b3.config import (
     COR_GRAFICO_GRADE,
     COR_GRAFICO_PROTAGONISTA,
     COR_GRAFICO_TEXTO,
+    FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
+    PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_POTENCIAL,
     ROTULOS_POTENCIAL_CENARIO,
@@ -711,6 +717,23 @@ def _fmt_bilhoes_md(valor: float | None) -> str:
     return _fmt_bilhoes(valor).replace("$", "\\$")
 
 
+def _aviso_fonte_macro(macro: ResultadoMacro) -> str:
+    """Texto sobre a origem da Selic e do IPCA quando algum veio de fonte que não é a API
+    REST do Banco Central; vazio quando ambos vieram dela (ou de valor guardado)."""
+    if macro.usou_valor_guardado:
+        return ""
+    frase_selic = FRASE_FONTE_MACRO.get(macro.fonte_selic)
+    frase_ipca = FRASE_FONTE_MACRO.get(macro.fonte_ipca)
+    if frase_selic and frase_selic == frase_ipca:
+        return AVISO_MACRO_MESMA_FONTE.format(frase=frase_selic)
+    partes = []
+    if frase_selic:
+        partes.append(AVISO_MACRO_SELIC_FONTE.format(frase=frase_selic))
+    if frase_ipca:
+        partes.append(AVISO_MACRO_IPCA_FONTE.format(frase=frase_ipca))
+    return " ".join(partes)
+
+
 def _fmt_data(valor: pd.Timestamp | str | None, template: str = "%d/%m/%Y") -> str:
     """Formata uma data (Timestamp do pandas, vindo direto da coluna
     `data` dos DataFrames de preço, ou string ISO "aaaa-mm-dd", vinda de
@@ -1032,11 +1055,17 @@ with aba_analisar:
             st.warning(f"CNPJ (CVM): {erro_cnpj}")
         if erro_macro:
             st.warning(erro_macro)
+        elif macro_usou_valor_guardado and macro.fonte_selic.startswith(
+            PREFIXO_FONTE_ARQUIVO_REFERENCIA
+        ):
+            st.warning(AVISO_MACRO_ARQUIVO_REFERENCIA.format(data=_fmt_data(macro_data_busca)))
         elif macro_usou_valor_guardado:
             st.warning(
                 "Banco Central indisponível agora. Usando a Selic e o IPCA "
                 f"obtidos em {_fmt_data(macro_data_busca)}."
             )
+        elif macro and (aviso_fonte_macro := _aviso_fonte_macro(macro)):
+            st.info(aviso_fonte_macro)
         if erro_ano_fcd:
             st.warning(erro_ano_fcd)
         # Número de ações do Fundamentus que não bate com a CVM (oferta, bonificação ou
