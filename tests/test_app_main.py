@@ -508,10 +508,18 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     assert not _metrica_por_label(at, "Bazin (preço teto)").delta
 
 
+def _leitura_balanco_mock(nao_controladores=0.0, disponivel=True, motivo=None):
+    """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
+    if not disponivel:
+        return {"disponivel": False, "motivo": motivo}
+    return {"disponivel": True, "motivo": None, "nao_controladores": nao_controladores}
+
+
 def _preparar_fcd_aplicavel(
     monkeypatch,
     divida_liquida: float | None,
     segmento_setorial: str = "Petróleo, Gás e Biocombustíveis",
+    leitura_balanco: dict | None = None,
 ) -> None:
     """Configura mocks pro FCD ficar 'aplicável' de verdade — diferente
     dos outros testes deste arquivo (que mockam `obter_catalogo_
@@ -545,7 +553,12 @@ def _preparar_fcd_aplicavel(
             "divida_liquida_sobre_patrimonio": 0.5,
             "divida_liquida": divida_liquida,
             "data_balanco_fundamentus": "2026-06-30",
+            "acoes_por_cotacao": 1,
         },
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.balanco_cvm.obter_leitura_balanco",
+        lambda *args, **kwargs: leitura_balanco or _leitura_balanco_mock(),
     )
     monkeypatch.setattr(
         "avaliador_b3.ingest.crosswalk_cnpj.resolver_cnpj",
@@ -584,6 +597,57 @@ def test_fcd_nao_mostra_aviso_quando_divida_liquida_esta_disponivel(monkeypatch)
 
     avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
     assert avisos_divida == []
+
+
+def test_fcd_com_leitura_do_balanco_nao_mostra_aviso_de_nao_controladores(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [c.value for c in at.caption if "não controladores" in c.value]
+
+
+def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    sem_ajuste = _metrica_por_label(at, "FCD").value
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(nao_controladores=10_000.0),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != sem_ajuste
+
+
+def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_na_explicacao_do_cartao(monkeypatch):
+    from avaliador_b3.config import TEXTO_SEM_DESCONTO_NAO_CONTROLADORES
+
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(
+            disponivel=False,
+            motivo="A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM.",
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "FCD").value != "—"
+    esperado = TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(
+        motivo="A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM."
+    )
+    assert esperado in [c.value for c in at.caption]
 
 
 def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):

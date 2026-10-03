@@ -69,6 +69,7 @@ from avaliador_b3.config import (
 )
 from avaliador_b3.empresa.comportamento import calcular_beta
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
+from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
 from avaliador_b3.ingest.bcb_sgs import obter_selic_e_ipca
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
@@ -99,6 +100,7 @@ from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcula
 from avaliador_b3.modelos.fcd import (
     calcular_proporcao_reinvestimento_percentual,
     calcular_valor_justo_fcd,
+    montar_ajustes_balanco,
     montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
@@ -414,6 +416,26 @@ def _calcular_linha_ticker(
             fluxos_fcd = montar_fluxos_fcd(None)
             ano_referencia_fcd = None
 
+    # Balanço consolidado da CVM na data-base do Fundamentus (não controladores,
+    # patrimônio total, arrendamento e ações em circulação), uma leitura só.
+    leitura_balanco = None
+    if cnpj:
+        try:
+            leitura_balanco = obter_leitura_balanco(
+                cnpj,
+                indicadores["data_balanco_fundamentus"] if indicadores else None,
+                indicadores["numero_acoes"] if indicadores else None,
+                indicadores["acoes_por_cotacao"] if indicadores else None,
+                diretorio_cache=diretorio_cache,
+            )
+        except requests.RequestException as erro:
+            falhas.registrar(ticker, FONTE_CVM)
+            leitura_balanco = {
+                "disponivel": False,
+                "motivo": f"falha ao buscar dados da CVM: {erro}",
+            }
+    ajustes_balanco = montar_ajustes_balanco(leitura_balanco)
+
     resultado_graham = (
         {
             "aplicavel": False,
@@ -457,6 +479,7 @@ def _calcular_linha_ticker(
     elif selic_meta is not None and ipca_12m is not None:
         resultado_fcd = calcular_valor_justo_fcd(
             **fluxos_fcd,
+            **ajustes_balanco,
             numero_acoes=numero_acoes,
             selic_meta=selic_meta,
             ipca_12m=ipca_12m,

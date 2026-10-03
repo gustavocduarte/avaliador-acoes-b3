@@ -462,6 +462,83 @@ def test_calcular_valor_justo_fcd_deduz_divida_liquida_do_valor_justo():
     )
 
 
+PARAMETROS_FCD_BASE = dict(
+    fcf_atual=1000.0,
+    numero_acoes=100.0,
+    selic_meta=0.10,
+    ipca_12m=0.04,
+    fcf_ha_n_anos=900.0,
+    divida_liquida_sobre_patrimonio=None,
+    beta=1.0,
+    divida_liquida=5000.0,
+)
+
+
+def test_fcd_desconta_os_nao_controladores_junto_com_a_divida_liquida():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    com_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, nao_controladores=2000.0)
+
+    assert com_ajuste["nao_controladores_deduzidos"] is True
+    assert com_ajuste["motivo_sem_nao_controladores"] is None
+    # Desconto fixo por ação, independente do WACC e do crescimento.
+    assert com_ajuste["valor_justo"] == pytest.approx(sem_ajuste["valor_justo"] - 2000.0 / 100.0)
+
+
+def test_fcd_com_nao_controladores_zero_nao_muda_o_valor():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    com_zero = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, nao_controladores=0.0)
+
+    assert com_zero["valor_justo"] == pytest.approx(sem_ajuste["valor_justo"])
+    assert com_zero["nao_controladores_deduzidos"] is True
+
+
+def test_fcd_sem_leitura_do_balanco_mantem_o_calculo_e_traz_o_motivo():
+    sem_ajuste = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)
+    resultado = fcd.calcular_valor_justo_fcd(
+        **PARAMETROS_FCD_BASE, motivo_sem_nao_controladores="A empresa não tem balanço."
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["valor_justo"] == pytest.approx(sem_ajuste["valor_justo"])
+    assert resultado["nao_controladores_deduzidos"] is False
+    assert resultado["motivo_sem_nao_controladores"] == "A empresa não tem balanço."
+
+
+def test_fcd_negativo_depois_do_ajuste_nao_e_limitado_a_zero():
+    resultado = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, nao_controladores=1e9)
+
+    assert resultado["aplicavel"] is True
+    assert resultado["valor_justo"] < 0
+    assert resultado["valor_justo"] == pytest.approx(
+        fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)["valor_justo"] - 1e9 / 100.0
+    )
+
+
+def test_ajustes_do_balanco_com_leitura_disponivel_trazem_os_nao_controladores():
+    leitura = {"disponivel": True, "nao_controladores": 26_942.0}
+
+    assert fcd.montar_ajustes_balanco(leitura) == {
+        "nao_controladores": 26_942.0,
+        "motivo_sem_nao_controladores": None,
+    }
+
+
+def test_ajustes_do_balanco_com_leitura_indisponivel_trazem_o_motivo():
+    leitura = {"disponivel": False, "motivo": "A empresa não tem balanço consolidado."}
+
+    assert fcd.montar_ajustes_balanco(leitura) == {
+        "nao_controladores": None,
+        "motivo_sem_nao_controladores": "A empresa não tem balanço consolidado.",
+    }
+
+
+def test_ajustes_do_balanco_sem_leitura_trazem_o_motivo_de_nao_lido():
+    ajustes = fcd.montar_ajustes_balanco(None)
+
+    assert ajustes["nao_controladores"] is None
+    assert "não foi lido" in ajustes["motivo_sem_nao_controladores"]
+
+
 def test_calcular_valor_justo_fcd_divida_liquida_negativa_aumenta_o_valor():
     # Posição de caixa líquido (mais caixa que dívida): dívida líquida
     # negativa SOMA ao valor justo com subtração normal, sem caso

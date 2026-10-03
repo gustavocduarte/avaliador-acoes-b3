@@ -56,6 +56,7 @@ from avaliador_b3.config import (
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
+    TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
     TOOLTIP_POTENCIAL_CARTAO,
@@ -77,6 +78,7 @@ from avaliador_b3.graficos import (
     ticks_mensais_pt_br,
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
+from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
 from avaliador_b3.ingest.bcb_sgs import ResultadoMacro, obter_selic_e_ipca, obter_serie
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
@@ -109,6 +111,7 @@ from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcula
 from avaliador_b3.modelos.fcd import (
     calcular_proporcao_reinvestimento_percentual,
     calcular_valor_justo_fcd,
+    montar_ajustes_balanco,
     montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham
@@ -386,6 +389,23 @@ def _buscar_fcf_fcd(
         return montar_fluxos_fcd(None), None, False, None, None, mensagem
 
 
+def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None) -> dict:
+    """Leitura única do balanço da CVM na data-base do Fundamentus. Falha de
+    rede ou da CVM não derruba a página: vira "indisponível" com o motivo, e o
+    FCD segue sem os ajustes que dependem dela."""
+    if indicadores is None:
+        return {"disponivel": False, "motivo": "indicadores do Fundamentus indisponíveis."}
+    try:
+        return obter_leitura_balanco(
+            cnpj,
+            indicadores["data_balanco_fundamentus"],
+            indicadores["numero_acoes"],
+            indicadores["acoes_por_cotacao"],
+        )
+    except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
+        return {"disponivel": False, "motivo": f"falha ao buscar dados da CVM: {erro}"}
+
+
 @st.cache_data(ttl=3600)
 def _buscar_macro_cacheado() -> ResultadoMacro:
     return obter_selic_e_ipca()
@@ -557,6 +577,11 @@ def _cartao_metodo(
             )
         else:
             st.caption("Aplicável")
+        motivo_sem_nao_controladores = resultado.get("motivo_sem_nao_controladores")
+        if motivo_sem_nao_controladores:
+            st.caption(
+                TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
+            )
         motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
         if motivo_crescimento_ipca:
             st.caption(TEXTO_CRESCIMENTO_IPCA.format(motivo=motivo_crescimento_ipca))
@@ -938,6 +963,7 @@ with aba_analisar:
                     cfi_fcd_utilizado,
                     _,
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
+            leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores) if cnpj else None
 
         st.subheader(ticker)
 
@@ -1029,6 +1055,7 @@ with aba_analisar:
         if selic_meta is not None and ipca_12m is not None:
             resultado_fcd = calcular_valor_justo_fcd(
                 **fluxos_fcd,
+                **montar_ajustes_balanco(leitura_balanco),
                 numero_acoes=numero_acoes,
                 selic_meta=selic_meta,
                 ipca_12m=ipca_12m,

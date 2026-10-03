@@ -477,6 +477,10 @@ MOTIVO_BALANCO_ARQUIVO_NAO_PUBLICADO = (
 MOTIVO_BALANCO_SEM_DEMONSTRACAO = (
     "A empresa não tem balanço consolidado de {data} no {documento} da CVM."
 )
+MOTIVO_BALANCO_NAO_LIDO = "o balanço da CVM não foi lido para essa empresa."
+TEXTO_SEM_DESCONTO_NAO_CONTROLADORES = (
+    "Sem o desconto da participação dos não controladores: {motivo}"
+)
 MOTIVO_ACOES_SEM_REFERENCIA = (
     "Número de ações do Fundamentus indisponível: sem ele não dá para validar a escala "
     "da composição do capital da CVM."
@@ -994,7 +998,8 @@ AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
 )
 AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD = (
     "Valor justo zero ou negativo — o FCD saiu negativo, o que acontece "
-    "quando a dívida líquida supera o valor do fluxo de caixa projetado. "
+    "quando a dívida líquida, somada à parte dos sócios não controladores, "
+    "supera o valor do fluxo de caixa projetado. "
     "Não quer dizer que a ação "
     "valha menos que zero, mas indica que, pelas premissas do modelo, a "
     "geração de caixa não sustenta o preço atual. Confira o "

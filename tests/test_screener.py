@@ -44,6 +44,17 @@ def _indicadores(
         # dedução em si.
         "divida_liquida": divida_liquida,
         "data_balanco_fundamentus": data_balanco_fundamentus,
+        "acoes_por_cotacao": 1,
+    }
+
+
+def _leitura_balanco(nao_controladores=0.0):
+    """Leitura única do balanço da CVM (`ingest.balanco_cvm.obter_leitura_balanco`)."""
+    return {
+        "disponivel": True,
+        "motivo": None,
+        "data_base": "2026-06-30",
+        "nao_controladores": nao_controladores,
     }
 
 
@@ -133,6 +144,7 @@ def ambiente_feliz(monkeypatch):
         ),
     )
     monkeypatch.setattr(screener, "_buscar_macro", lambda diretorio_cache: (0.10, 0.04))
+    monkeypatch.setattr(screener, "obter_leitura_balanco", lambda *a, **kw: _leitura_balanco())
 
     return {"precos_por_ticker": precos_por_ticker}
 
@@ -451,6 +463,81 @@ def test_calcular_linha_ticker_usa_o_fluxo_da_alt3_nos_dois_anos(
     com_juros = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
 
     assert com_juros > sem_juros
+
+
+def test_calcular_linha_ticker_desconta_os_nao_controladores_do_fcd(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    sem_ajuste = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+    monkeypatch.setattr(
+        screener,
+        "obter_leitura_balanco",
+        lambda *a, **kw: _leitura_balanco(nao_controladores=5_000.0),
+    )
+
+    com_ajuste = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+
+    # numero_acoes = 1.000 no `_indicadores()` padrão.
+    assert com_ajuste == pytest.approx(sem_ajuste - 5_000.0 / 1_000.0)
+
+
+def test_calcular_linha_ticker_passa_data_base_e_acoes_do_fundamentus_para_a_leitura(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    chamadas = []
+
+    def leitura(cnpj, data_base, acoes, acoes_por_cotacao, **kw):
+        chamadas.append((cnpj, data_base, acoes, acoes_por_cotacao))
+        return _leitura_balanco()
+
+    monkeypatch.setattr(screener, "obter_leitura_balanco", leitura)
+
+    _linha_ticker("AAAA4", tmp_path)
+
+    assert chamadas == [("CNPJ-AAAA4", "2026-06-30", 1000.0, 1)]
+
+
+def test_calcular_linha_ticker_falha_de_rede_no_balanco_mantem_o_fcd_e_conta_falha_da_cvm(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    sem_ajuste = _linha_ticker("AAAA4", tmp_path)["fcd_valor_justo"]
+
+    def leitura_com_falha(*args, **kwargs):
+        raise requests.ConnectionError("CVM fora do ar")
+
+    monkeypatch.setattr(screener, "obter_leitura_balanco", leitura_com_falha)
+    falhas = screener.FalhasDeFonte()
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+        falhas_de_fonte=falhas,
+    )
+
+    assert linha["fcd_valor_justo"] == pytest.approx(sem_ajuste)
+    assert falhas.por_ticker() == {"AAAA4": ["CVM"]}
+
+
+def test_calcular_linha_ticker_sem_cnpj_nao_le_o_balanco(ambiente_feliz, tmp_path, monkeypatch):
+    def leitura(*args, **kwargs):
+        raise AssertionError("não devia ler o balanço sem CNPJ")
+
+    monkeypatch.setattr(screener, "obter_leitura_balanco", leitura)
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: (_ for _ in ()).throw(screener.EmissorNaoEncontrado(ticker)),
+    )
+
+    linha = _linha_ticker("AAAA4", tmp_path)
+
+    assert linha["fcd_valor_justo"] is None
 
 
 def test_calcular_linha_ticker_itausa_fica_sem_fcd_e_com_os_demais_metodos(

@@ -25,6 +25,7 @@ import yfinance as yf
 from avaliador_b3 import config, screener
 from avaliador_b3.ingest import (
     b3_universo,
+    balanco_cvm,
     bcb_sgs,
     crosswalk_cnpj,
     cvm,
@@ -35,6 +36,7 @@ from avaliador_b3.ingest import (
 
 _MODULOS_COM_DIRETORIO_CACHE = (
     b3_universo,
+    balanco_cvm,
     bcb_sgs,
     crosswalk_cnpj,
     cvm,

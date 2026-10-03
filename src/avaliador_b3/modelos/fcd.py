@@ -48,6 +48,7 @@ from avaliador_b3.config import (
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
     MARGEM_SEGURANCA_PERPETUIDADE_FCD,
+    MOTIVO_BALANCO_NAO_LIDO,
     MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
     MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
     MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX,
@@ -150,6 +151,24 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
     }
 
 
+def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
+    """Ajustes do valor do acionista a partir da leitura única do balanço da
+    CVM (`ingest.balanco_cvm.obter_leitura_balanco`), nos nomes dos parâmetros
+    de `calcular_valor_justo_fcd` (o chamador usa `**ajustes`). Leitura
+    indisponível (ou `None`, não lida) mantém o cálculo sem o ajuste e traz o
+    motivo."""
+    if leitura_balanco is None:
+        motivo = MOTIVO_BALANCO_NAO_LIDO
+    elif not leitura_balanco["disponivel"]:
+        motivo = leitura_balanco["motivo"]
+    else:
+        return {
+            "nao_controladores": leitura_balanco["nao_controladores"],
+            "motivo_sem_nao_controladores": None,
+        }
+    return {"nao_controladores": None, "motivo_sem_nao_controladores": motivo}
+
+
 def _motivo_exclusao_do_fcd(segmento_setorial: str | None, ticker: str | None) -> str | None:
     """Motivo pelo qual o FCD não se aplica à empresa (por segmento ou por
     ticker), ou `None` se a exclusão não vale pra ela."""
@@ -232,6 +251,8 @@ def calcular_valor_justo_fcd(
     ticker: str | None = None,
     motivo_sem_fcf_atual: str | None = None,
     motivo_sem_fcf_ha_n_anos: str | None = None,
+    nao_controladores: float | None = None,
+    motivo_sem_nao_controladores: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -268,6 +289,11 @@ def calcular_valor_justo_fcd(
     caixa que dívida) funciona corretamente com subtração normal, sem
     caso especial, mesma convenção de `calcular_valor_mercado_e_firma`
     (`valor_firma = valor_mercado + divida_liquida`, a operação inversa).
+    A participação dos não controladores (`nao_controladores`, valor contábil
+    do balanço consolidado) também sai do valor da empresa: o fluxo é
+    consolidado e inclui a parte dos sócios minoritários das controladas.
+    `None` mantém o cálculo sem esse desconto (`motivo_sem_nao_controladores`
+    diz por quê). O resultado pode ser negativo e não é limitado a zero.
     Quando `divida_liquida` é `None` (ausente), o FCD continua aplicável,
     só sem a dedução — `divida_liquida_deduzida=False` no retorno
     sinaliza esse caso pro chamador avisar na tela. Na prática, hoje isso
@@ -357,12 +383,19 @@ def calcular_valor_justo_fcd(
     divida_liquida_deduzida = divida_liquida is not None
     if divida_liquida_deduzida:
         valor_total -= divida_liquida
+    nao_controladores_deduzidos = nao_controladores is not None
+    if nao_controladores_deduzidos:
+        valor_total -= nao_controladores
 
     return {
         "aplicavel": True,
         "valor_justo": valor_total / numero_acoes,
         "motivo_nao_aplicavel": None,
         "divida_liquida_deduzida": divida_liquida_deduzida,
+        "nao_controladores_deduzidos": nao_controladores_deduzidos,
+        "motivo_sem_nao_controladores": (
+            None if nao_controladores_deduzidos else motivo_sem_nao_controladores
+        ),
         "wacc": wacc,
         "beta_utilizado": beta_utilizado,
         "taxa_crescimento_explicita": taxa_crescimento,
