@@ -615,6 +615,43 @@ def test_fcd_nao_mostra_aviso_quando_divida_liquida_esta_disponivel(monkeypatch)
     assert avisos_divida == []
 
 
+def test_rest_do_bcb_fora_do_ar_e_soap_respondendo_nao_mostra_aviso_de_falha_na_pagina(
+    monkeypatch,
+):
+    import requests
+
+    from avaliador_b3.config import FONTE_BCB_SOAP
+
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    pasta = Path(__file__).parent / "fixtures"
+    xml_selic = (pasta / "bcb_soap_selic_meta_com_datas_futuras.xml").read_text("utf-8")
+    xml_ipca = (pasta / "bcb_soap_ipca_mensal.xml").read_text("utf-8")
+    pedidos_soap = []
+
+    def rest_fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("api.bcb.gov.br fora do ar (simulado)")
+
+    def soap(url, timeout, pausas, data, headers):
+        pedidos_soap.append(data.decode("utf-8"))
+        corpo = xml_selic if ">432<" in data.decode("utf-8") else xml_ipca
+        return type("RespostaSoap", (), {"text": corpo})()
+
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", rest_fora_do_ar)
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.post_com_retry", soap)
+    st.cache_data.clear()
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert pedidos_soap, f"o SOAP ({FONTE_BCB_SOAP}) devia ter sido consultado"
+    # O FCD usa a Selic e o IPCA vindos do SOAP, e nenhuma falha intermediária vira aviso.
+    assert _metrica_por_label(at, "FCD").value != "—"
+    textos = [w.value for w in at.warning] + [e.value for e in at.error]
+    termos_do_bcb = ("api.bcb.gov.br", "BCB", "Banco Central", "Selic", "IPCA")
+    assert not [t for t in textos if any(termo in t for termo in termos_do_bcb)]
+
+
 def test_fcd_com_leitura_do_balanco_nao_mostra_aviso_de_nao_controladores(monkeypatch):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
 

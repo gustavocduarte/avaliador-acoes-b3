@@ -7,6 +7,7 @@ inexistente).
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 import requests
 
@@ -29,17 +30,15 @@ def _segundos_retry_after(resposta: requests.Response | None) -> float | None:
     return min(segundos, TETO_RETRY_AFTER_SEGUNDOS)
 
 
-def get_com_retry(
-    url: str,
+def _com_retry(
+    requisicao: Callable[[float], requests.Response],
     timeout_segundos: float,
     pausas_segundos: tuple[float, ...],
-    **kwargs,
 ) -> requests.Response:
-    """GET com nova tentativa em erro 5xx, 429, timeout ou falha de
-    conexão — uma tentativa extra por valor em `pausas_segundos`, com essa
-    pausa antes de cada uma. No 429, um Retry-After maior que a pausa
-    prevalece (limitado a `TETO_RETRY_AFTER_SEGUNDOS`). `**kwargs`
-    repassado pro `requests.get` (params, headers, etc.)."""
+    """Faz `requisicao(timeout)` com nova tentativa em erro 5xx, 429, timeout
+    ou falha de conexão — uma tentativa extra por valor em `pausas_segundos`,
+    com essa pausa antes de cada uma. No 429, um Retry-After maior que a pausa
+    prevalece (limitado a `TETO_RETRY_AFTER_SEGUNDOS`)."""
     ultimo_erro: Exception | None = None
     espera_retry_after: float | None = None
     for pausa in (0, *pausas_segundos):
@@ -47,7 +46,7 @@ def get_com_retry(
             time.sleep(max(pausa, espera_retry_after or 0))
         espera_retry_after = None
         try:
-            resposta = requests.get(url, timeout=timeout_segundos, **kwargs)
+            resposta = requisicao(timeout_segundos)
             resposta.raise_for_status()
             return resposta
         except requests.HTTPError as erro:
@@ -60,3 +59,33 @@ def get_com_retry(
         except (requests.Timeout, requests.ConnectionError) as erro:
             ultimo_erro = erro
     raise ultimo_erro
+
+
+def get_com_retry(
+    url: str,
+    timeout_segundos: float,
+    pausas_segundos: tuple[float, ...],
+    **kwargs,
+) -> requests.Response:
+    """GET com nova tentativa (ver `_com_retry`). `**kwargs` repassado pro
+    `requests.get` (params, headers, etc.)."""
+    return _com_retry(
+        lambda timeout: requests.get(url, timeout=timeout, **kwargs),
+        timeout_segundos,
+        pausas_segundos,
+    )
+
+
+def post_com_retry(
+    url: str,
+    timeout_segundos: float,
+    pausas_segundos: tuple[float, ...],
+    **kwargs,
+) -> requests.Response:
+    """POST com nova tentativa (ver `_com_retry`). `**kwargs` repassado pro
+    `requests.post` (data, headers, etc.)."""
+    return _com_retry(
+        lambda timeout: requests.post(url, timeout=timeout, **kwargs),
+        timeout_segundos,
+        pausas_segundos,
+    )

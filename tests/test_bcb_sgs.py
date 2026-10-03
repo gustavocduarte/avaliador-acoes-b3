@@ -1,5 +1,8 @@
 import json
+import logging
+import warnings
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -305,7 +308,7 @@ def test_salvar_e_carregar_ultimo_macro_ida_e_volta(tmp_path):
 
 
 def test_obter_selic_e_ipca_usa_valor_guardado_recente_quando_bcb_falha(tmp_path, monkeypatch):
-    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca", _bcb_falho)
     _semear_ultimo_macro(tmp_path, dias_atras=10)
 
     with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
@@ -317,7 +320,7 @@ def test_obter_selic_e_ipca_usa_valor_guardado_recente_quando_bcb_falha(tmp_path
 
 
 def test_obter_selic_e_ipca_ignora_valor_guardado_com_mais_de_45_dias(tmp_path, monkeypatch):
-    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca", _bcb_falho)
     _semear_ultimo_macro(tmp_path, dias_atras=46)
 
     with (
@@ -328,7 +331,7 @@ def test_obter_selic_e_ipca_ignora_valor_guardado_com_mais_de_45_dias(tmp_path, 
 
 
 def test_obter_selic_e_ipca_sem_valor_guardado_mensagem_amigavel(tmp_path, monkeypatch):
-    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca_do_bcb", _bcb_falho)
+    monkeypatch.setattr(bcb_sgs, "_buscar_selic_e_ipca", _bcb_falho)
 
     with (
         pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"),
@@ -356,10 +359,9 @@ def test_ipca_com_menos_de_12_meses_levanta_erro(tmp_path, monkeypatch):
         bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
 
 
-def test_ipca_incompleto_nao_cai_pro_valor_guardado(tmp_path, monkeypatch):
-    # Dado insuficiente não é falha de rede — não deve usar o valor
-    # guardado mesmo que exista um recente (ver docstring de
-    # DadosMacroInsuficientesError).
+def test_ipca_incompleto_em_todas_as_fontes_cai_no_valor_guardado_recente(tmp_path, monkeypatch):
+    # IPCA com menos de 12 meses conta como falha da fonte: a cadeia tenta a próxima e, sem
+    # nenhuma que traga os 12 meses, usa o valor guardado recente.
     selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-08-01")], "valor": [13.75]})
     ipca_df = pd.DataFrame(
         {"data": pd.date_range("2026-01-01", periods=5, freq="MS"), "valor": [0.3] * 5}
@@ -371,5 +373,334 @@ def test_ipca_incompleto_nao_cai_pro_valor_guardado(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
     _semear_ultimo_macro(tmp_path, dias_atras=1)
 
-    with pytest.raises(bcb_sgs.DadosMacroInsuficientesError):
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+    assert resultado.ipca_12m == pytest.approx(0.045)
+
+
+# --- Segunda fonte: SOAP do SGS no www3 do BCB -------------------------------
+
+CAMINHO_FIXTURES = Path(__file__).parent / "fixtures"
+HOJE_FIXO = datetime(2026, 10, 3, 12, 0)
+
+
+def _soap_selic() -> str:
+    return (CAMINHO_FIXTURES / "bcb_soap_selic_meta_com_datas_futuras.xml").read_text("utf-8")
+
+
+def _soap_ipca() -> str:
+    return (CAMINHO_FIXTURES / "bcb_soap_ipca_mensal.xml").read_text("utf-8")
+
+
+class _RespostaSoapFalsa:
+    def __init__(self, texto):
+        self.text = texto
+
+
+def _soap_responde(monkeypatch, selic=None, ipca=None, chamadas=None):
+    """Substitui o POST do SOAP: devolve o XML gravado da série pedida."""
+
+    def post(url, timeout, pausas, data, headers):
+        corpo = data.decode("utf-8")
+        if chamadas is not None:
+            chamadas.append(corpo)
+        if ">432<" in corpo:
+            return _RespostaSoapFalsa(selic if selic is not None else _soap_selic())
+        return _RespostaSoapFalsa(ipca if ipca is not None else _soap_ipca())
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", post)
+
+
+def _rest_fora_do_ar(monkeypatch, chamadas=None):
+    def obter_serie_falso(codigo, *args, **kwargs):
+        if chamadas is not None:
+            chamadas.append(codigo)
+        raise requests.ConnectionError("api.bcb.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+
+
+def test_parsear_resposta_soap_da_selic_traz_as_datas_futuras_como_o_servico_devolve():
+    registros = bcb_sgs._parsear_resposta_soap(_soap_selic(), 432)
+
+    assert len(registros) == 38
+    assert registros[0] == {"data": "28/09/2026", "valor": "13.75"}
+    assert registros[-1] == {"data": "04/11/2026", "valor": "13.75"}
+
+
+def test_parsear_resposta_soap_do_ipca_mensal_usa_o_dia_1_do_mes():
+    registros = bcb_sgs._parsear_resposta_soap(_soap_ipca(), 433)
+
+    assert len(registros) == 14
+    assert registros[0] == {"data": "01/07/2025", "valor": "0.26"}
+    assert registros[-1] == {"data": "01/08/2026", "valor": "-0.32"}
+
+
+@pytest.mark.parametrize("texto", ["isso não é xml", "<a><b/></a>", ""])
+def test_parsear_resposta_soap_sem_valores_levanta_erro_claro(texto):
+    with pytest.raises(ValueError, match="série 432"):
+        bcb_sgs._parsear_resposta_soap(texto, 432)
+
+
+def test_obter_serie_soap_pede_a_serie_e_as_datas_e_devolve_o_dataframe(monkeypatch):
+    chamadas = []
+    _soap_responde(monkeypatch, chamadas=chamadas)
+
+    df = bcb_sgs.obter_serie_soap(433, "01/07/2025", "03/10/2026")
+
+    assert list(df.columns) == ["data", "valor"]
+    assert len(df) == 14
+    assert df["valor"].iloc[-1] == pytest.approx(-0.32)
+    assert "<item xsi:type=\"xsd:long\">433</item>" in chamadas[0]
+    assert "<in1>01/07/2025</in1><in2>03/10/2026</in2>" in chamadas[0]
+
+
+def test_ate_hoje_ignora_as_datas_posteriores_a_hoje():
+    df = bcb_sgs._registros_para_dataframe(bcb_sgs._parsear_resposta_soap(_soap_selic(), 432))
+
+    ate_hoje = bcb_sgs._ate_hoje(df, HOJE_FIXO)
+
+    assert ate_hoje["data"].max() == pd.Timestamp("2026-10-03")
+    assert len(ate_hoje) == 6  # 28/09 a 03/10
+
+
+def test_rest_falha_e_soap_responde_selic_e_ipca_vem_do_soap(monkeypatch, tmp_path, caplog):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger="avaliador_b3.ingest.bcb_sgs"):
+        selic, ipca, data_ipca, fonte_selic, fonte_ipca = bcb_sgs._buscar_selic_e_ipca(
+            HOJE_FIXO, tmp_path
+        )
+
+    assert selic == pytest.approx(0.1375)
+    assert ipca == pytest.approx(0.042234527370682784)
+    assert data_ipca == pd.Timestamp("2026-08-01")
+    assert (fonte_selic, fonte_ipca) == ("BCB (SOAP)", "BCB (SOAP)")
+    # A falha do REST vai para o log, não para um aviso do Python.
+    assert "Falha ao buscar Selic/IPCA do BCB (API)" in caplog.text
+
+
+def test_falha_intermediaria_de_uma_fonte_nao_emite_aviso_do_python(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.fonte_selic == "BCB (SOAP)"
+
+
+def test_soap_ignora_datas_futuras_da_selic_na_cadeia(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+    df = bcb_sgs._registros_para_dataframe(bcb_sgs._parsear_resposta_soap(_soap_selic(), 432))
+    df.loc[df["data"] > pd.Timestamp("2026-10-03"), "valor"] = 99.0  # só as futuras
+    original = bcb_sgs.obter_serie_soap
+
+    def soap_com_futuras_alteradas(codigo, data_inicial, data_final):
+        return df if codigo == 432 else original(codigo, data_inicial, data_final)
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie_soap", soap_com_futuras_alteradas)
+    _soap_responde(monkeypatch)
+
+    selic = bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)[0]
+
+    assert selic == pytest.approx(0.1375)
+
+
+def test_rest_fora_do_ar_e_abandonado_no_ipca_depois_de_falhar_na_selic(monkeypatch, tmp_path):
+    codigos_pedidos_ao_rest = []
+    _rest_fora_do_ar(monkeypatch, chamadas=codigos_pedidos_ao_rest)
+    _soap_responde(monkeypatch)
+
+    bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    assert codigos_pedidos_ao_rest == [432]  # o IPCA (433) nem tenta o REST
+
+
+def test_selic_pelo_rest_e_ipca_pelo_soap_quando_so_o_ipca_falha_no_rest(monkeypatch, tmp_path):
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-10-01")], "valor": [13.75]})
+
+    def obter_serie_falso(codigo, *args, **kwargs):
+        if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"]:
+            return selic_df
+        raise requests.ConnectionError("IPCA fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+    _soap_responde(monkeypatch)
+
+    resultado = bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    assert resultado[3:] == ("BCB (API)", "BCB (SOAP)")
+
+
+def test_rest_com_ipca_incompleto_e_soap_completo_usa_o_soap(monkeypatch, tmp_path, caplog):
+    selic_df = pd.DataFrame({"data": [pd.Timestamp("2026-10-01")], "valor": [13.75]})
+    ipca_incompleto = pd.DataFrame(
+        {"data": pd.date_range("2026-04-01", periods=5, freq="MS"), "valor": [0.3] * 5}
+    )
+
+    def obter_serie_falso(codigo, *args, **kwargs):
+        if codigo == bcb_sgs.SERIES_BCB_SGS["selic_meta"]:
+            return selic_df
+        return ipca_incompleto
+
+    monkeypatch.setattr(bcb_sgs, "obter_serie", obter_serie_falso)
+    _soap_responde(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger="avaliador_b3.ingest.bcb_sgs"):
+        resultado = bcb_sgs._buscar_selic_e_ipca(HOJE_FIXO, tmp_path)
+
+    selic, ipca, data_ipca, fonte_selic, fonte_ipca = resultado
+    assert ipca == pytest.approx(0.042234527370682784)  # os 12 meses completos do SOAP
+    assert (fonte_selic, fonte_ipca) == ("BCB (API)", "BCB (SOAP)")
+    assert "IPCA voltou com 5 leitura(s)" in caplog.text
+
+
+def test_obter_selic_e_ipca_pelo_soap_nao_usa_o_valor_guardado_e_grava_as_fontes(
+    monkeypatch, tmp_path
+):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+    _semear_ultimo_macro(tmp_path, dias_atras=10)  # existe, mas a fonte viva vem antes
+
+    resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is False
+    assert resultado.fonte_selic == resultado.fonte_ipca == "BCB (SOAP)"
+    gravado = json.loads((tmp_path / "bcb" / "ultimo_macro.json").read_text())
+    assert gravado["fonte_selic"] == gravado["fonte_ipca"] == "BCB (SOAP)"
+    assert gravado["selic_meta"] == pytest.approx(0.1375)
+
+
+def test_rest_e_soap_falham_e_cai_no_valor_guardado_com_a_fonte_e_a_data(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+
+    def soap_fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("www3.bcb.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", soap_fora_do_ar)
+    _semear_ultimo_macro(tmp_path, dias_atras=10)
+    data_esperada = (datetime.now() - timedelta(days=10)).strftime("%d/%m/%Y")
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+    assert resultado.fonte_selic == resultado.fonte_ipca == f"valor guardado de {data_esperada}"
+
+
+def test_rest_e_soap_falham_sem_valor_guardado_levanta_a_mensagem_amigavel(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+
+    def soap_fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("www3.bcb.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", soap_fora_do_ar)
+
+    with (
+        pytest.warns(UserWarning),
+        pytest.raises(bcb_sgs.MacroIndisponivelError) as excinfo,
+    ):
         bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert str(excinfo.value) == bcb_sgs.MENSAGEM_MACRO_INDISPONIVEL
+
+
+def _soap_ipca_so_com_os_ultimos_meses():
+    ipca_curto = _soap_ipca()
+    antigos = ("7/2025", "8/2025", "9/2025", "10/2025", "11/2025", "12/2025", "1/2026")
+    for mes in antigos + ("2/2026", "3/2026"):
+        ipca_curto = ipca_curto.replace(f"&lt;DATA&gt;{mes}&lt;/DATA&gt;", "")
+    return ipca_curto
+
+
+def test_ipca_incompleto_em_todas_as_fontes_sem_valor_guardado_sobe_o_erro_de_dados(
+    monkeypatch, tmp_path
+):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch, ipca=_soap_ipca_so_com_os_ultimos_meses())
+
+    with (
+        pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"),
+        pytest.raises(bcb_sgs.DadosMacroInsuficientesError),
+    ):
+        bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+
+def test_ipca_incompleto_no_soap_com_valor_guardado_recente_usa_o_guardado(monkeypatch, tmp_path):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch, ipca=_soap_ipca_so_com_os_ultimos_meses())
+    _semear_ultimo_macro(tmp_path, dias_atras=1)
+
+    with pytest.warns(UserWarning, match="Falha ao buscar Selic/IPCA do BCB"):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.usou_valor_guardado is True
+
+
+def test_obter_serie_com_fallback_usa_o_soap_quando_o_rest_falha_e_ignora_datas_futuras(
+    monkeypatch, tmp_path, caplog
+):
+    _rest_fora_do_ar(monkeypatch)
+    _soap_responde(monkeypatch)
+
+    with caplog.at_level(logging.WARNING, logger="avaliador_b3.ingest.bcb_sgs"):
+        df = bcb_sgs.obter_serie_com_fallback(432, "28/09/2026", "06/11/2026", tmp_path)
+
+    # As leituras de 04/11 só valem se hoje (de verdade) já passou delas.
+    assert df["data"].max() <= pd.Timestamp(datetime.now().date())
+    assert df["valor"].iloc[-1] == pytest.approx(13.75)
+    assert "Falha ao buscar a série 432" in caplog.text
+
+
+def test_obter_serie_com_fallback_levanta_o_erro_do_rest_quando_o_soap_tambem_falha(
+    monkeypatch, tmp_path
+):
+    _rest_fora_do_ar(monkeypatch)
+
+    def soap_fora_do_ar(*args, **kwargs):
+        raise requests.ConnectionError("www3.bcb.gov.br fora do ar (simulado)")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", soap_fora_do_ar)
+
+    with pytest.raises(requests.ConnectionError, match="api.bcb.gov.br"):
+        bcb_sgs.obter_serie_com_fallback(1, "01/01/2026", "03/10/2026", tmp_path)
+
+
+def test_obter_serie_com_fallback_usa_o_rest_quando_ele_responde(monkeypatch, tmp_path):
+    esperado = pd.DataFrame({"data": [pd.Timestamp("2026-10-01")], "valor": [5.5]})
+    monkeypatch.setattr(bcb_sgs, "obter_serie", lambda *a, **kw: esperado)
+
+    def soap_nao_devia_ser_chamado(*args, **kwargs):
+        raise AssertionError("o SOAP não devia ser chamado")
+
+    monkeypatch.setattr(bcb_sgs, "post_com_retry", soap_nao_devia_ser_chamado)
+
+    assert bcb_sgs.obter_serie_com_fallback(1, "01/10/2026", "03/10/2026", tmp_path) is esperado
+
+
+def test_post_com_retry_502_depois_sucesso_usa_o_valor_novo(monkeypatch):
+    pausas = []
+    monkeypatch.setattr(_retry.time, "sleep", lambda s: pausas.append(s))
+    respostas = iter([502, 200])
+
+    class _R:
+        def __init__(self, status):
+            self.status_code = status
+            self.text = "ok"
+            self.headers = {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError("erro", response=self)
+
+    monkeypatch.setattr(_retry.requests, "post", lambda url, timeout, **kw: _R(next(respostas)))
+
+    resposta = _retry.post_com_retry("http://x", 10, (2,), data=b"x")
+
+    assert resposta.status_code == 200
+    assert pausas == [2]

@@ -1213,6 +1213,25 @@ FALHAS_SEGUIDAS_DISJUNTOR_FUNDAMENTUS = 3
 # historicamente responde em menos de 1s.
 TIMEOUT_SEGUNDOS_BCB_SGS = 10
 
+# Segunda fonte do BCB para as mesmas séries do SGS (432 Selic meta, 433 IPCA
+# mensal, 1 câmbio): o serviço SOAP legado do SGS no www3, que seguiu no ar
+# quando api.bcb.gov.br deixou de resolver (NXDOMAIN, 03/10/2026; ver
+# %TEMP%\investigacao_bcb). Mesmos códigos e valores. Pior caso de espera da
+# cadeia inteira (tudo por timeout), com falha rápida (uma fonte que falha na
+# primeira série é abandonada para a outra) e uma nova tentativa nas fontes
+# secundárias: REST 3 × 10 + 2 + 5 = 37s, SOAP 2 × 10 + 2 = 22s, mais o IBGE
+# (IPCA, 22s) = 81s, contra os 74s do REST sozinho (N07). Com a falha de DNS
+# de hoje cada tentativa falha na hora, e a cadeia inteira leva só as pausas
+# (cerca de 11s).
+URL_BCB_SOAP = "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS"
+TIMEOUT_SEGUNDOS_BCB_SOAP = 10
+PAUSAS_RETRY_FONTE_SECUNDARIA_SEGUNDOS = (2,)
+# Janela de busca da Selic no SOAP: a meta vigente é o último valor até hoje.
+JANELA_BUSCA_SELIC_SOAP_DIAS = 15
+FONTE_BCB_API = "BCB (API)"
+FONTE_BCB_SOAP = "BCB (SOAP)"
+FONTE_VALOR_GUARDADO = "valor guardado de {data}"
+
 # Timeout de cada tentativa de requisição ao Fundamentus. Pior caso por
 # ação: 3 tentativas × 30s + pausas de 2s e 5s = 97s.
 TIMEOUT_SEGUNDOS_FUNDAMENTUS = 30

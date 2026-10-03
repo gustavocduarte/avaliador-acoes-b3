@@ -84,7 +84,11 @@ from avaliador_b3.graficos import (
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
-from avaliador_b3.ingest.bcb_sgs import ResultadoMacro, obter_selic_e_ipca, obter_serie
+from avaliador_b3.ingest.bcb_sgs import (
+    ResultadoMacro,
+    obter_selic_e_ipca,
+    obter_serie_com_fallback,
+)
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
     obter_catalogo_emissores,
@@ -233,7 +237,7 @@ def _buscar_historico_petroleo(
 @st.cache_data(ttl=3600)
 def _buscar_cambio_correlacao_cacheado() -> pd.DataFrame:
     hoje = datetime.now()
-    return obter_serie(
+    return obter_serie_com_fallback(
         SERIES_BCB_SGS["cambio_usd_venda"],
         data_inicial=(hoje - timedelta(days=365 * ANOS_JANELA_CORRELACAO)).strftime("%d/%m/%Y"),
         data_final=hoje.strftime("%d/%m/%Y"),
