@@ -100,6 +100,18 @@ def calcular_proporcao_reinvestimento_percentual(
     return -caixa_investimento / caixa_operacional * 100
 
 
+def calcular_proporcao_capex_caixa_operacional_percentual(
+    caixa_operacional: float, capex: dict
+) -> float | None:
+    """Quanto do caixa operacional foi para o capex no ano usado pelo FCD:
+    `capex ÷ caixa operacional × 100`, com o mesmo capex do fluxo do FCD
+    (`capex_atual` de `ingest.cvm`, só imobilizado e intangível). `None` se o
+    capex não foi identificado ou se o caixa operacional é zero ou negativo."""
+    if capex["status"] != "identificado" or caixa_operacional <= 0:
+        return None
+    return capex["valor"] / caixa_operacional * 100
+
+
 MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA = (
     "Instituição financeira: o FCD mede valor pela geração de caixa "
     "operacional descontada pelo custo de capital, mas em bancos a dívida e "

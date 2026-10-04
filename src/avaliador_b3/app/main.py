@@ -44,6 +44,7 @@ from avaliador_b3.config import (
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
+    LEGENDA_REINVESTIMENTO_CAPEX,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
@@ -124,7 +125,7 @@ from avaliador_b3.ingest.precos import (
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import (
-    calcular_proporcao_reinvestimento_percentual,
+    calcular_proporcao_capex_caixa_operacional_percentual,
     calcular_valor_justo_fcd,
     montar_ajustes_balanco,
     montar_fluxos_fcd,
@@ -376,12 +377,12 @@ def _buscar_fcf_fcd(
     do crescimento (que anda junto do ano efetivamente usado, não fica
     preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
 
-    Devolve (fluxos, ano_utilizado, usou_fallback, cfo_atual, cfi_atual,
+    Devolve (fluxos, ano_utilizado, usou_fallback, cfo_atual, capex_atual,
     erro) — `fluxos` é o dict de `modelos.fcd.montar_fluxos_fcd` (fluxo do
     FCD dos dois anos e os motivos de indisponibilidade); `cfo_atual`/
-    `cfi_atual` (do ano efetivamente usado) alimentam a
+    `capex_atual` (do ano efetivamente usado) alimentam a
     caption de proporção reinvestida no cartão do FCD (ver
-    `modelos.fcd.calcular_proporcao_reinvestimento_percentual`). Erro
+    `modelos.fcd.calcular_proporcao_capex_caixa_operacional_percentual`). Erro
     aqui não é mostrado à parte na tela — já aparece embutido no motivo
     de "não aplicável" do próprio card do FCD (`calcular_valor_
     justo_fcd` trata `fcf_atual=None` internamente)."""
@@ -394,7 +395,7 @@ def _buscar_fcf_fcd(
             resultado["ano_referencia_utilizado"],
             resultado["usou_fallback"],
             resultado["cfo_atual"],
-            resultado["cfi_atual"],
+            resultado["capex_atual"],
             None,
         )
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
@@ -1001,14 +1002,14 @@ with aba_analisar:
             fluxos_fcd = montar_fluxos_fcd(None)
             ano_fcd_utilizado = None
             fcd_usou_fallback = False
-            cfo_fcd_utilizado = cfi_fcd_utilizado = None
+            cfo_fcd_utilizado = capex_fcd_utilizado = None
             if cnpj and ano_fcd_mais_recente is not None:
                 (
                     fluxos_fcd,
                     ano_fcd_utilizado,
                     fcd_usou_fallback,
                     cfo_fcd_utilizado,
-                    cfi_fcd_utilizado,
+                    capex_fcd_utilizado,
                     _,
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
             leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores) if cnpj else None
@@ -1181,18 +1182,19 @@ with aba_analisar:
                         f"Em {ano_fcd_utilizado}, o caixa gerado pela operação foi "
                         "negativo, o que por si só leva o FCD para baixo."
                     )
-                elif cfo_fcd_utilizado is not None and cfi_fcd_utilizado is not None:
-                    proporcao_reinvestimento = calcular_proporcao_reinvestimento_percentual(
-                        cfo_fcd_utilizado, cfi_fcd_utilizado
+                elif cfo_fcd_utilizado is not None and capex_fcd_utilizado is not None:
+                    proporcao_reinvestimento = (
+                        calcular_proporcao_capex_caixa_operacional_percentual(
+                            cfo_fcd_utilizado, capex_fcd_utilizado
+                        )
                     )
+                    # Sem capex identificado, sem legenda (o FCD nem é calculado).
                     if proporcao_reinvestimento is not None:
                         st.caption(
-                            f"Em {ano_fcd_utilizado}, reinvestiu "
-                            f"{proporcao_reinvestimento:.0f}% do caixa gerado pela "
-                            "operação."
+                            LEGENDA_REINVESTIMENTO_CAPEX.format(
+                                ano=ano_fcd_utilizado, proporcao=proporcao_reinvestimento
+                            )
                         )
-                    # else: caixa de investimento positivo (desinvestindo) — sem
-                    # caption, por design (não é "reinvestimento" nenhum).
         with coluna_combinado:
             if resultado_combinado["aplicavel"]:
                 st.metric(

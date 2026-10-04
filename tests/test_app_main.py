@@ -27,6 +27,7 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
+    LEGENDA_REINVESTIMENTO_CAPEX,
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
 )
@@ -1045,13 +1046,19 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
 
 
 def _preparar_fcd_com_cfo_cfi(
-    monkeypatch, cfo_atual: float, cfi_atual: float, juros_pagos: float = 0.0
+    monkeypatch,
+    cfo_atual: float,
+    cfi_atual: float,
+    juros_pagos: float = 0.0,
+    capex: float | None = -1.0,
 ) -> None:
+    """`capex` -1.0 (padrão) usa -CFI (se negativo); `None` simula capex não identificado."""
+    capex_do_ano = max(-cfi_atual, 0.0) if capex == -1.0 else capex
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            _resultado_fcf_mock(cfo_atual, max(-cfi_atual, 0.0), juros_pagos, cfi_atual)
+            _resultado_fcf_mock(cfo_atual, capex_do_ano, juros_pagos, cfi_atual)
             if ano == ANO_FCD_MOCK
             else _resultado_fcf_mock(1_000_000.0, 200_000.0)
         ),
@@ -1059,7 +1066,7 @@ def _preparar_fcd_com_cfo_cfi(
 
 
 def test_caption_reinvestimento_caso_normal(monkeypatch):
-    # CFO=1.000.000, CFI=-300.000 -> reinvestiu 30% do caixa operacional.
+    # CFO=1.000.000, capex=300.000 -> reinvestiu 30% do caixa operacional.
     # Texto curto: a explicação de por que isso reduz o FCD fica só no
     # expander "Como funciona esse cálculo?", não repetida aqui no cartão.
     _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0)
@@ -1070,7 +1077,7 @@ def test_caption_reinvestimento_caso_normal(monkeypatch):
     assert not at.exception
     captions = [c.value for c in at.caption if "reinvestiu" in c.value]
     assert len(captions) == 1
-    assert captions[0] == f"Em {ANO_FCD_MOCK}, reinvestiu 30% do caixa gerado pela operação."
+    assert captions[0] == LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=30.0)
 
 
 def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada_metodo(
@@ -1179,10 +1186,23 @@ def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
     assert not [c.value for c in at.caption if "reinvestiu" in c.value]
 
 
-def test_caption_reinvestimento_ausente_quando_caixa_de_investimento_positivo(monkeypatch):
-    # Empresa desinvestindo (vendeu mais ativos do que comprou) — nenhuma
-    # das duas captions de reinvestimento deve aparecer, por design.
-    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=200_000.0)
+def test_caption_reinvestimento_usa_o_capex_e_nao_o_caixa_de_investimento(monkeypatch):
+    # O caixa de investimento (CFI) é positivo (venda de ativos e aplicações), mas o
+    # capex do fluxo do FCD é 200.000: a legenda mostra capex ÷ caixa operacional = 20%.
+    _preparar_fcd_com_cfo_cfi(
+        monkeypatch, cfo_atual=1_000_000.0, cfi_atual=500_000.0, capex=200_000.0
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    assert legendas == [LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=20.0)]
+
+
+def test_caption_reinvestimento_ausente_quando_o_capex_nao_foi_identificado(monkeypatch):
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0, capex=None)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)

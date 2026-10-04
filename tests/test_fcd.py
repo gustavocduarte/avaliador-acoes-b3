@@ -138,6 +138,38 @@ def test_proporcao_reinvestimento_caso_normal():
     assert fcd.calcular_proporcao_reinvestimento_percentual(1_000.0, -200.0) == pytest.approx(20.0)
 
 
+def _capex(valor):
+    return {
+        "status": "identificado" if valor is not None else "nao_identificado",
+        "valor": valor,
+        "linhas": [],
+    }
+
+
+def test_proporcao_capex_sobre_caixa_operacional_caso_normal():
+    assert fcd.calcular_proporcao_capex_caixa_operacional_percentual(
+        1_000.0, _capex(200.0)
+    ) == pytest.approx(20.0)
+
+
+def test_proporcao_capex_sobre_caixa_operacional_pode_passar_de_100_por_cento():
+    assert fcd.calcular_proporcao_capex_caixa_operacional_percentual(
+        500.0, _capex(2_500.0)
+    ) == pytest.approx(500.0)
+
+
+def test_proporcao_capex_sobre_caixa_operacional_nula_sem_capex_identificado():
+    assert fcd.calcular_proporcao_capex_caixa_operacional_percentual(1_000.0, _capex(None)) is None
+
+
+@pytest.mark.parametrize("caixa_operacional", [0.0, -100.0])
+def test_proporcao_capex_sobre_caixa_operacional_nula_com_caixa_nao_positivo(caixa_operacional):
+    assert (
+        fcd.calcular_proporcao_capex_caixa_operacional_percentual(caixa_operacional, _capex(50.0))
+        is None
+    )
+
+
 def test_proporcao_reinvestimento_pode_passar_de_100_por_cento():
     # Empresa em investimento pesado financiado com dívida — investiu mais
     # do que gerou de caixa operacional (ver RDOR3/SBSP3 na investigação).

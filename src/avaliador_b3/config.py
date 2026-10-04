@@ -770,6 +770,11 @@ MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO = (
     "fluxo de caixa livre não é calculado. Os outros métodos continuam "
     "sendo calculados quando se aplicam."
 )
+# Legenda do cartão do FCD: capex (o mesmo do fluxo do FCD) sobre o caixa operacional.
+LEGENDA_REINVESTIMENTO_CAPEX = (
+    "Em {ano}, reinvestiu {proporcao:.0f}% do caixa gerado pela operação "
+    "(investimento em imobilizado e intangível)."
+)
 # Motivos mostrados quando o crescimento do fluxo cai para o IPCA.
 TEXTO_CRESCIMENTO_IPCA = "Crescimento do fluxo estimado pelo IPCA: {motivo}."
 MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE = "a empresa não tem demonstração do ano-base na CVM"
