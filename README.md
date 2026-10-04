@@ -141,6 +141,23 @@ python -m mypy
 
 Os testes não acessam a rede e não gravam em `data/`.
 
+## Atualização do screener
+
+O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions, o "Atualiza o screener" (`.github/workflows/atualiza-screener.yml`). Por enquanto ele só roda **manualmente** e só publica o resultado como arquivo da execução (artifact), sem gravar nada no repositório; o agendamento e a gravação automática do `screener.csv` e do `macro_referencia.json` vêm numa fase seguinte, e a partir daí convém rodar `git pull` antes de começar a trabalhar.
+
+- **Onde ver as execuções:** na aba **Actions** do repositório (<https://github.com/gustavocduarte/avaliador-acoes-b3/actions>), workflow "Atualiza o screener". Cada execução mostra o resumo da rodada (aceita ou rejeitada, falhas de fonte, fonte da Selic e do IPCA, data dos preços) e, no fim da página, o artifact `screener-<número>` para baixar.
+- **Rodar manualmente:** Actions, "Atualiza o screener", "Run workflow".
+- **Pela linha de comando**, a partir da raiz do repositório (é o mesmo procedimento do botão "Rodar screener agora" e grava o `data/processed/screener.csv`):
+
+  ```bash
+  # Linux/macOS:
+  PYTHONPATH=src python -m avaliador_b3.rodar_screener
+  # Windows (PowerShell):
+  $env:PYTHONPATH = "src"; python -m avaliador_b3.rodar_screener
+  ```
+
+  Sai com 0 quando a rodada é aceita, 1 quando a checagem a rejeita e 2 quando uma exceção a interrompe.
+
 ## Documentação técnica
 
 A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto:
