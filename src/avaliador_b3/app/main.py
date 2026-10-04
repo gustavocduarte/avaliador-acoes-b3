@@ -65,6 +65,7 @@ from avaliador_b3.config import (
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
@@ -375,7 +376,7 @@ def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
 
 def _buscar_fcf_fcd(
     cnpj: str, ano_mais_recente: int
-) -> tuple[dict, int | None, bool, float | None, dict | None, str | None]:
+) -> tuple[dict, int | None, bool, float | None, dict | None, float | None, str | None]:
     """FCF do FCD com detecção automática de ano POR EMPRESA
     (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`) — uma chamada só
     que já resolve tanto o ano atual (`ano_mais_recente`, caindo um ano
@@ -384,11 +385,12 @@ def _buscar_fcf_fcd(
     preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
 
     Devolve (fluxos, ano_utilizado, usou_fallback, caixa_operacional, capex_atual,
-    erro) — `fluxos` é o dict de `modelos.fcd.montar_fluxos_fcd` (fluxo do
+    risco_sacado, erro) — `fluxos` é o dict de `modelos.fcd.montar_fluxos_fcd` (fluxo do
     FCD dos dois anos e os motivos de indisponibilidade); `caixa_operacional`
     (o do FCD, ajustado pelo risco sacado e com os juros somados de volta) e
     `capex_atual` (do ano efetivamente usado) alimentam a
-    caption de proporção reinvestida no cartão do FCD (ver
+    caption de proporção reinvestida no cartão do FCD; `risco_sacado` é a saída líquida
+    reclassificada para o caixa operacional nesse ano (negativa, ou zero) (ver
     `modelos.fcd.calcular_proporcao_capex_caixa_operacional_percentual`). Erro
     aqui não é mostrado à parte na tela — já aparece embutido no motivo
     de "não aplicável" do próprio card do FCD (`calcular_valor_
@@ -403,13 +405,14 @@ def _buscar_fcf_fcd(
             resultado["usou_fallback"],
             calcular_caixa_operacional_fcd(resultado),
             resultado["capex_atual"],
+            (resultado.get("risco_sacado_atual") or {}).get("valor"),
             None,
         )
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada) as erro:
-        return montar_fluxos_fcd(None), None, False, None, None, str(erro)
+        return montar_fluxos_fcd(None), None, False, None, None, None, str(erro)
     except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
         mensagem = f"Falha ao buscar dados da CVM: {erro}"
-        return montar_fluxos_fcd(None), None, False, None, None, mensagem
+        return montar_fluxos_fcd(None), None, False, None, None, None, mensagem
 
 
 def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None) -> dict:
@@ -1022,7 +1025,7 @@ with aba_analisar:
             fluxos_fcd = montar_fluxos_fcd(None)
             ano_fcd_utilizado = None
             fcd_usou_fallback = False
-            caixa_fcd_utilizado = capex_fcd_utilizado = None
+            caixa_fcd_utilizado = capex_fcd_utilizado = risco_sacado_fcd_utilizado = None
             if cnpj and ano_fcd_mais_recente is not None:
                 (
                     fluxos_fcd,
@@ -1030,6 +1033,7 @@ with aba_analisar:
                     fcd_usou_fallback,
                     caixa_fcd_utilizado,
                     capex_fcd_utilizado,
+                    risco_sacado_fcd_utilizado,
                     _,
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
             leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores) if cnpj else None
@@ -1201,6 +1205,13 @@ with aba_analisar:
                         f"FCD calculado com a demonstração financeira anual de "
                         f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
                         "ainda não foi entregue por essa empresa."
+                    )
+                if risco_sacado_fcd_utilizado:
+                    st.caption(
+                        TEXTO_RISCO_SACADO_RECLASSIFICADO.format(
+                            ano=ano_fcd_utilizado,
+                            valor=_fmt_bilhoes_md(abs(risco_sacado_fcd_utilizado)),
+                        )
                     )
                 if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
                     proporcao_reinvestimento = (

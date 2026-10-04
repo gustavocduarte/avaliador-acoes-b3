@@ -32,6 +32,7 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
 )
@@ -2670,3 +2671,31 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
         assert not any(proibido in texto for texto in textos), proibido
     assert len(aba.pills) == 0
     assert not any("ganho_real" in df.value.columns for df in aba.dataframe)
+
+
+def test_cartao_do_fcd_mostra_o_valor_reclassificado_do_risco_sacado_e_o_motivo(monkeypatch):
+    _preparar_fcd_com_cfo_cfi(
+        monkeypatch,
+        cfo_atual=15_000_000_000.0,
+        cfi_atual=-300_000_000.0,
+        risco_sacado=-13_500_000_000.0,
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption if "convênio com fornecedores" in c.value]
+    assert legendas == [
+        TEXTO_RISCO_SACADO_RECLASSIFICADO.format(ano=ANO_FCD_MOCK, valor="R\\$ 13,5 bi")
+    ]
+
+
+def test_cartao_do_fcd_nao_menciona_risco_sacado_quando_nao_ha_ajuste(monkeypatch):
+    _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [c.value for c in at.caption if "convênio com fornecedores" in c.value]

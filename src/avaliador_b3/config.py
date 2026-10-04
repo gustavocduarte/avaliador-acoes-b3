@@ -834,6 +834,14 @@ LEGENDA_REINVESTIMENTO_CAPEX = (
     "Em {ano}, reinvestiu {proporcao:.0f}% do caixa gerado pela operação "
     "(investimento em imobilizado e intangível)."
 )
+# Legenda do cartão do FCD quando a saída líquida de risco sacado/convênio (6.03) é tratada como
+# operacional: {valor} já vem formatado (ex.: "R$ 13,5 bi").
+TEXTO_RISCO_SACADO_RECLASSIFICADO = (
+    "Em {ano}, {valor} pagos a bancos em operações de convênio com fornecedores (risco sacado "
+    "ou similar), registrados no caixa de financiamento, foram tratados como operacionais: "
+    "esses pagamentos substituem pagamentos a fornecedores, e sem o ajuste o caixa operacional "
+    "pode parecer maior do que a geração de caixa da empresa."
+)
 # Motivos mostrados quando o crescimento do fluxo cai para o IPCA.
 TEXTO_CRESCIMENTO_IPCA = "Crescimento do fluxo estimado pelo IPCA: {motivo}."
 MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE = "a empresa não tem demonstração do ano-base na CVM"
