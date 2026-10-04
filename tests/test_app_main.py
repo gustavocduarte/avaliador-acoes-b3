@@ -2705,3 +2705,65 @@ def test_cartao_do_fcd_nao_menciona_risco_sacado_quando_nao_ha_ajuste(monkeypatc
 
     assert not at.exception
     assert not [c.value for c in at.caption if "convênio com fornecedores" in c.value]
+
+
+# --- Aviso de FCD extremo no cartão do FCD ------------------------------------------------
+# Com os mocks padrão o FCD sai em R$ 109 mil por ação, contra o preço de R$ 50; o número de
+# ações em circulação ajusta o valor por ação sem mexer no resto da página.
+
+
+def _avisos_de_valor_extremo(at):
+    aberturas = ("Valor muito acima do preço", "Valor negativo", "Valor muito abaixo do preço")
+    return [w.value for w in at.warning if w.value.startswith(aberturas)]
+
+
+def test_cartao_do_fcd_avisa_quando_o_valor_e_muito_acima_do_preco(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = _avisos_de_valor_extremo(at)
+    assert len(avisos) == 1
+    assert avisos[0].startswith("Valor muito acima do preço. O FCD de R\$ 109.")
+    assert "Causa provável, nas entradas do modelo." in avisos[0]
+    assert avisos[0].endswith("Não é necessariamente uma oportunidade.")
+
+
+def test_cartao_do_fcd_avisa_quando_o_valor_e_negativo(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = _avisos_de_valor_extremo(at)
+    assert len(avisos) == 1
+    assert avisos[0].startswith("Valor negativo. O FCD de −R\$ ")
+    assert "não quer dizer que a ação valha menos que zero" in avisos[0]
+    assert "As deduções somam R\$ 50,0 mi" in avisos[0]
+
+
+def test_cartao_do_fcd_avisa_quando_o_valor_e_minusculo_frente_ao_preco(monkeypatch):
+    leitura = _leitura_balanco_mock(acoes_em_circulacao=5_450_000.0)
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0, leitura_balanco=leitura)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    avisos = _avisos_de_valor_extremo(at)
+    assert len(avisos) == 1
+    assert avisos[0].startswith("Valor muito abaixo do preço. O FCD de R\$ 2,0")
+
+
+def test_cartao_do_fcd_nao_avisa_quando_o_valor_esta_perto_do_preco(monkeypatch):
+    leitura = _leitura_balanco_mock(acoes_em_circulacao=218_000.0)
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0, leitura_balanco=leitura)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _avisos_de_valor_extremo(at) == []

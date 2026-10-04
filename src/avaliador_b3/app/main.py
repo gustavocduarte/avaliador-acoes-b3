@@ -128,6 +128,7 @@ from avaliador_b3.ingest.precos import (
     obter_historico_ibovespa,
     preco_valido,
 )
+from avaliador_b3.modelos.aviso_fcd import avaliar_fcd_extremo
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import (
@@ -1190,6 +1191,9 @@ with aba_analisar:
         with coluna_fcd:
             _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
             if resultado_fcd["aplicavel"]:
+                aviso_fcd_extremo = avaliar_fcd_extremo(resultado_fcd, preco_atual)
+                if aviso_fcd_extremo is not None:
+                    st.warning(aviso_fcd_extremo["texto"].replace("$", "\\$"))
                 origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
                 st.caption(f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})")
                 # Rótulo específico do FCD (não da página toda) — só o FCD vem

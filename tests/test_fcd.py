@@ -1263,3 +1263,42 @@ def test_caixa_operacional_menos_capex_e_o_fluxo_do_fcd():
     assert fcd.calcular_caixa_operacional_fcd(resultado) - 300.0 == pytest.approx(
         fluxos["fcf_atual"]
     )
+
+
+def test_resultado_do_fcd_expoe_as_entradas_do_aviso_de_valor_extremo():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=900.0,
+        divida_liquida=2000.0,
+        arrendamento_fora_da_divida=300.0,
+        nao_controladores=500.0,
+    )
+
+    deducoes = (
+        resultado["deducao_divida_liquida"]
+        + resultado["deducao_arrendamento"]
+        + resultado["deducao_nao_controladores"]
+    )
+    assert resultado["deducao_divida_liquida"] == pytest.approx(2000.0)
+    assert resultado["deducao_arrendamento"] == pytest.approx(300.0)
+    assert resultado["deducao_nao_controladores"] == pytest.approx(500.0)
+    assert (resultado["valor_empresa"] - deducoes) / 100.0 == pytest.approx(
+        resultado["valor_justo"]
+    )
+    assert 0 < resultado["valor_presente_perpetuidade"] < resultado["valor_empresa"]
+    assert resultado["fluxo_base"] == pytest.approx(1000.0)
+    assert resultado["acoes_utilizadas"] == pytest.approx(100.0)
+
+
+def test_resultado_do_fcd_sem_deducoes_traz_zero_nelas():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0, numero_acoes=100.0, selic_meta=0.10, ipca_12m=0.04, fcf_ha_n_anos=900.0
+    )
+
+    assert resultado["deducao_divida_liquida"] == 0.0
+    assert resultado["deducao_arrendamento"] == 0.0
+    assert resultado["deducao_nao_controladores"] == 0.0
+    assert resultado["valor_empresa"] / 100.0 == pytest.approx(resultado["valor_justo"])

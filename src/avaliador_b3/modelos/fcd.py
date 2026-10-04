@@ -545,19 +545,32 @@ def calcular_valor_justo_fcd(
     # Enterprise Value -> Equity Value: subtrai dívida líquida ANTES de
     # dividir por número de ações. Negativa (caixa líquido) soma ao valor
     # normalmente, sem caso especial — ver docstring da função.
+    valor_empresa = valor_total
+    deducao_divida_liquida = deducao_arrendamento = deducao_nao_controladores = 0.0
     divida_liquida_deduzida = divida_liquida is not None
     if divida_liquida is not None:
+        deducao_divida_liquida = divida_liquida
         valor_total -= divida_liquida
     if arrendamento_fora_da_divida is not None and arrendamento_deduzido:
+        deducao_arrendamento = arrendamento_fora_da_divida
         valor_total -= arrendamento_fora_da_divida
     nao_controladores_deduzidos = nao_controladores is not None
     if nao_controladores is not None:
+        deducao_nao_controladores = nao_controladores
         valor_total -= nao_controladores
 
     return {
         "aplicavel": True,
         "valor_justo": valor_total / acoes_utilizadas,
         "motivo_nao_aplicavel": None,
+        # Entradas do aviso de valor extremo (ver `modelos.aviso_fcd`).
+        "valor_empresa": valor_empresa,
+        "valor_presente_perpetuidade": valor_presente_terminal,
+        "deducao_divida_liquida": deducao_divida_liquida,
+        "deducao_arrendamento": deducao_arrendamento,
+        "deducao_nao_controladores": deducao_nao_controladores,
+        "fluxo_base": fcf_atual,
+        "acoes_utilizadas": acoes_utilizadas,
         "divida_liquida_deduzida": divida_liquida_deduzida,
         "acoes_em_circulacao_utilizadas": usar_circulacao,
         "motivo_sem_acoes_em_circulacao": (

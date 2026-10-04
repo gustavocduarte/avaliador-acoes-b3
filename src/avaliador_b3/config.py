@@ -1118,6 +1118,82 @@ AVISO_DESCONTO_EXTREMO_GENERICO = (
     "método antes de tirar qualquer conclusão."
 )
 
+# Aviso do cartão do FCD quando o valor é extremo (ver `modelos.aviso_fcd`). Dispara com o FCD
+# zero ou negativo, com o FCD a partir de 3 vezes o preço (os mesmos +200% do aviso do
+# Screener) ou positivo mas até 10% do preço. A causa vem só das entradas do modelo; as
+# comparações com o preço servem para disparar o aviso e para o texto do fluxo, e nunca mudam
+# o cálculo. Limites escolhidos olhando as 53 ações com FCD de 04/10/2026: as deduções
+# (dívida líquida, arrendamento e não controladores) pesam 75% ou mais do valor da empresa
+# nas ações com FCD positivo minúsculo; crescimento a 5 p.p. ou menos do piso de −20% marca
+# as cíclicas; perpetuidade a partir de 70% do valor e WACC até 12% marcam os valores muito
+# acima do preço; fluxo de caixa a partir de 50% do valor de mercado marca um fluxo-base
+# desproporcional.
+FCD_EXTREMO_RAZAO_MAXIMA = 3.0
+FCD_EXTREMO_RAZAO_MINIMA = 0.10
+FCD_EXTREMO_DEDUCOES_PERTO_DO_VALOR = 0.75
+FCD_EXTREMO_CRESCIMENTO_PERTO_DO_PISO = -0.15
+FCD_EXTREMO_PESO_PERPETUIDADE = 0.70
+FCD_EXTREMO_FLUXO_SOBRE_VALOR_DE_MERCADO = 0.50
+FCD_EXTREMO_WACC_BAIXO = 0.12
+AVISO_FCD_NOMES_DEDUCOES = {
+    "divida_liquida": "dívida líquida",
+    "arrendamento": "arrendamento",
+    "nao_controladores": "participação dos não controladores",
+}
+AVISO_FCD_NOMES_DEDUCOES_COM_ARTIGO = {
+    "divida_liquida": "a dívida líquida",
+    "arrendamento": "o arrendamento",
+    "nao_controladores": "a participação dos não controladores",
+}
+AVISO_FCD_ABERTURA_NEGATIVO = (
+    "Valor negativo. O FCD de {valor} não quer dizer que a ação valha menos que zero. "
+    "Causa provável, nas entradas do modelo."
+)
+AVISO_FCD_ABERTURA_ALTO = (
+    "Valor muito acima do preço. O FCD de {valor} é {vezes} vezes o preço de {preco}. "
+    "Causa provável, nas entradas do modelo."
+)
+AVISO_FCD_ABERTURA_BAIXO = (
+    "Valor muito abaixo do preço. O FCD de {valor} é {percentual} do preço de {preco}. "
+    "Causa provável, nas entradas do modelo."
+)
+AVISO_FCD_CAUSA_DEDUCOES_ACIMA_DO_VALOR = (
+    "As deduções somam {deducoes} ({lista}), {vezes} vezes o valor da empresa pelo fluxo de "
+    "caixa ({valor_empresa}). O maior peso é {maior} ({percentual_maior} das deduções)."
+)
+AVISO_FCD_CAUSA_DEDUCOES_PERTO_DO_VALOR = (
+    "As deduções ({deducoes}: {lista}) consomem {percentual} do valor da empresa pelo fluxo "
+    "de caixa ({valor_empresa}); sobra pouco para o acionista, e o resultado oscila muito com "
+    "pequenas mudanças nas premissas."
+)
+AVISO_FCD_CAUSA_FLUXO_ALTO = (
+    "O fluxo de caixa do ano ({fluxo}) equivale a {percentual} do valor de mercado."
+)
+AVISO_FCD_CAUSA_CRESCIMENTO_NO_TETO = (
+    "O crescimento do fluxo começa em +{taxa} ao ano (o teto da faixa) e converge para o da "
+    "perpetuidade em {anos} anos."
+)
+AVISO_FCD_CAUSA_CRESCIMENTO_PERTO_DO_PISO = (
+    "O crescimento do fluxo começa em −{taxa} ao ano (perto do piso da faixa, −{piso}) e "
+    "converge para o da perpetuidade em {anos} anos."
+)
+AVISO_FCD_CAUSA_CRESCIMENTO_NO_PISO = (
+    "O crescimento do fluxo começa em −{taxa} ao ano (o piso da faixa) e converge para o da "
+    "perpetuidade em {anos} anos."
+)
+AVISO_FCD_CAUSA_WACC_BAIXO = "O WACC é baixo ({wacc}), o que eleva o valor."
+AVISO_FCD_CAUSA_PERPETUIDADE = (
+    "{percentual} do valor da empresa ({valor_empresa}) está na perpetuidade, depois do 5º ano."
+)
+AVISO_FCD_CAUSA_SEM_IDENTIFICAR = (
+    "Nenhuma entrada isolada está fora do comum; confira o fluxo de caixa do ano e as deduções."
+)
+AVISO_FCD_FECHAMENTO_FLUXO_PONTUAL = (
+    "Se o caixa do ano foi pontual (capital de giro ou um ganho não recorrente), o valor fica "
+    "inflado."
+)
+AVISO_FCD_FECHAMENTO_ALTO = "Não é necessariamente uma oportunidade."
+
 # Vocabulário do "Potencial" (valor justo ÷ preço − 1) na tela: rótulo da
 # coluna e tooltips do Screener, da comparação setorial e dos cartões de
 # Valor Justo. A coluna `desconto_percentual` do CSV mantém o nome.
