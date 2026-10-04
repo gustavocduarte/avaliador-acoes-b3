@@ -1,20 +1,12 @@
-# Requer Python 3.12+ (necessário para compatibilidade com numpy recente,
-# caso o projeto seja publicado no Streamlit Community Cloud — ver docs/especificacao.md).
+# Dependências do app (é o que o Streamlit Community Cloud instala).
+# Requer Python 3.12 ou mais recente (numpy 2.5 exige 3.12+; ver docs/especificacao.md).
+# Para rodar os testes e o lint, use requirements-dev.txt.
 
-pandas
-numpy
-requests
-yfinance
-beautifulsoup4
-xlrd
-streamlit
-plotly
-pytest
-ruff
-
-# openpyxl: sem uso em produção (o único adapter que lê Excel,
-# ingest/gpr.py, baixa .xls e usa xlrd) — mas tests/test_gpr.py precisa
-# dele pra fabricar bytes de Excel falsos via df.to_excel (motor padrão
-# do pandas pra escrita de .xlsx). Confirmado removendo e rodando a suíte
-# numa venv limpa: sem ele, 2 testes de gpr quebram com ModuleNotFoundError.
-openpyxl
+pandas==3.0.5
+numpy==2.5.3
+requests==2.34.2
+yfinance==1.7.0
+beautifulsoup4==4.15.0
+xlrd==2.0.2
+streamlit==1.63.0
+plotly==7.0.0

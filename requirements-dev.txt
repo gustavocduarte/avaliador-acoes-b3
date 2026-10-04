@@ -1,0 +1,11 @@
+# Dependências de desenvolvimento: tudo do app mais testes e lint.
+# Instalação: pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest==9.1.1
+ruff==0.16.7
+
+# openpyxl: sem uso em produção (o único adapter que lê Excel, ingest/gpr.py,
+# baixa .xls e usa xlrd), mas tests/test_gpr.py precisa dele para fabricar
+# bytes de Excel falsos via df.to_excel.
+openpyxl==3.1.5
