@@ -1,12 +1,19 @@
-# Atualiza o screener (fase de teste): roda a rodada completa num runner do GitHub e publica o
-# resultado como artifact. Não commita nem faz push de nada.
+# Atualiza o screener: roda a rodada completa num runner do GitHub, publica o resultado como
+# artifact e, se a rodada foi aceita e o screener.csv mudou, commita o screener.csv e o
+# macro_referencia.json no master.
 name: Atualiza o screener
 
 on:
-  # Só manual: Actions > "Atualiza o screener" > "Run workflow". Sem agendamento nesta fase.
+  # De segunda a sexta às 22:17 UTC, que são 19:17 em Brasília (UTC-3, sem horário de verão),
+  # depois do fechamento da B3: os preços do dia já estão no Yahoo. O minuto 17, e não o 0, evita
+  # o pico do início da hora, quando o GitHub mais atrasa as execuções agendadas; mesmo assim
+  # pode haver atraso de alguns minutos. O GitHub só agenda o que está no branch padrão.
+  schedule:
+    - cron: "17 22 * * 1-5"
+  # Também pode ser disparado à mão: Actions > "Atualiza o screener" > "Run workflow".
   workflow_dispatch:
 
-# Fase de teste: o workflow só lê o repositório (não grava nele).
+# Padrão do workflow: só leitura. O job abaixo pede escrita porque é o único que commita.
 permissions:
   contents: read
 
@@ -21,6 +28,10 @@ jobs:
     # de 19/10/2026, e a rodada não deve mudar de sistema sem a gente testar. Rever quando o
     # ubuntu-24.04 for descontinuado pelo GitHub.
     runs-on: ubuntu-24.04
+    # Escrita no repositório só neste job, para o commit do screener (passo 8). O push feito com
+    # o GITHUB_TOKEN não dispara outros workflows (e este só roda por agenda ou à mão).
+    permissions:
+      contents: write
     # A rodada leva de 5 a 15 minutos; o limite evita um job preso por horas.
     timeout-minutes: 45
     env:
@@ -32,9 +43,12 @@ jobs:
       PYTHONUTF8: "1"
 
     steps:
-      # 1. Baixa o código do repositório (inclui o screener.csv versionado).
+      # 1. Baixa o código do repositório (inclui o screener.csv versionado). O histórico completo
+      #    permite o `git pull --rebase` do passo 8 sem problema de clone raso.
       - name: Baixa o repositório
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # 2. Instala o Python 3.14 e guarda o cache de downloads do pip entre execuções.
       - name: Instala o Python
@@ -86,7 +100,32 @@ jobs:
       - name: Roda o screener
         run: python -m avaliador_b3.rodar_screener --resumo resumo-rodada.txt
 
-      # 8. Sempre (mesmo se a rodada falhar): mostra na página da execução o resumo da rodada e os
+      # 8. Só se a rodada saiu com 0 (aceita), e só no master: commita o screener.csv e o
+      #    macro_referencia.json se o screener.csv mudou. Autor github-actions[bot], sem trailer,
+      #    com o resumo da rodada no corpo. Rodada rejeitada (saída 1) ou com exceção (saída 2)
+      #    derruba o passo 7, então este não roda e o job termina em falha, sem commit.
+      #    Antes do push, `git pull --rebase` incorpora commits novos do master.
+      - name: Commita o screener atualizado
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+            { echo "### Commit do screener"; echo "Execução fora do master ($GITHUB_REF): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if git diff --quiet -- data/processed/screener.csv; then
+            { echo "### Commit do screener"; echo "O screener.csv não mudou desde a última rodada (por exemplo, feriado): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/screener.csv data/processed/macro_referencia.json
+          { echo "Atualiza o screener (rodada de $(date -u +%Y-%m-%d))"; echo; cat resumo-rodada.txt; } > "$RUNNER_TEMP/mensagem-commit.txt"
+          git commit -F "$RUNNER_TEMP/mensagem-commit.txt"
+          git pull --rebase origin master
+          git push origin HEAD:master
+          { echo "### Commit do screener"; echo "Commit feito no master: $(git rev-parse --short HEAD)"; } >> "$GITHUB_STEP_SUMMARY"
+
+      # 9. Sempre (mesmo se a rodada falhar): mostra na página da execução o resumo da rodada e os
       #    zips da CVM como ficaram depois dela (um zip rebaixado aparece com a data de agora).
       - name: Mostra o resumo na página da execução
         if: always()
@@ -104,7 +143,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 9. Sempre (mesmo se a rodada falhar), mas só se a restauração não achou a chave exata da
+      # 10. Sempre (mesmo se a rodada falhar), mas só se a restauração não achou a chave exata da
       #    semana: salva os zips da CVM no cache. Uma chave já existente não pode ser regravada.
       - name: Salva o cache da CVM
         if: always() && steps.cache_cvm.outputs.cache-hit != 'true'
@@ -113,7 +152,7 @@ jobs:
           path: data/raw/cvm/*.zip
           key: cvm-zips-${{ steps.semana.outputs.chave }}
 
-      # 10. Sempre: publica o resumo, o screener.csv e, se existir, o screener.rejeitado.csv.
+      # 11. Sempre: publica o resumo, o screener.csv e, se existir, o screener.rejeitado.csv.
       #    Numa rodada rejeitada o screener.csv é o anterior, que a rodada não substituiu.
       - name: Publica os arquivos da rodada
         if: always()
