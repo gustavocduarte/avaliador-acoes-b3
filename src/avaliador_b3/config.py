@@ -864,21 +864,32 @@ TAXA_CRESCIMENTO_FCD_MAXIMA = 0.30
 
 # WACC via CAPM simplificado: WACC = We×Ke + Wd×Kd×(1-alíquota).
 #
-# Ke (custo de capital próprio) = Selic (meta, via BCB) + Beta × prêmio de
-# risco de mercado. BETA_PADRAO=1,0 (risco médio de mercado) é o valor usado
-# quando o Beta da ação não é calculável.
+# Ke (custo de capital próprio) = (Selic meta, via BCB, menos o spread de default do Brasil) +
+# Beta × prêmio de risco total. A Selic, taxa em reais do governo, já embute o risco de default
+# do Brasil, e o prêmio total inclui o risco-país; por isso o spread é tirado da taxa livre de
+# risco, para não contar o risco duas vezes (orientação do Damodaran em "What is the riskfree
+# rate? A Search for the Basic Building Block", 2008). BETA_PADRAO=1,0 (risco médio de mercado)
+# é o valor usado quando o Beta da ação não é calculável.
 BETA_PADRAO = 1.0
 
-# Prêmio de risco de mercado do Brasil: confirmado em 2026-09-14 direto na
-# fonte (Damodaran, atualizada mensalmente) —
+# Prêmio de risco de ações do Brasil e spread de default, da tabela "Country Default Spreads and
+# Risk Premiums" do Damodaran —
 # https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/ctryprem.html
-# — Equity Risk Premium total do Brasil = 7,47% (spread de default
-# ajustado 2,13% + country risk premium 3,24% sobre o prêmio "mercado
-# maduro" ~4,23%, de países com rating AAA).
+# — lida em 04/10/2026, com "Last updated: January 5, 2026". Linha do Brasil: rating Moody's Ba1,
+# spread de default ajustado de 2,13% e prêmio total de risco de ações de 7,47%, soma de 4,23%
+# (mercado maduro) e 3,24% (risco-país). O risco-país é o spread de default multiplicado pela
+# volatilidade relativa das ações contra a dos títulos (cerca de 1,52), então os 2,13% estão
+# dentro dos 3,24%, e não somados a eles.
+#
+# A tabela é atualizada uma vez por ano, em janeiro. A cada atualização, conferir à mão, na
+# página, as constantes PREMIO_RISCO_MERCADO_BRASIL e SPREAD_DEFAULT_BRASIL (e o rating) e
+# registrar aqui a nova data da página.
 PREMIO_RISCO_MERCADO_BRASIL = 0.0747
+SPREAD_DEFAULT_BRASIL = 0.0213
 
 # Kd (custo de capital de terceiros, pré-imposto) = Selic + spread de
-# crédito. Pesquisa em 2026-09-14 achou o prêmio pago por empresas com
+# crédito, sem tirar o spread de default: é o custo real de captação das
+# empresas em reais. Pesquisa em 2026-09-14 achou o prêmio pago por empresas com
 # melhor perfil de crédito na casa de "CDI + 1%" (ex:
 # investnews.com.br/economia/corte-menor-da-selic-teria-custo-bilionario-
 # para-as-empresas/); usamos 2 p.p. como margem um pouco mais conservadora

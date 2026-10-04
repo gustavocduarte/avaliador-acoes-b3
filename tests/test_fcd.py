@@ -13,6 +13,7 @@ from avaliador_b3.config import (
     MOTIVO_RECEITA_NAO_POSITIVA,
     PREMIO_RISCO_MERCADO_BRASIL,
     SPREAD_CREDITO_PADRAO,
+    SPREAD_DEFAULT_BRASIL,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
 )
@@ -161,13 +162,39 @@ def test_proporcao_capex_sobre_caixa_operacional_nula_com_caixa_nao_positivo(cai
     )
 
 
-def test_custo_capital_proprio_capm():
+def test_custo_capital_proprio_capm_tira_o_spread_de_default_da_taxa_livre_de_risco():
     assert fcd._custo_capital_proprio(selic_meta=0.10, beta=1.0) == pytest.approx(
-        0.10 + PREMIO_RISCO_MERCADO_BRASIL
+        (0.10 - SPREAD_DEFAULT_BRASIL) + PREMIO_RISCO_MERCADO_BRASIL
     )
     assert fcd._custo_capital_proprio(selic_meta=0.10, beta=1.5) == pytest.approx(
-        0.10 + 1.5 * PREMIO_RISCO_MERCADO_BRASIL
+        (0.10 - SPREAD_DEFAULT_BRASIL) + 1.5 * PREMIO_RISCO_MERCADO_BRASIL
     )
+
+
+def test_spread_de_default_entra_com_peso_um_e_o_premio_com_peso_beta():
+    # Dois betas diferentes: o spread tira o mesmo valor do Ke, e o prêmio escala com o Beta.
+    ke_beta_1 = fcd._custo_capital_proprio(selic_meta=0.10, beta=1.0)
+    ke_beta_2 = fcd._custo_capital_proprio(selic_meta=0.10, beta=2.0)
+
+    assert ke_beta_2 - ke_beta_1 == pytest.approx(PREMIO_RISCO_MERCADO_BRASIL)
+
+
+def test_constantes_do_premio_e_do_spread_de_default_do_brasil_batem_com_a_tabela_do_damodaran():
+    # Tabela lida em 04/10/2026 (atualizada em 05/01/2026): Brasil, Ba1.
+    assert SPREAD_DEFAULT_BRASIL == pytest.approx(0.0213)
+    assert PREMIO_RISCO_MERCADO_BRASIL == pytest.approx(0.0747)
+    # O prêmio total é o de mercado maduro (4,23%) mais o risco-país (3,24%), que contém o spread.
+    assert 0.0423 + 0.0324 == pytest.approx(PREMIO_RISCO_MERCADO_BRASIL)
+    assert SPREAD_DEFAULT_BRASIL < 0.0324
+
+
+def test_custo_da_divida_continua_pela_selic_inteira_sem_tirar_o_spread_de_default():
+    esperado = (0.10 + SPREAD_CREDITO_PADRAO) * (1 - ALIQUOTA_IR_CSLL_PADRAO)
+
+    assert fcd._custo_capital_terceiros_pos_imposto(0.10) == pytest.approx(esperado)
+    # E o WACC de uma empresa 50% dívida, 50% capital próprio combina os dois custos.
+    ke = fcd._custo_capital_proprio(selic_meta=0.10, beta=1.0)
+    assert fcd.calcular_wacc(0.10, 1.0, beta=1.0) == pytest.approx(0.5 * ke + 0.5 * esperado)
 
 
 def test_custo_capital_terceiros_pos_imposto():

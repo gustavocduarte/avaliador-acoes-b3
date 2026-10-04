@@ -23,7 +23,8 @@ própria operação, e seguradoras e holdings vivem de prêmios e de
 dividendos de participações, não de um fluxo operacional a descontar.
 
 Premissas de WACC/crescimento documentadas e justificadas em config.py:
-- Custo de capital próprio via CAPM (Selic + Beta × prêmio de risco Brasil).
+- Custo de capital próprio via CAPM ((Selic − spread de default) + Beta × prêmio de risco
+  Brasil).
   Beta vem de `empresa.comportamento.calcular_beta` (janela de 1 ano) quando
   disponível; cai pra `BETA_PADRAO`=1,0 quando não é calculável (histórico
   curto demais, ou sem overlap suficiente com o Ibovespa) — não deixa o FCD
@@ -69,6 +70,7 @@ from avaliador_b3.config import (
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
     SPREAD_CREDITO_PADRAO,
+    SPREAD_DEFAULT_BRASIL,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
     TICKERS_FCD_NAO_APLICAVEL,
@@ -251,8 +253,10 @@ def _motivo_exclusao_do_fcd(segmento_setorial: str | None, ticker: str | None) -
 
 
 def _custo_capital_proprio(selic_meta: float, beta: float) -> float:
-    """CAPM: Ke = Selic + Beta × prêmio de risco de mercado (Brasil)."""
-    return selic_meta + beta * PREMIO_RISCO_MERCADO_BRASIL
+    """CAPM: Ke = (Selic − spread de default do Brasil) + Beta × prêmio total de risco do Brasil.
+    O spread sai da taxa livre de risco porque o prêmio total já inclui o risco-país (ver
+    `config.PREMIO_RISCO_MERCADO_BRASIL`)."""
+    return (selic_meta - SPREAD_DEFAULT_BRASIL) + beta * PREMIO_RISCO_MERCADO_BRASIL
 
 
 def _custo_capital_terceiros_pos_imposto(selic_meta: float) -> float:
