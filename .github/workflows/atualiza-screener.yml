@@ -17,7 +17,10 @@ concurrency:
 
 jobs:
   atualiza:
-    runs-on: ubuntu-latest
+    # Imagem fixa em vez de ubuntu-latest: o GitHub vai migrar o "latest" para o Ubuntu 26 a partir
+    # de 19/10/2026, e a rodada não deve mudar de sistema sem a gente testar. Rever quando o
+    # ubuntu-24.04 for descontinuado pelo GitHub.
+    runs-on: ubuntu-24.04
     # A rodada leva de 5 a 15 minutos; o limite evita um job preso por horas.
     timeout-minutes: 45
     env:
@@ -31,11 +34,11 @@ jobs:
     steps:
       # 1. Baixa o código do repositório (inclui o screener.csv versionado).
       - name: Baixa o repositório
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. Instala o Python 3.14 e guarda o cache de downloads do pip entre execuções.
       - name: Instala o Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -57,7 +60,7 @@ jobs:
       #    (fcf_*, balanco_*) são refeitos a partir deles e não ficam presos a dado velho.
       - name: Restaura o cache da CVM
         id: cache_cvm
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: data/raw/cvm/*.zip
           key: cvm-zips-${{ steps.semana.outputs.chave }}
@@ -101,10 +104,11 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 9. Sempre: salva os zips da CVM no cache (a chave da semana só é gravada uma vez).
+      # 9. Sempre (mesmo se a rodada falhar), mas só se a restauração não achou a chave exata da
+      #    semana: salva os zips da CVM no cache. Uma chave já existente não pode ser regravada.
       - name: Salva o cache da CVM
-        if: always()
-        uses: actions/cache/save@v4
+        if: always() && steps.cache_cvm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
         with:
           path: data/raw/cvm/*.zip
           key: cvm-zips-${{ steps.semana.outputs.chave }}
@@ -113,7 +117,7 @@ jobs:
       #    Numa rodada rejeitada o screener.csv é o anterior, que a rodada não substituiu.
       - name: Publica os arquivos da rodada
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screener-${{ github.run_id }}
           path: |
