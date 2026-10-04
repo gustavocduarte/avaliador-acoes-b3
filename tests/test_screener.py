@@ -95,6 +95,7 @@ def _resultado_fcf_cvm(
     cfo_base=1_000_000.0,
     capex_base=200_000.0,
     juros=0.0,
+    cfi=None,
 ):
     """Resultado de `obter_fluxo_caixa_livre_com_fallback`: com os padrões, o
     fluxo do FCD é 1.000.000 no ano de referência e 800.000 no ano-base."""
@@ -105,7 +106,7 @@ def _resultado_fcf_cvm(
         "ano_mais_recente_disponivel": ano_mais_recente,
         "usou_fallback": False,
         "cfo_atual": cfo,
-        "cfi_atual": -(capex or 0.0),
+        "cfi_atual": -(capex or 0.0) if cfi is None else cfi,
         "capex_atual": _capex(capex),
         "juros_pagos_atual": {"valor": juros, "linhas": []},
         "cfo_ha_n_anos": cfo_base,
@@ -648,7 +649,7 @@ def test_calcular_linha_ticker_itausa_fica_sem_fcd_e_com_os_demais_metodos(
 
 
 def test_calcular_linha_ticker_proporcao_reinvestimento_percentual(ambiente_feliz, tmp_path):
-    # ambiente_feliz mocka cfo_atual=1.200.000, cfi_atual=-200.000 ->
+    # ambiente_feliz mocka cfo_atual=1.200.000, capex=200.000 ->
     # 200.000/1.200.000 = 16,67% reinvestido.
     linha = screener._calcular_linha_ticker(
         "AAAA4",
@@ -663,6 +664,46 @@ def test_calcular_linha_ticker_proporcao_reinvestimento_percentual(ambiente_feli
 
     assert linha["fcd_valor_justo"] is not None
     assert linha["proporcao_reinvestimento_percentual"] == pytest.approx(200_000 / 1_200_000 * 100)
+
+
+def _linha_com_fcf(tmp_path, monkeypatch, **campos_fcf):
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda cnpj, ano_mais_recente, anos, **kw: _resultado_fcf_cvm(
+            ano_mais_recente, **campos_fcf
+        ),
+    )
+    return screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+
+def test_proporcao_reinvestimento_usa_o_capex_mesmo_com_caixa_de_investimento_positivo(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Caixa de investimento positivo (venda de ativos/aplicações), mas o capex do
+    # fluxo do FCD é 200.000: a coluna mostra capex ÷ caixa operacional.
+    linha = _linha_com_fcf(tmp_path, monkeypatch, cfi=500_000.0)
+
+    assert linha["fcd_valor_justo"] is not None
+    assert linha["proporcao_reinvestimento_percentual"] == pytest.approx(200_000 / 1_200_000 * 100)
+
+
+def test_proporcao_reinvestimento_vazia_sem_capex_identificado(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    linha = _linha_com_fcf(tmp_path, monkeypatch, capex=None)
+
+    assert linha["fcd_valor_justo"] is None
+    assert linha["proporcao_reinvestimento_percentual"] is None
 
 
 def test_calcular_linha_ticker_proporcao_reinvestimento_nula_quando_fcd_nao_aplicavel(

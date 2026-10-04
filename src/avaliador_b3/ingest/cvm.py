@@ -367,7 +367,7 @@ def _cfo_cfi_do_periodo(linhas_periodo: list[dict]) -> tuple[float, float]:
     soma dos dois, mas os componentes em si são expostos separadamente
     (ver `_montar_resultado_fcf`/`obter_fluxo_caixa_livre`), pra calcular a
     proporção reinvestida do caixa operacional (`modelos.fcd.calcular_
-    proporcao_reinvestimento_percentual`) — o contexto de o FCD sair baixo em
+    proporcao_capex_caixa_operacional_percentual`) — o contexto de o FCD sair baixo em
     empresas de investimento pesado está em config.py.
 
     `_valor_conta` recebe `ContaFluxoCaixaNaoEncontrada` explicitamente —
@@ -544,8 +544,8 @@ def obter_fluxo_caixa_livre(
     config.py) de uma empresa para `ano`, mais o valor do ano anterior, e
     também os dois componentes (`cfo_atual`/`cfi_atual`) separados do ano
     atual — usados pra calcular a proporção reinvestida do caixa
-    operacional (ver `modelos.fcd.calcular_proporcao_reinvestimento_
-    percentual`).
+    operacional (ver `modelos.fcd.calcular_proporcao_capex_caixa_
+    operacional_percentual`).
 
     Tenta a DFC pelo método indireto (a maioria das empresas) antes do
     direto, e a demonstração consolidada antes da individual; uma

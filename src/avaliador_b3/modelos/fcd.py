@@ -70,36 +70,6 @@ from avaliador_b3.config import (
 )
 
 
-def calcular_proporcao_reinvestimento_percentual(
-    caixa_operacional: float, caixa_investimento: float
-) -> float | None:
-    """Quanto do caixa operacional foi consumido pelo caixa de
-    investimento no ano usado pelo FCD — `-caixa_investimento /
-    caixa_operacional × 100`. Compartilhada entre `app/main.py` (caption
-    no cartão do FCD) e `screener.py` (coluna "Reinvestimento"), pra não
-    duplicar a conta nem correr o risco dos dois lugares divergirem sobre
-    o que "reinvestimento" significa — mesmo padrão de
-    `modelos.combinado.calcular_divergencia_metodos`.
-
-    `None` (sem proporção, não "0%") em dois casos, cada um com leitura
-    própria pro chamador mostrar: caixa operacional zero ou negativo (a
-    empresa não gera caixa suficiente nem pra cobrir a própria operação —
-    problema mais grave que "investir demais", ver caso real VAMO3 na
-    investigação de config.py) e caixa de investimento positivo (a
-    empresa está desinvestindo — vendeu mais ativos do que comprou no
-    ano, ver caso real ALOS3/BBSE3/ITSA4/HAPV3/MRVE3) — nos dois casos a
-    razão não tem leitura útil como "proporção reinvestida".
-
-    Ver a investigação completa (correlação de -0,79 entre essa
-    proporção e o quanto o FCD diverge de Graham, em `config.py`, junto
-    da definição do FCF) que motivou essa função."""
-    if caixa_operacional <= 0:
-        return None
-    if caixa_investimento > 0:
-        return None
-    return -caixa_investimento / caixa_operacional * 100
-
-
 def calcular_proporcao_capex_caixa_operacional_percentual(
     caixa_operacional: float, capex: dict
 ) -> float | None:

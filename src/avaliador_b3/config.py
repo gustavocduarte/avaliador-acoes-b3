@@ -652,9 +652,10 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 # docs/correcao-cnpj-2026-09-25.md, seção 7 — FCD sistematicamente muito
 # abaixo de Graham/Bazin em empresas de investimento pesado): pra todas as
 # 70 ações com FCD aplicável no Ibovespa, calculada a proporção reinvestida
-# do caixa operacional (-CFI/CFO, ver `modelos.fcd.calcular_proporcao_
-# reinvestimento_percentual`) e comparada com o quanto o FCD diverge de
-# Graham. Correlação de Spearman entre as duas: -0,79 (forte) — ações com
+# do caixa operacional (na época, -CFI/CFO; hoje o capex/CFO de
+# `modelos.fcd.calcular_proporcao_capex_caixa_operacional_percentual`) e
+# comparada com o quanto o FCD diverge de Graham. Correlação de Spearman entre
+# as duas: -0,79 (forte) — ações com
 # reinvestimento acima da mediana (49,7%) têm FCD 130,7% abaixo de Graham
 # na mediana, contra só 28,8% nas de reinvestimento abaixo da mediana. A
 # hipótese se sustenta como padrão geral: o modelo trata TODO investimento

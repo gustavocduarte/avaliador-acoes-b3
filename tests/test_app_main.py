@@ -1336,8 +1336,8 @@ def test_expander_como_ler_tabela_explica_coluna_reinvestimento(monkeypatch):
     ]
     assert len(blocos) == 1
     assert (
-        "Vazio quando o FCD não se aplica, o caixa operacional foi negativo ou "
-        "a empresa vendeu mais ativos do que comprou." in blocos[0]
+        "Vazio quando o FCD não se aplica, o investimento não foi identificado "
+        "ou o caixa operacional foi negativo." in blocos[0]
     )
 
 

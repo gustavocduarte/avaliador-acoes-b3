@@ -411,7 +411,7 @@ def test_linha_por_codigo_levanta_erro_quando_nao_encontrada():
 def test_cfo_cfi_do_periodo_devolve_os_dois_componentes_separados():
     # _cfo_cfi_do_periodo devolve os dois componentes separados (não só a soma),
     # usados pra calcular a proporção reinvestida (ver modelos.fcd.calcular_
-    # proporcao_reinvestimento_percentual).
+    # proporcao_capex_caixa_operacional_percentual).
     linhas = [
         {"CD_CONTA": "6.01", "VL_CONTA": "204037000.0000000000", "ESCALA_MOEDA": "MIL"},
         {"CD_CONTA": "6.02", "VL_CONTA": "-72363000.0000000000", "ESCALA_MOEDA": "MIL"},
@@ -629,7 +629,7 @@ def test_obter_fluxo_caixa_livre_levanta_cnpj_nao_encontrado(tmp_path, monkeypat
 def test_obter_fluxo_caixa_livre_devolve_cfo_e_cfi_separados(tmp_path, monkeypatch):
     # cfo_atual/cfi_atual são expostos separados no resultado, pra calcular a
     # proporção reinvestida (ver modelos.fcd.calcular_
-    # proporcao_reinvestimento_percentual) — mesmos números que compõem
+    # proporcao_capex_caixa_operacional_percentual) — mesmos números que compõem
     # fcf_atual em test_obter_fluxo_caixa_livre_prefere_mi_
     # consolidado (204037000000 + (-72363000000) = 131674000000).
     monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
