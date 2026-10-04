@@ -8,6 +8,8 @@ brasileira), com projeções apresentadas como cenários
 
 **Aviso:** os valores são estimativas de modelos com premissas simplificadas, para estudo. Não é recomendação de investimento.
 
+As limitações dos modelos e dos dados estão em [`docs/limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md).
+
 ## O que o app faz
 
 Para cada ação, calcula o valor justo por três métodos e um valor combinado:
@@ -136,6 +138,7 @@ Os testes não acessam a rede e não gravam em `data/`.
 A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto:
 
 - `especificacao.md` — especificação original do projeto.
+- `limitacoes-conhecidas.md` — limitações dos modelos e dos dados, para quem usa o app.
 - Auditorias e vistorias: `auditoria-2026-09-18.md`,
   `vistoria-pre-publicacao-2026-09-20.md`, `bateria-testes-2026-09-21.md`,
   `auditoria-tecnica-2026-09-27.md`, `vistoria-2026-09-28.md` e
