@@ -46,7 +46,11 @@ O dashboard (Streamlit) tem três abas:
 - **Fluxo de caixa livre:** caixa das operações (6.01) menos o capex explícito (compras de
   imobilizado e intangível nas subcontas de 6.02, identificadas pela descrição), somando de
   volta os juros de empréstimos lançados em 6.01, líquidos do imposto (34%). Sem capex
-  identificado, o FCD não é calculado.
+  identificado, o FCD não é calculado. A saída líquida de linhas de 6.03 descritas como
+  convênio com fornecedores, risco sacado, forfait ou cessão de crédito por fornecedores é
+  tratada como operacional e reduz o caixa das operações, no ano de referência e no ano-base;
+  entradas não são ajustadas, e a tela diz o valor reclassificado. A coluna Reinvestimento e a
+  legenda "reinvestiu X%" usam esse mesmo caixa das operações (com os juros somados de volta).
 - **Projeção:** 5 anos com crescimento pelo CAGR do fluxo entre o ano de referência e 5 anos
   antes, limitado por cima pelo CAGR da receita líquida (DRE, conta 3.01) no mesmo período e
   mantido entre −20% e +30% ao ano; sem receita utilizável, vale o do fluxo, e a tela diz o
