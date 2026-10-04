@@ -858,7 +858,9 @@ MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
 # no valor de IPCA (ver abaixo) como taxa neutra. Mesmo quando calculável,
 # a CAGR de só 2 pontos pode ser um outlier (ex: ano-base com resultado
 # atípico) — por isso é limitada a essa faixa antes de entrar na projeção,
-# uma trava de bom senso, não um número pesquisado numa fonte externa.
+# uma trava de bom senso, não um número pesquisado numa fonte externa. O crescimento do fluxo
+# também é limitado por cima pelo CAGR da receita líquida no mesmo período (ver
+# `CONTA_RECEITA_LIQUIDA_CVM`), e a faixa continua valendo como limite externo.
 TAXA_CRESCIMENTO_FCD_MINIMA = -0.20
 TAXA_CRESCIMENTO_FCD_MAXIMA = 0.30
 

@@ -48,12 +48,16 @@ O dashboard (Streamlit) tem três abas:
   volta os juros de empréstimos lançados em 6.01, líquidos do imposto (34%). Sem capex
   identificado, o FCD não é calculado.
 - **Projeção:** 5 anos com crescimento pelo CAGR do fluxo entre o ano de referência e 5 anos
-  antes, limitado entre −20% e +30% ao ano; perpetuidade (Gordon) crescendo pelo IPCA de 12
-  meses, limitado a 1 p.p. abaixo do WACC. Sem histórico utilizável (base ausente ou não
-  positiva), o crescimento cai para o IPCA, e a tela diz o motivo.
-- **WACC:** custo do capital próprio pelo CAPM (Selic + Beta × prêmio de risco do Brasil de
-  7,47%; Beta calculado contra o Ibovespa em 1 ano, ou 1,0 se não for calculável) e custo da
-  dívida de (Selic + 2 p.p.) pós-imposto. Os pesos usam valores contábeis, não de mercado:
+  antes, limitado por cima pelo CAGR da receita líquida (DRE, conta 3.01) no mesmo período e
+  mantido entre −20% e +30% ao ano; sem receita utilizável, vale o do fluxo, e a tela diz o
+  motivo. O crescimento do ano 1 converge linearmente para o da perpetuidade no ano 5, sem salto.
+  A perpetuidade (Gordon) cresce pelo IPCA de 12 meses, limitado a 1 p.p. abaixo do WACC. Sem
+  histórico utilizável (base ausente ou não positiva), o crescimento cai para o IPCA, e a tela
+  diz o motivo.
+- **WACC:** custo do capital próprio pelo CAPM ((Selic − spread de default do Brasil de 2,13%)
+  + Beta × prêmio de risco do Brasil de 7,47%, da tabela do Damodaran de janeiro de 2026; Beta
+  calculado contra o Ibovespa em 1 ano, ou 1,0 se não for calculável) e custo da dívida de
+  (Selic + 2 p.p.) pós-imposto. Os pesos usam valores contábeis, não de mercado:
   dívida líquida sobre patrimônio líquido total (controladores e não controladores); sem dívida
   líquida positiva, a empresa é tratada como não alavancada.
 - **Do valor da empresa ao valor por ação:** do valor presente (Enterprise

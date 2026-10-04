@@ -263,7 +263,7 @@ A alternativa P2 é a que respeita a orientação do próprio Damodaran: taxa li
 Nenhuma das decisões abaixo está implementada; elas definem o que será feito nas próximas etapas.
 
 1. **Crescimento: D + E.** A convergência linear substitui o salto para a perpetuidade, e o teto passa a ser o crescimento da receita no mesmo período, mantendo a faixa de −20% a +30% como limite externo. Sem receita disponível (por exemplo, a AURE3), vale a regra atual, com o motivo na tela.
-2. **A e C: descartadas. B: não adotada.** A normalização do capital de giro (separando 6.01.01 de 6.01.02 na DFC pelo método indireto) fica como nova investigação, com a MGLU3 como caso de teste.
+2. **A e C: descartadas. B: não adotada.** A normalização do capital de giro (separando 6.01.01 de 6.01.02 na DFC pelo método indireto) fica como nova investigação, com a MGLU3 como caso de teste. **Registro (04/10/2026):** a nova investigação de normalização do fluxo-base inclui também as empresas cíclicas (VALE3 e GGBR4), além da MGLU3: nelas, o crescimento medido entre dois anos reflete a posição dos anos no ciclo (VALE3: 2020 perto do pico e 2025 perto do vale; GGBR4: 2025 perto do vale), e a convergência atenua, mas não corrige.
 3. **Prêmio de risco: P2.** Custo do capital próprio = (Selic − spread de default do Brasil) + Beta × prêmio total. O custo da dívida continua Selic + 2 p.p., por representar o custo real de captação em reais. O comentário de `config.py:845-851` será corrigido: duas parcelas (mercado maduro e risco-país), atualização anual em janeiro e conferência manual a cada atualização.
 4. **As demais perguntas em aberto ficam registradas como estão.**
 
@@ -273,7 +273,7 @@ Situação das perguntas da seção 6 depois das decisões:
 |---|---|
 | 1 — D + E e a faixa de −20% a +30% | Decidida (item 1) |
 | 2 — Fluxo-base médio (B) | Decidida: não adotada (item 2) |
-| 3 — Normalização do fluxo-base para o capital de giro | Nova investigação (item 2) |
+| 3 — Normalização do fluxo-base para o capital de giro | Nova investigação (item 2), incluindo as empresas cíclicas (VALE3 e GGBR4) além da MGLU3 |
 | 4 — Natureza da linha "Fornecedores" da MGLU3 | Em aberto (faz parte da investigação do item 2) |
 | 5 — Adotar P2; taxa livre de risco (Selic contra título de 10 anos) e moeda do prêmio | P2 decidida (item 3); a investigação da taxa livre de risco e da moeda do prêmio segue em aberto |
 | 6 — Como atualizar o prêmio e o spread | Decidida: atualização anual em janeiro, com conferência manual (item 3) |

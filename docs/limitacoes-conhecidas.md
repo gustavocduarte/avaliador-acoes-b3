@@ -49,7 +49,7 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
   - *O passivo de arrendamento existente é descontado no fim*, do valor do acionista. Em relação a ignorá-lo, isso **reduz** o valor e compensa parte do ponto anterior, mas só cobre os contratos de hoje, não os aluguéis futuros nem as renovações.
   - *O arrendamento não entra nos pesos do WACC.* Enquanto os pesos forem contábeis, somá-lo à dívida baixaria o WACC e empurraria o valor para cima; deixá-lo de fora faz o WACC ficar um pouco **mais alto** e o valor **menor** do que ficaria com ele nos pesos.
   - *No conjunto*, o valor de quem aluga muito (varejo, logística) tende a ficar acima do que seria se o aluguel fosse tratado como custo da operação, porque o desconto do passivo não cobre os aluguéis futuros.
-- **Perto de zero, o valor é muito sensível.** A RDOR3, em 04/10/2026: caixa das operações de R$ 538 milhões, capex de R$ 3.287 milhões e R$ 4.284 milhões de juros pagos, somados de volta líquidos do imposto (R$ 2.827 milhões). O fluxo fica em R$ 79 milhões, positivo só por causa dos juros, e o FCD é de −R$ 6,07 por ação.
+- **Perto de zero, o valor é muito sensível.** A RDOR3, em 04/10/2026: caixa das operações de R$ 538 milhões, capex de R$ 3.287 milhões e R$ 4.284 milhões de juros pagos, somados de volta líquidos do imposto (R$ 2.827 milhões). O fluxo fica em R$ 79 milhões, positivo só por causa dos juros, e o FCD é de −R$ 6,04 por ação.
   - *Na tela:* valor negativo aparece com o aviso "Valor justo zero ou negativo".
 - **Empresas que investem muito ficam com FCD baixo.** Em energia e saneamento, por exemplo, o modelo trata todo o investimento como saída de caixa e só projeta crescimento por dois pontos de dados.
   - *Efeito:* o FCD tende a ficar baixo ou negativo mesmo em empresas saudáveis.
@@ -59,20 +59,27 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
 
 ### Crescimento e perpetuidade
 
-- **Crescimento por dois pontos.** O crescimento dos 5 anos projetados é a taxa composta anual entre o fluxo do último ano (2025) e o de 5 anos antes. Ele é limitado entre −20% e +30% ao ano, então um ano-base atípico pode levar ao teto por 5 anos seguidos. Em 04/10/2026, 12 das 53 ações com FCD estão no teto (por exemplo, MGLU3, com FCD de R$ 222,99 contra o preço de R$ 7,61) e uma no piso (ENGI11).
-  - *Efeito:* no teto, o valor sai muito alto; no piso, muito baixo.
-  - *Na tela:* o potencial extremo recebe um aviso na coluna "Aviso" do Screener (por exemplo, MGLU3).
+- **Crescimento por dois pontos, limitado pela receita.** O crescimento dos 5 anos projetados começa na taxa composta anual entre o fluxo do último ano (2025) e o de 5 anos antes. Ele é limitado por cima pelo crescimento da receita líquida no mesmo período, porque um fluxo que cresce mais que a receita por 5 anos exigiria margem melhorando sem limite; limitar ao crescimento da receita assume margem constante. A faixa de −20% a +30% ao ano continua valendo como limite externo. Em 04/10/2026, 18 das 53 ações com FCD ficam limitadas pela receita, 3 ficam no teto de +30% (AZZA3, CURY3 e RENT3) e uma no piso (ENGI11).
+  - *Efeito:* reduz o valor de quem tinha um crescimento do fluxo bem acima do da receita. Por exemplo, a MGLU3 (receita de R$ 29,2 bi em 2020 para R$ 38,7 bi em 2025, 5,8% ao ano) fica com FCD de R$ 102,16 contra o preço de R$ 7,61.
+  - *Na tela:* o cartão do FCD diz quando o crescimento foi limitado pela receita e qual foi a taxa; sem receita utilizável (a BRAP4 tem receita não positiva), vale o crescimento do fluxo, e o cartão diz o motivo.
+- **Convergência para a perpetuidade.** O crescimento do ano 1 é o calculado, e ele cai em passos iguais até o da perpetuidade no ano 5, sem salto de um ano para o outro. A regra vale nos dois sentidos: reduz o valor de quem tem crescimento alto e aumenta o de quem tem crescimento negativo (a PETR4, com crescimento de −5,0%, converge para cima).
 - **Sem histórico utilizável, o crescimento é o IPCA.** Isso vale quando a empresa não tem demonstração do ano-base, ou o fluxo dele não é positivo. Em 04/10/2026, são 9 ações (AURE3, BRAV3, EMBJ3, HYPE3, MRVE3, MULT3, RAIL3, RDOR3 e SMFT3).
   - *Na tela:* o cartão do FCD diz que o crescimento foi estimado pelo IPCA e o motivo.
-- **Salto na perpetuidade.** Depois do 5º ano, o crescimento cai de até 30% para o IPCA de 12 meses (4,22% em 04/10/2026), e a perpetuidade pesa muito: a mediana é 56% do valor do FCD (de 37% a 71% entre as 53 ações). A premissa de longo prazo importa mais do que a projeção explícita.
+- **Empresas cíclicas.** Com o crescimento medido entre dois anos, a posição dos anos no ciclo decide o resultado, e a convergência atenua, mas não corrige. Na VALE3, em 04/10/2026, o fluxo de 2020 (R$ 55,1 bi) está perto do pico (1,5 vez a mediana de 2019 a 2025) e o de 2025 (R$ 19,1 bi) perto do vale (0,5 vez a mediana), o que dá um crescimento de −19,1% ao ano. Na GGBR4, o fluxo de 2025 (R$ 2,1 bi) é 0,35 vez a mediana de 2019 a 2025.
+  - *Efeito:* o crescimento negativo é um retrato do ponto do ciclo, e não da trajetória da empresa; o valor sai baixo nessas ações, e o sinal do FCD pode mudar com pequenas variações das premissas (a GGBR4 fica em R$ 0,14 por ação).
+- **Receita que cresce por mudança de perímetro deixa o teto frouxo.** A receita pode crescer por aquisições ou reorganização societária, e não por crescimento operacional, e então limitar o fluxo a esse crescimento deixa de ser um limite. Na CSAN3, a receita vai de R$ 13,5 bi em 2020 para R$ 40,4 bi em 2025 (24,5% ao ano), com saltos em 2021 e 2022 compatíveis com mudanças de perímetro (a causa não foi verificada nas notas explicativas).
+  - *Efeito:* o crescimento do fluxo limitado por uma receita inflada fica alto, e o valor, para mais.
+- **Concessões podem registrar receita de construção.** Em concessões, a receita pode incluir uma receita de construção que acompanha o investimento, e isso distorce o teto pela receita. É uma hipótese não verificada: na EGIE3, a receita varia pouco (de R$ 12,3 bi em 2020 para R$ 12,9 bi em 2025, 1,0% ao ano) enquanto o fluxo cresce 20,5% ao ano, e o teto pela receita derruba o crescimento do fluxo para 1,0%.
+- **A perpetuidade pesa muito no valor.** Depois do 5º ano, vale o crescimento do IPCA de 12 meses (4,22% em 04/10/2026), e a mediana do peso da perpetuidade é 57% do valor do FCD (de 43% a 72% entre as ações calculadas). A premissa de longo prazo importa mais do que a projeção explícita.
 - **A perpetuidade cresce pelo IPCA de 12 meses**, um número de um momento só, que muda de mês a mês. Isso equivale a crescimento real zero. O app limita o crescimento a 1 ponto percentual abaixo do WACC, mas esse limite não foi acionado em nenhuma ação em 04/10/2026.
 - **Tudo é nominal**: Selic nominal, fluxos em reais correntes e perpetuidade pelo IPCA.
 
 ### Taxa de desconto (WACC)
 
-- **A Selic é a taxa livre de risco.** O custo do capital próprio é a Selic meta mais Beta vezes um prêmio de risco. Com a Selic em 13,75% (04/10/2026), o WACC das ações com FCD vai de 11,6% a 26,3% (mediana de 17,9%). Quando os juros sobem, o FCD tende a cair para todas as ações.
+- **A taxa livre de risco é a Selic menos o spread de default do Brasil.** O custo do capital próprio é a Selic meta menos o spread de default (2,13%), mais Beta vezes o prêmio de risco do Brasil. O spread sai da Selic porque ela já embute o risco de default do país, e o prêmio de risco (que inclui o risco-país) o conta de novo. Com a Selic em 13,75% (04/10/2026), o WACC das ações com FCD vai de 11,3% a 24,2% (mediana de 16,5%). O custo da dívida continua sendo a Selic mais 2 pontos percentuais, o custo real de captação em reais. Quando os juros sobem, o FCD tende a cair para todas as ações.
+  - *Hipótese:* que a Selic embuta o spread de 2,13% como um título longo do governo; a Selic é uma taxa de um dia, e a taxa de um título de 10 anos em reais não foi estudada.
   - *Na tela:* o bloco "Datas de referência dos dados usados" informa a data da Selic; a origem do dado está em "Dados e fontes", mais abaixo.
-- **O prêmio de risco é fixo** (7,47%, valor da tabela do Damodaran conferido em 14/09/2026). Ele não se atualiza sozinho.
+- **O prêmio de risco e o spread de default são fixos** (7,47% e 2,13%, da tabela do Damodaran de 05/01/2026, rating Ba1 do Brasil, lida em 04/10/2026). A tabela é atualizada uma vez por ano, em janeiro, e as constantes são conferidas à mão a cada atualização; entre elas, os valores ficam parados.
 - **O Beta é frágil.** É calculado com os retornos diários de 1 ano contra o Ibovespa, sem ajuste e com no mínimo 2 observações. Em 04/10/2026, os valores vão de 0,18 a 1,97 (PETR4: 0,40).
   - *Efeito:* um Beta baixo reduz o custo do capital próprio e eleva o valor.
   - *Na tela:* o cartão do FCD mostra o Beta usado e se foi calculado ou padrão (1,0).
@@ -87,15 +94,15 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
 - **A dívida líquida vem do Fundamentus.** Em 9 empresas conferidas com o balanço da CVM (02/10/2026), ela é a dívida bruta (empréstimos, financiamentos e debêntures) menos o caixa e as aplicações financeiras de curto prazo (duas contas do balanço). O passivo de arrendamento só entra nela quando a empresa o registra como financiamento (PETR4 e CSAN3); o tratamento nos demais casos está em "Arrendamento", na seção do fluxo de caixa. Aplicações que a empresa classifica em outras contas não são descontadas: na CSAN3, são R$ 5,5 bilhões em títulos e valores mobiliários.
   - *Efeito:* dívida líquida superestimada em casos como esse, e valor menor.
 - **A participação dos não controladores** (a parte das controladas que pertence a sócios minoritários) é descontada pelo valor contábil do balanço consolidado, que costuma ficar abaixo do valor de mercado.
-  - *Efeito:* o desconto pode ficar curto. Em empresas com muitos minoritários o efeito é grande: na GOAU4 (04/10/2026), os não controladores são R$ 34,6 bilhões, 64% do patrimônio total, e o FCD é de −R$ 27,52 por ação (valor combinado de −R$ 2,38).
+  - *Efeito:* o desconto pode ficar curto. Em empresas com muitos minoritários o efeito é grande: na GOAU4 (04/10/2026), os não controladores são R$ 34,6 bilhões, 64% do patrimônio total, e o FCD é de −R$ 24,84 por ação (valor combinado de −R$ 1,49).
   - *Na tela:* o valor negativo é mostrado como está, com o aviso "Valor justo zero ou negativo". Ele não quer dizer que a ação valha menos que zero, e sim que o fluxo da empresa não cobre a dívida e a parte dos minoritários.
 - **Número de ações.** O FCD, o Graham e o valor de mercado usam as ações em circulação da CVM (capital integralizado menos tesouraria), na data-base do balanço. Quando a CVM não traz o número, ou ele é descartado por inconsistência, vale o do Fundamentus, e o cartão diz o motivo. O app corrige erros conhecidos de escala e de tesouraria na composição do capital, mas um erro novo nesses dados pode passar sem ser notado. Na IGTI11, o número de ações da CVM (172 milhões) difere 72% do do Fundamentus (297 milhões, em units), provável erro de escala ou de fator de unit, e vale o do Fundamentus.
 
 ### Valores extremos
 
-Em 04/10/2026, entre as 53 ações com FCD, 5 têm FCD acima de 3 vezes o preço (MGLU3, BEEF3, POMO4, ASAI3 e YDUQ3), 12 têm FCD negativo e 3 estão abaixo de −1 vez o preço (ENGI11, GOAU4 e MRVE3). Quase sempre isso reflete a sensibilidade do modelo às premissas acima, e não uma oportunidade ou um desastre.
+Em 04/10/2026, entre as 53 ações com FCD, 2 têm FCD acima de 3 vezes o preço (MGLU3 e BEEF3), 12 têm FCD negativo e 3 estão abaixo de −1 vez o preço (ENGI11, GOAU4 e MRVE3). Quase sempre isso reflete a sensibilidade do modelo às premissas acima, e não uma oportunidade ou um desastre.
 
-- *Na tela:* o Screener marca com um aviso as ações cujo potencial passa de +200% ou fica abaixo de −100% (8 ações em 04/10/2026), e o texto do aviso depende dos métodos que entraram no valor combinado.
+- *Na tela:* o Screener marca com um aviso as ações cujo potencial passa de +200% ou fica abaixo de −100% (7 ações em 04/10/2026), e o texto do aviso depende dos métodos que entraram no valor combinado.
 
 ## Dados e fontes
 
