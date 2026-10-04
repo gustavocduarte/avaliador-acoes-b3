@@ -143,10 +143,14 @@ Os testes não acessam a rede e não gravam em `data/`.
 
 ## Atualização do screener
 
-O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions, o "Atualiza o screener" (`.github/workflows/atualiza-screener.yml`). Por enquanto ele só roda **manualmente** e só publica o resultado como arquivo da execução (artifact), sem gravar nada no repositório; o agendamento e a gravação automática do `screener.csv` e do `macro_referencia.json` vêm numa fase seguinte, e a partir daí convém rodar `git pull` antes de começar a trabalhar.
+O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions, o "Atualiza o screener" (`.github/workflows/atualiza-screener.yml`). Ele roda **de segunda a sexta às 19:17 de Brasília** (22:17 UTC, depois do fechamento da B3; o GitHub pode atrasar a execução em alguns minutos) e também pode ser **disparado manualmente**. A cada execução faz a rodada completa e publica o resultado como arquivo da execução (artifact).
 
-- **Onde ver as execuções:** na aba **Actions** do repositório (<https://github.com/gustavocduarte/avaliador-acoes-b3/actions>), workflow "Atualiza o screener". Cada execução mostra o resumo da rodada (aceita ou rejeitada, falhas de fonte, fonte da Selic e do IPCA, data dos preços) e, no fim da página, o artifact `screener-<número>` para baixar.
-- **Rodar manualmente:** Actions, "Atualiza o screener", "Run workflow".
+- **Quando commita:** só quando a rodada é aceita e o `screener.csv` mudou (num feriado, por exemplo, não muda e nada é commitado). Aí grava o `screener.csv` e o `macro_referencia.json` no `master`, com autor `github-actions[bot]` e mensagem "Atualiza o screener (rodada de AAAA-MM-DD)"; o corpo do commit traz o resumo da rodada.
+- **Quando falha:** se a rodada é rejeitada pela checagem ou termina com exceção, a execução fica em **falha** (vermelha na aba Actions; o GitHub avisa por e-mail conforme as notificações de quem mantém o agendamento) e nada é commitado, então o screener anterior continua valendo. Os arquivos da rodada, inclusive o `screener.rejeitado.csv`, continuam disponíveis como artifact.
+- **Sincronizar:** como o workflow commita no `master`, convém rodar `git pull` antes de começar a trabalhar.
+- **Agendamento parado:** em repositório público, o GitHub desliga os agendamentos depois de 60 dias sem atividade no repositório; para reativar, use a aba Actions.
+- **Onde ver as execuções:** na aba **Actions** do repositório (<https://github.com/gustavocduarte/avaliador-acoes-b3/actions>), workflow "Atualiza o screener". Cada execução mostra o resumo da rodada (aceita ou rejeitada, falhas de fonte, fonte da Selic e do IPCA, data dos preços, se houve commit) e, no fim da página, o artifact `screener-<número>` para baixar. Os commits do workflow aparecem no histórico do `master` com o autor `github-actions[bot]`.
+- **Rodar manualmente:** Actions, "Atualiza o screener", "Run workflow". Uma execução manual no `master` também commita, nas mesmas condições.
 - **Pela linha de comando**, a partir da raiz do repositório (é o mesmo procedimento do botão "Rodar screener agora" e grava o `data/processed/screener.csv`):
 
   ```bash
