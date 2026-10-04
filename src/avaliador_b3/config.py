@@ -326,7 +326,7 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # um campo novo (como `cfo_atual`/`cfi_atual`) seria servido sem a chave e
 # quebraria com KeyError pra qualquer CNPJ/ano já cacheado. Cada mudança de
 # schema incrementa a versão.
-VERSAO_SCHEMA_CVM_FCF = 4
+VERSAO_SCHEMA_CVM_FCF = 5
 
 # Receita líquida da DRE (conta 3.01), lida junto com a DFC de cada ano na mesma demonstração
 # (tipo e versão): o crescimento do fluxo do FCD é limitado pelo da receita no mesmo período.
@@ -346,6 +346,25 @@ TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA = (
 TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA = (
     "Crescimento do fluxo sem o limite da receita líquida: {motivo}."
 )
+
+# --- Risco sacado e convênio com fornecedores no caixa de financiamento (6.03) ---
+#
+# Quando o banco paga o fornecedor e a empresa quita o banco depois (risco sacado, convênio com
+# fornecedores, forfait, cessão de crédito por fornecedores), o aumento de fornecedores aparece
+# no caixa operacional (6.01.02) e o pagamento ao banco, em 6.03, sem mudar o caixa total: o
+# caixa operacional fica inflado. As linhas de 6.03 identificadas pelos termos abaixo (regex
+# sobre a descrição normalizada, só subcontas de primeiro nível, 6.03.xx) são somadas por ano; se
+# o saldo for saída (negativo), ele reduz o caixa operacional do fluxo do FCD, no ano de
+# referência e no ano-base, na mesma demonstração. Saldo de entrada ou zero não muda nada: não dá
+# para afirmar que uma entrada seja a mesma operação (VIVA3). "Parcelamento" fica de fora: é
+# dívida com fornecedores, não financiamento da cadeia de suprimento.
+TERMOS_RISCO_SACADO = (
+    "risco sacado",
+    "convenio",
+    "cessao de credito por fornecedores",
+    "forfait",
+)
+TERMOS_RISCO_SACADO_EXCLUIDOS = ("parcelamento",)
 
 # --- Capex e juros pagos da DFC, por descrição das subcontas ---
 #

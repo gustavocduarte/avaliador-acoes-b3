@@ -125,6 +125,12 @@ def _receitas_do_fcd(resultado_cvm: dict) -> dict:
     }
 
 
+def _ajuste_risco_sacado(resultado_cvm: dict, chave: str) -> float:
+    """Saída líquida de risco sacado/convênio (negativa, ou zero) que reduz o caixa operacional
+    do ano; zero se o resultado não traz essa leitura."""
+    return (resultado_cvm.get(chave) or {}).get("valor") or 0.0
+
+
 def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
     """Fluxo do FCD dos dois anos (referência e base do crescimento) a partir
     do resultado de `ingest.cvm.obter_fluxo_caixa_livre_com_fallback`, mais o
@@ -142,7 +148,7 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
             "motivo_sem_receita": None,
         }
     fcf_atual = calcular_fluxo_caixa_fcd(
-        resultado_cvm["cfo_atual"],
+        resultado_cvm["cfo_atual"] + _ajuste_risco_sacado(resultado_cvm, "risco_sacado_atual"),
         resultado_cvm["capex_atual"],
         resultado_cvm["juros_pagos_atual"],
     )
@@ -151,7 +157,8 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
         fcf_ha_n_anos, motivo_base = None, MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE
     else:
         fcf_ha_n_anos = calcular_fluxo_caixa_fcd(
-            resultado_cvm["cfo_ha_n_anos"],
+            resultado_cvm["cfo_ha_n_anos"]
+            + _ajuste_risco_sacado(resultado_cvm, "risco_sacado_ha_n_anos"),
             resultado_cvm["capex_ha_n_anos"],
             resultado_cvm["juros_pagos_ha_n_anos"],
         )

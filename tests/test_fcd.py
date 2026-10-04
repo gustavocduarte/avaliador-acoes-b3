@@ -1164,3 +1164,64 @@ def test_calcular_valor_justo_fcd_segmento_none_continua_aplicavel():
     )
     assert resultado["aplicavel"] is True
     assert resultado["valor_justo"] is not None
+
+
+# --- Fluxo do FCD ajustado pelo risco sacado (saída líquida do 6.03) -----------------
+
+
+def test_montar_fluxos_fcd_reduz_o_caixa_operacional_nos_dois_anos_pelo_risco_sacado():
+    resultado = _resultado_cvm()  # cfo 1.000 / capex 300 e cfo 500 / capex 100
+    resultado["risco_sacado_atual"] = {"valor": -200.0, "saldo": -200.0, "linhas": []}
+    resultado["risco_sacado_ha_n_anos"] = {"valor": -50.0, "saldo": -50.0, "linhas": []}
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fluxos["fcf_atual"] == pytest.approx(1_000.0 - 200.0 - 300.0)
+    assert fluxos["fcf_ha_n_anos"] == pytest.approx(500.0 - 50.0 - 100.0)
+
+
+def test_montar_fluxos_fcd_ajuste_so_no_ano_de_referencia_nao_mexe_no_ano_base():
+    resultado = _resultado_cvm()
+    resultado["risco_sacado_atual"] = {"valor": -200.0, "saldo": -200.0, "linhas": []}
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fluxos["fcf_atual"] == pytest.approx(500.0)
+    assert fluxos["fcf_ha_n_anos"] == pytest.approx(400.0)  # sem ajuste: 500 - 100
+
+
+def test_montar_fluxos_fcd_saldo_de_entrada_nao_muda_o_fluxo():
+    resultado = _resultado_cvm()
+    resultado["risco_sacado_atual"] = {"valor": 0.0, "saldo": 146.6, "linhas": []}
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fluxos["fcf_atual"] == pytest.approx(700.0)
+
+
+def test_montar_fluxos_fcd_sem_leitura_de_risco_sacado_nao_ajusta():
+    fluxos = fcd.montar_fluxos_fcd(_resultado_cvm())  # resultado sem as chaves novas
+
+    assert fluxos["fcf_atual"] == pytest.approx(700.0)
+    assert fluxos["fcf_ha_n_anos"] == pytest.approx(400.0)
+
+
+def test_fluxo_ajustado_menor_que_zero_deixa_o_fcd_nao_aplicavel():
+    resultado = _resultado_cvm()
+    resultado["risco_sacado_atual"] = {
+        "valor": -900.0,
+        "saldo": -900.0,
+        "linhas": [],
+    }  # 1.000 - 900 - 300 < 0
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    r = fcd.calcular_valor_justo_fcd(
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        divida_liquida_sobre_patrimonio=None,
+        **fluxos,
+    )
+
+    assert r["aplicavel"] is False
+    assert r["motivo_nao_aplicavel"] == MOTIVO_FCD_FLUXO_NAO_POSITIVO

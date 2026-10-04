@@ -1230,10 +1230,12 @@ def _zip_com_dfc_e_dre(caminho: Path, ano: int, dfc: dict, dre: dict) -> Path:
             for tipo in ("con", "ind"):
                 linhas = [CABECALHO_COM_VERSAO]
                 versao, contas = dfc.get((metodo, tipo), (1, []))
-                for codigo, valor in contas:
+                for conta in contas:
+                    codigo, valor = conta[0], conta[1]
+                    descricao = conta[2] if len(conta) > 2 else f"Conta {codigo}"
                     linhas.append(
                         f"{CNPJ_SINTETICO_ZERADA};{versao};000001;EMPRESA SINTETICA S.A.;MIL;"
-                        f"ÚLTIMO;{ano}-12-31;{codigo};Conta {codigo};{valor}"
+                        f"ÚLTIMO;{ano}-12-31;{codigo};{descricao};{valor}"
                     )
                 arquivo_zip.writestr(
                     f"dfp_cia_aberta_DFC_{metodo}_{tipo}_{ano}.csv",
@@ -1402,3 +1404,155 @@ def test_fallback_sem_demonstracao_do_ano_base_deixa_a_receita_do_ano_base_vazia
 
     assert resultado["receita_atual"]["valor"] == pytest.approx(2000.0)
     assert resultado["receita_ha_n_anos"] is None
+
+
+# --- Risco sacado e convênio com fornecedores (6.03) ----------------------------------
+
+
+def _fluxo_com_6_03(tmp_path, monkeypatch, linhas_6_03):
+    """DFC consolidada sintética com 6.01, 6.02 e as linhas de 6.03 dadas, em MIL."""
+    contas = [("6.01", "15719"), ("6.02", "-1001"), *linhas_6_03]
+    dfc = {("MI", "con"): (1, contas)}
+    return _receita_com_zip(tmp_path, monkeypatch, dfc, {})
+
+
+def test_risco_sacado_so_saida_reduz_o_caixa_operacional_caso_mglu3(tmp_path, monkeypatch):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [
+            ("6.03.04", "-1685", "Pagamento de empréstimos e financiamentos"),
+            ("6.03.05", "-13469", "Pagamento de fornecedores - convênio"),
+        ],
+    )
+
+    risco = resultado["risco_sacado_atual"]
+    assert risco["valor"] == pytest.approx(-13469.0 * 1000)
+    assert risco["saldo"] == pytest.approx(-13469.0 * 1000)
+    assert [linha["codigo"] for linha in risco["linhas"]] == ["6.03.05"]
+    assert risco["linhas"][0]["descricao"] == "Pagamento de fornecedores - convênio"
+    assert resultado["cfo_atual"] == pytest.approx(15719.0 * 1000)  # o caixa lido não muda
+
+
+def test_risco_sacado_saida_e_entrada_do_mesmo_programa_usa_o_saldo_caso_flry3(
+    tmp_path, monkeypatch
+):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [
+            ("6.03.08", "116", "Novas operações risco sacado"),
+            ("6.03.09", "-121", "Liquidação (principal) risco sacado"),
+        ],
+    )
+
+    risco = resultado["risco_sacado_atual"]
+    assert risco["saldo"] == pytest.approx(-5.0 * 1000)
+    assert risco["valor"] == pytest.approx(-5.0 * 1000)
+    assert len(risco["linhas"]) == 2
+
+
+def test_risco_sacado_saldo_de_entrada_e_ignorado_caso_viva3(tmp_path, monkeypatch):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [("6.03.08", "146.6", "Captação de financiamentos fornecedores convênio")],
+    )
+
+    risco = resultado["risco_sacado_atual"]
+    assert risco["saldo"] == pytest.approx(146.6 * 1000)
+    assert risco["valor"] == 0.0  # entrada: nada reduz o caixa operacional
+    assert len(risco["linhas"]) == 1
+
+
+def test_risco_sacado_ignora_o_termo_excluido_parcelamento(tmp_path, monkeypatch):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [("6.03.05", "-80", "Pagamento de parcelamento de fornecedores - convênio")],
+    )
+
+    assert resultado["risco_sacado_atual"] == {"valor": 0.0, "saldo": 0.0, "linhas": []}
+
+
+def test_risco_sacado_empresa_sem_a_linha_nao_tem_ajuste(tmp_path, monkeypatch):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [
+            ("6.03.03", "-784", "Pagamento de juros sobre empréstimos e financiamentos"),
+            ("6.03.04", "-225", "Pagamento de dividendos"),
+        ],
+    )
+
+    assert resultado["risco_sacado_atual"]["valor"] == 0.0
+    assert resultado["risco_sacado_atual"]["linhas"] == []
+
+
+def test_risco_sacado_so_conta_subcontas_de_primeiro_nivel_do_6_03(tmp_path, monkeypatch):
+    # A subconta mais funda (6.03.05.01) detalha a 6.03.05; contar as duas seria dobrar.
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [
+            ("6.03.05", "-100", "Pagamento de fornecedores - convênio"),
+            ("6.03.05.01", "-100", "Convênio banco X"),
+        ],
+    )
+
+    assert resultado["risco_sacado_atual"]["valor"] == pytest.approx(-100.0 * 1000)
+    assert len(resultado["risco_sacado_atual"]["linhas"]) == 1
+
+
+def test_risco_sacado_reconhece_risco_sacado_forfait_e_cessao_de_credito(tmp_path, monkeypatch):
+    resultado = _fluxo_com_6_03(
+        tmp_path,
+        monkeypatch,
+        [
+            ("6.03.05", "-10", "Operação de Risco Sacado"),
+            ("6.03.06", "-20", "Forfait"),
+            ("6.03.07", "-30", "Cessão de crédito por fornecedores - amortizações"),
+        ],
+    )
+
+    assert resultado["risco_sacado_atual"]["valor"] == pytest.approx(-60.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_4_do_schema_sem_risco_sacado(
+    tmp_path, monkeypatch
+):
+    caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text(
+        json.dumps({"versao_schema": 4, "resultado": {"fcf_atual": 999.0}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+    assert "risco_sacado_atual" in resultado
+
+
+def test_fallback_devolve_o_risco_sacado_dos_dois_anos(tmp_path, monkeypatch):
+    def obter_falso(cnpj, ano, *a, **k):
+        saldo = -500.0 if ano == 2025 else -40.0
+        return {
+            "fcf_atual": 100.0,
+            "cfo_atual": 60.0,
+            "cfi_atual": -30.0,
+            "risco_sacado_atual": {"valor": saldo, "saldo": saldo, "linhas": []},
+            **EXTRAS_FCF_MOCK,
+        }
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS,
+        ano_mais_recente=2025,
+        anos_historico_crescimento=5,
+        diretorio_cache=tmp_path,
+    )
+
+    assert resultado["risco_sacado_atual"]["valor"] == pytest.approx(-500.0)
+    assert resultado["risco_sacado_ha_n_anos"]["valor"] == pytest.approx(-40.0)

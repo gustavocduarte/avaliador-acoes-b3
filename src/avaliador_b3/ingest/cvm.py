@@ -61,6 +61,8 @@ from avaliador_b3.config import (
     TERMOS_JUROS_MISTOS,
     TERMOS_JUROS_PAGOS,
     TERMOS_NAO_CAPEX,
+    TERMOS_RISCO_SACADO,
+    TERMOS_RISCO_SACADO_EXCLUIDOS,
     URLS_CVM_ZIP,
     VERSAO_SCHEMA_CVM_FCF,
 )
@@ -92,6 +94,8 @@ PADRAO_JUROS_PAGOS = _padrao(TERMOS_JUROS_PAGOS)
 PADRAO_JUROS_EXCLUIDO = _padrao(TERMOS_JUROS_EXCLUIDOS)
 PADRAO_JUROS_MISTO = _padrao(TERMOS_JUROS_MISTOS)
 PADRAO_ARRENDAMENTO = _padrao(TERMOS_ARRENDAMENTO)
+PADRAO_RISCO_SACADO = _padrao(TERMOS_RISCO_SACADO)
+PADRAO_RISCO_SACADO_EXCLUIDO = _padrao(TERMOS_RISCO_SACADO_EXCLUIDOS)
 
 
 class ErroCVM(Exception):
@@ -544,6 +548,31 @@ def _receita_do_ano(
     return {"valor": valor, "versao": versao(linha), "motivo": None}
 
 
+def _extrair_risco_sacado(linhas_periodo: list[dict]) -> dict:
+    """Linhas de 6.03 identificadas como risco sacado, convênio com fornecedores, forfait ou
+    cessão de crédito por fornecedores (ver `config.TERMOS_RISCO_SACADO`). Devolve `saldo` (soma
+    das linhas do ano, com o sinal delas), `valor` (o saldo se for saída, negativo; zero se for
+    entrada ou nulo, e é o que reduz o caixa operacional no fluxo do FCD) e as `linhas` usadas."""
+    usadas = []
+    for linha in linhas_periodo:
+        codigo = linha["CD_CONTA"]
+        if not codigo.startswith("6.03.") or len(codigo.split(".")) != 3:
+            continue
+        descricao = _normalizar_descricao(linha["DS_CONTA"])
+        if PADRAO_RISCO_SACADO.search(descricao) and not PADRAO_RISCO_SACADO_EXCLUIDO.search(
+            descricao
+        ):
+            usadas.append(
+                {
+                    "codigo": codigo,
+                    "descricao": linha["DS_CONTA"],
+                    "valor": _valor_conta(linha, ContaFluxoCaixaNaoEncontrada),
+                }
+            )
+    saldo = sum(linha["valor"] for linha in usadas)
+    return {"valor": min(saldo, 0.0), "saldo": saldo, "linhas": usadas}
+
+
 def _montar_resultado_fcf(
     ano: int, tipo: str, metodo: str, linhas: list[dict], receita: dict | None = None
 ) -> dict:
@@ -566,6 +595,7 @@ def _montar_resultado_fcf(
         "cfi_atual": cfi_atual,
         "capex_atual": _extrair_capex(linhas_atual),
         "juros_pagos_atual": _extrair_juros_pagos_6_01(linhas_atual),
+        "risco_sacado_atual": _extrair_risco_sacado(linhas_atual),
         "receita_atual": receita
         or {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_NAO_LIDA},
     }
@@ -799,9 +829,10 @@ def obter_fluxo_caixa_livre_com_fallback(
         capex_ha_n_anos = resultado_base["capex_atual"]
         juros_pagos_ha_n_anos = resultado_base["juros_pagos_atual"]
         receita_ha_n_anos = resultado_base.get("receita_atual")
+        risco_sacado_ha_n_anos = resultado_base.get("risco_sacado_atual")
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
         fcf_ha_n_anos = cfo_ha_n_anos = capex_ha_n_anos = juros_pagos_ha_n_anos = None
-        receita_ha_n_anos = None
+        receita_ha_n_anos = risco_sacado_ha_n_anos = None
 
     return {
         "fcf_atual": resultado_atual["fcf_atual"],
@@ -822,6 +853,8 @@ def obter_fluxo_caixa_livre_com_fallback(
         "juros_pagos_ha_n_anos": juros_pagos_ha_n_anos,
         "receita_atual": resultado_atual.get("receita_atual"),
         "receita_ha_n_anos": receita_ha_n_anos,
+        "risco_sacado_atual": resultado_atual.get("risco_sacado_atual"),
+        "risco_sacado_ha_n_anos": risco_sacado_ha_n_anos,
     }
 
 
