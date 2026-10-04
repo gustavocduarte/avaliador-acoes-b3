@@ -192,10 +192,13 @@ class RodadaScreenerRejeitada(Exception):
     anterior. `motivo` diz o que falhou; `caminho_rejeitado` é onde ficou a
     rodada descartada."""
 
-    def __init__(self, motivo: str, caminho_rejeitado: Path) -> None:
+    def __init__(
+        self, motivo: str, caminho_rejeitado: Path, resultado: pd.DataFrame | None = None
+    ) -> None:
         super().__init__(motivo)
         self.motivo = motivo
         self.caminho_rejeitado = caminho_rejeitado
+        self.resultado = resultado
 
 
 COLUNAS_RESULTADO = [
@@ -704,8 +707,9 @@ def rodar_screener(
     `caminho_saida` fica como estava e `RodadaScreenerRejeitada` é levantada.
     Uma exceção no meio da rodada apaga o arquivo novo, que seria parcial.
 
-    O DataFrame devolvido traz em `attrs["falhas_de_fonte"]` as ações com
-    falha de fonte da rodada ({ticker: [fontes]})."""
+    O DataFrame devolvido (e o da rodada rejeitada, em `RodadaScreenerRejeitada.resultado`)
+    traz em `attrs["falhas_de_fonte"]` as ações com falha de fonte da rodada
+    ({ticker: [fontes]}) e em `attrs["macro"]` a Selic e o IPCA usados."""
     if tickers is None:
         universo = obter_universo_ibovespa(diretorio_cache=diretorio_cache)
         tickers = list(universo["ticker"])
@@ -747,13 +751,13 @@ def rodar_screener(
             )
         )
 
+    resultado.attrs["falhas_de_fonte"] = falhas_de_fonte.por_ticker()
     if motivos:
         os.replace(caminho_novo, caminho_rejeitado)
-        raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado)
+        raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado, resultado)
 
     os.replace(caminho_novo, caminho_saida)
-    macro = resultado.attrs.pop("macro", None)
+    macro = resultado.attrs.get("macro")
     if macro is not None and not macro.usou_valor_guardado:
         salvar_macro_referencia(macro, caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA))
-    resultado.attrs["falhas_de_fonte"] = falhas_de_fonte.por_ticker()
     return resultado

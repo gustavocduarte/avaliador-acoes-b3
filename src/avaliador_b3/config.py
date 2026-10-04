@@ -824,6 +824,31 @@ MOTIVO_RODADA_COM_FALHA_DE_FONTE = (
     "{quantidade} ações com falha de fonte (limite: {limite}); por fonte: {por_fonte}."
 )
 MOTIVO_RODADA_LINHAS_FALTANDO = "{linhas} linhas para {universo} ações do universo."
+# Resumo impresso por `python -m avaliador_b3.rodar_screener` (uma linha por item).
+TTL_CACHE_RESUMO_RODADA_SEGUNDOS = 24 * 60 * 60  # lê só o cache de preços, sem rede
+CODIGO_SAIDA_RODADA_ACEITA = 0
+CODIGO_SAIDA_RODADA_REJEITADA = 1
+CODIGO_SAIDA_RODADA_COM_EXCECAO = 2
+RESUMO_RODADA_ACEITA = "Rodada: ACEITA"
+RESUMO_RODADA_REJEITADA = "Rodada: REJEITADA (o screener.csv anterior foi mantido)"
+RESUMO_RODADA_EXCECAO = "Rodada: FALHOU POR EXCEÇÃO"
+RESUMO_MOTIVO = "Motivo: {motivo}"
+RESUMO_ARQUIVO_REJEITADO = "Rodada descartada em: {caminho}"
+RESUMO_ACOES = "Ações na rodada: {total} | com FCD: {com_fcd}"
+RESUMO_SEM_FALHAS = "Falhas de fonte: nenhuma"
+RESUMO_FALHAS = "Falhas de fonte: {por_fonte} (ações: {acoes})"
+RESUMO_MACRO = (
+    "Selic meta: {selic} (fonte: {fonte_selic}) | IPCA 12m: {ipca} (fonte: {fonte_ipca}, "
+    "referência {data_ipca})"
+)
+RESUMO_MACRO_GUARDADO = (
+    "Atenção: Selic e IPCA vieram de valor guardado; o arquivo de referência não foi atualizado."
+)
+RESUMO_MACRO_INDISPONIVEL = "Selic meta e IPCA 12m: indisponíveis"
+RESUMO_DATA_PRECOS = "Data dos preços: {data}"
+RESUMO_DATA_PRECOS_INDISPONIVEL = "Data dos preços: indisponível"
+RESUMO_AVISO = "Aviso: {aviso}"
+
 TEXTO_RODADA_DESCARTADA = (
     "Rodada descartada: {motivo} O resultado anterior foi mantido. A rodada "
     "descartada ficou em {caminho} para diagnóstico."

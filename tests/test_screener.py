@@ -991,6 +991,27 @@ def test_rodada_com_mais_acoes_sem_preco_que_o_limite_e_rejeitada(
     assert not (tmp_path / "screener.csv.novo").exists()
 
 
+def test_rodada_rejeitada_leva_o_resultado_com_a_macro_e_as_falhas(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+
+    with pytest.raises(screener.RodadaScreenerRejeitada) as excecao:
+        _rodar_com_oficial_antigo(tmp_path)
+
+    resultado = excecao.value.resultado
+    assert list(resultado["ticker"]) == ["AAAA4", "BBBB4"]
+    assert resultado.attrs["macro"].fonte_selic == "BCB (SOAP)"
+    assert resultado.attrs["falhas_de_fonte"] == {"BBBB4": ["Yahoo"]}
+
+
+def test_rodada_aceita_devolve_a_macro_nos_attrs(ambiente_feliz, tmp_path):
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado.attrs["macro"].selic_meta == pytest.approx(0.10)
+
+
 def test_rodada_aceita_grava_a_selic_e_o_ipca_no_arquivo_de_referencia(ambiente_feliz, tmp_path):
     _rodar_com_oficial_antigo(tmp_path)
 
