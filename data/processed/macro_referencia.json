@@ -1,1 +1,1 @@
-{"selic_meta": 0.1375, "ipca_12m": 0.042234527370682784, "data_ipca": "2026-08-01", "data_busca": "2026-10-04T13:31:13.209836", "fonte_selic": "BCB (SOAP)", "fonte_ipca": "BCB (SOAP)"}
+{"selic_meta": 0.1375, "ipca_12m": 0.042234527370682784, "data_ipca": "2026-08-01", "data_busca": "2026-10-04T15:53:40.094689", "fonte_selic": "BCB (API)", "fonte_ipca": "BCB (API)"}
