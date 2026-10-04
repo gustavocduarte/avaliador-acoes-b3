@@ -66,3 +66,73 @@ def test_sem_divida_liquida_banco_valor_de_mercado_fica_calculavel_mas_nao_o_de_
     assert resultado["valor_mercado"] == pytest.approx(10_000.0)
     assert resultado["divida_liquida"] is None
     assert resultado["valor_firma"] is None
+
+
+def test_valor_de_firma_inclui_nao_controladores_e_arrendamento_como_a_ponte_do_fcd():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=10.0,
+        numero_acoes=1_000.0,
+        divida_liquida=500.0,
+        nao_controladores=200.0,
+        arrendamento_fora_da_divida=300.0,
+    )
+
+    assert resultado["valor_firma"] == pytest.approx(10_000.0 + 500.0 + 200.0 + 300.0)
+    assert resultado["componentes_ausentes"] == []
+
+
+def test_componente_indisponivel_fica_de_fora_e_e_listado():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=10.0,
+        numero_acoes=1_000.0,
+        divida_liquida=500.0,
+        nao_controladores=None,
+        arrendamento_fora_da_divida=300.0,
+    )
+
+    assert resultado["valor_firma"] == pytest.approx(10_000.0 + 500.0 + 300.0)
+    assert resultado["componentes_ausentes"] == ["nao_controladores"]
+
+
+def test_so_a_divida_liquida_sem_balanco_lista_os_dois_componentes_do_balanco():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=10.0, numero_acoes=1_000.0, divida_liquida=500.0
+    )
+
+    assert resultado["valor_firma"] == pytest.approx(10_500.0)
+    assert resultado["componentes_ausentes"] == ["nao_controladores", "arrendamento_fora_da_divida"]
+
+
+def test_componente_zero_conta_como_disponivel():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=10.0,
+        numero_acoes=1_000.0,
+        divida_liquida=0.0,
+        nao_controladores=0.0,
+        arrendamento_fora_da_divida=0.0,
+    )
+
+    assert resultado["valor_firma"] == pytest.approx(10_000.0)
+    assert resultado["componentes_ausentes"] == []
+
+
+def test_sem_nenhum_componente_o_valor_de_firma_fica_indisponivel():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=10.0, numero_acoes=1_000.0, divida_liquida=None
+    )
+
+    assert resultado["valor_firma"] is None
+    assert resultado["componentes_ausentes"] == [
+        "divida_liquida",
+        "nao_controladores",
+        "arrendamento_fora_da_divida",
+    ]
+
+
+def test_sem_valor_de_mercado_nao_lista_componentes_ausentes():
+    resultado = calcular_valor_mercado_e_firma(
+        preco_atual=None, numero_acoes=1_000.0, divida_liquida=500.0
+    )
+
+    assert resultado["valor_firma"] is None
+    assert resultado["componentes_ausentes"] == []

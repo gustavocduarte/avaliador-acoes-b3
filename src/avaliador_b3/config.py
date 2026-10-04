@@ -461,6 +461,19 @@ MOTIVO_BALANCO_SEM_DEMONSTRACAO = (
 )
 MOTIVO_BALANCO_NAO_LIDO = "o balanço da CVM não foi lido para essa empresa."
 MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL = "número de ações da CVM indisponível."
+# Valor de firma da página: mesma ponte do FCD (valor de mercado + dívida líquida + não
+# controladores + arrendamento fora da dívida); componentes indisponíveis ficam de fora.
+TOOLTIP_VALOR_FIRMA = (
+    "Valor de mercado + dívida líquida + participação dos não controladores + "
+    "arrendamento fora da dívida, a mesma ponte entre empresa e acionista usada no FCD."
+)
+ROTULOS_COMPONENTES_VALOR_FIRMA = {
+    "divida_liquida": "dívida líquida",
+    "nao_controladores": "não controladores",
+    "arrendamento_fora_da_divida": "arrendamento fora da dívida",
+}
+TEXTO_FIRMA_SEM_COMPONENTES = "Valor de firma calculado sem {componentes} (dado indisponível)."
+
 TEXTO_SEM_ACOES_EM_CIRCULACAO = (
     "Número de ações do Fundamentus (sem as ações em circulação da CVM): {motivo}"
 )

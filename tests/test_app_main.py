@@ -28,6 +28,7 @@ from streamlit.testing.v1 import AppTest
 from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    TEXTO_FIRMA_SEM_COMPONENTES,
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
 )
@@ -751,6 +752,40 @@ def test_valor_de_mercado_e_de_firma_usam_as_acoes_em_circulacao_da_cvm(monkeypa
     assert _metrica_por_label(at, "Valor de mercado").value == "R$ 4.000,00"
     assert _metrica_por_label(at, "Valor de firma").value == "R$ 54.000,00"
     assert not [c.value for c in at.caption if "ações em circulação da CVM" in c.value]
+
+
+def test_valor_de_firma_usa_a_ponte_do_fcd_com_nao_controladores_e_arrendamento(monkeypatch):
+    # Preço 50 x 100 ações = 5.000; firma = 5.000 + dívida líquida 50.000 + não
+    # controladores 10.000 + arrendamento 2.000.
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(
+            nao_controladores=10_000.0, arrendamento_fora_da_divida=2_000.0
+        ),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Valor de firma").value == "R$ 67.000,00"
+    assert not [c.value for c in at.caption if "Valor de firma calculado sem" in c.value]
+
+
+def test_valor_de_firma_sem_o_balanco_da_cvm_deixa_de_fora_e_diz_quais_componentes(monkeypatch):
+    _preparar_fcd_aplicavel(
+        monkeypatch,
+        divida_liquida=50_000.0,
+        leitura_balanco=_leitura_balanco_mock(disponivel=False, motivo="balanço indisponível."),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Valor de firma").value == "R$ 55.000,00"
+    assert TEXTO_FIRMA_SEM_COMPONENTES.format(
+        componentes="não controladores, arrendamento fora da dívida"
+    ) in [c.value for c in at.caption]
 
 
 def test_valor_de_mercado_sem_acoes_em_circulacao_usa_o_fundamentus_e_mostra_o_motivo(

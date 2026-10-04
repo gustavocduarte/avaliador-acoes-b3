@@ -51,6 +51,7 @@ from avaliador_b3.config import (
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_POTENCIAL,
+    ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
@@ -61,6 +62,7 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
+    TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
@@ -74,6 +76,7 @@ from avaliador_b3.config import (
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
+    TOOLTIP_VALOR_FIRMA,
     YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
@@ -1393,6 +1396,8 @@ with aba_analisar:
                     preco_atual,
                     acoes_em_circulacao if acoes_em_circulacao is not None else numero_acoes,
                     divida_liquida,
+                    ajustes_balanco["nao_controladores"],
+                    ajustes_balanco["arrendamento_fora_da_divida"],
                 )
                 col_g, col_h = st.columns(2)
                 col_g.metric(
@@ -1406,7 +1411,20 @@ with aba_analisar:
                 col_i.metric(
                     "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
                 )
-                col_j.metric("Valor de firma", _fmt_bilhoes(valores_mercado_firma["valor_firma"]))
+                col_j.metric(
+                    "Valor de firma",
+                    _fmt_bilhoes(valores_mercado_firma["valor_firma"]),
+                    help=TOOLTIP_VALOR_FIRMA,
+                )
+                if valores_mercado_firma["componentes_ausentes"]:
+                    st.caption(
+                        TEXTO_FIRMA_SEM_COMPONENTES.format(
+                            componentes=", ".join(
+                                ROTULOS_COMPONENTES_VALOR_FIRMA[nome]
+                                for nome in valores_mercado_firma["componentes_ausentes"]
+                            )
+                        )
+                    )
                 if leitura_balanco and ajustes_balanco["motivo_sem_acoes_em_circulacao"]:
                     st.caption(
                         TEXTO_SEM_ACOES_EM_CIRCULACAO.format(
