@@ -376,13 +376,27 @@ def test_divergencia_pequena_nao_traz_aviso():
 
 
 def test_divergencia_implausivel_deixa_o_numero_indisponivel():
-    # Caso IGTI11: o fator de unit do Fundamentus (7) não bate com a CVM.
+    # Caso IGTI11: a CVM conta ações físicas; a unit é medida pelo peso econômico (fator 7).
     r = _acoes(_capital(1206.361e6, 1.794e6), 296.7286e6, fator=7)
 
     assert r["acoes"] is None
     assert r["descartada_por_divergencia"] is True
-    assert "provável erro de escala ou de fator de unit" in r["motivo"]
-    assert "mantido o do Fundamentus" in r["motivo"]
+    assert r["motivo"] == (
+        "O número de ações da CVM (172,08 mi) difere +72% do do Fundamentus (296,73 mi); "
+        "mantido o do Fundamentus. Em units, a diferença pode vir de a CVM contar ações "
+        "físicas enquanto a unit é medida pelo peso econômico das ações que a formam."
+    )
+    assert "erro" not in r["motivo"]
+
+
+def test_divergencia_implausivel_fora_de_unit_nao_cita_units():
+    r = _acoes(_capital(1000e6, 0.0), 3000e6)
+
+    assert r["acoes"] is None
+    assert r["motivo"] == (
+        "O número de ações da CVM (1.000,00 mi) difere +200% do do Fundamentus (3.000,00 mi); "
+        "mantido o do Fundamentus."
+    )
 
 
 def test_sem_composicao_do_capital_o_numero_fica_indisponivel_com_motivo():

@@ -24,6 +24,7 @@ import requests
 from avaliador_b3.config import (
     AVISO_DIVERGENCIA_ACOES,
     CODIGO_PATRIMONIO_LIQUIDO_CVM,
+    COMPLEMENTO_ACOES_DIVERGENCIA_UNIT,
     DATA_RAW_DIR,
     FAIXA_RAZAO_ESCALA_MILHARES_CVM,
     FATOR_ESCALA_MILHARES_CVM,
@@ -358,7 +359,8 @@ def calcular_acoes_em_circulacao(
                 cvm=_fmt_acoes(em_circulacao / fator),
                 divergencia=f"{referencia / em_circulacao - 1:+.0%}",
                 fundamentus=_fmt_acoes(acoes_fundamentus),
-            ),
+            )
+            + (f" {COMPLEMENTO_ACOES_DIVERGENCIA_UNIT}" if fator > 1 else ""),
             "aviso_divergencia": None,
             "descartada_por_divergencia": True,
             **base,

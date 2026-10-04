@@ -838,8 +838,8 @@ def test_pagina_mostra_o_motivo_quando_o_numero_da_cvm_e_descartado_por_divergir
     monkeypatch,
 ):
     motivo = (
-        "O número de ações da CVM (172,08 mi) difere +72% do do Fundamentus (296,73 mi): "
-        "provável erro de escala ou de fator de unit; mantido o do Fundamentus."
+        "O número de ações da CVM (172,08 mi) difere +72% do do Fundamentus (296,73 mi); "
+        "mantido o do Fundamentus."
     )
     leitura = {
         **_leitura_balanco_mock(acoes_em_circulacao=None, motivo_acoes=motivo),

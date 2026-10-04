@@ -479,8 +479,8 @@ MES_DIA_BALANCO_DFP = "12-31"
 # de 1.000 vezes o da CVM); tesouraria acima do limite indica erro de escala nos
 # dados (TEND3); o integralizado já líquido de tesouraria (VALE3) é reconhecido
 # quando integralizado + tesouraria bate com o Fundamentus; e uma divergência
-# implausível (IGTI11, cujo fator de unit do Fundamentus não bate com a CVM) deixa
-# o número da CVM de lado.
+# implausível (IGTI11, em que a CVM conta ações físicas e a unit é medida pelo peso
+# econômico das ações) deixa o número da CVM de lado.
 FATOR_ESCALA_MILHARES_CVM = 1000.0
 FAIXA_RAZAO_ESCALA_MILHARES_CVM = (500.0, 2000.0)
 LIMITE_TESOURARIA_SOBRE_CAPITAL = 0.20
@@ -562,7 +562,12 @@ MOTIVO_ACOES_TESOURARIA_ALTA = (
 )
 MOTIVO_ACOES_DIVERGENCIA_IMPLAUSIVEL = (
     "O número de ações da CVM ({cvm}) difere {divergencia} do do Fundamentus "
-    "({fundamentus}): provável erro de escala ou de fator de unit; mantido o do Fundamentus."
+    "({fundamentus}); mantido o do Fundamentus."
+)
+# Acrescentado ao motivo acima quando a ação é uma unit.
+COMPLEMENTO_ACOES_DIVERGENCIA_UNIT = (
+    "Em units, a diferença pode vir de a CVM contar ações físicas enquanto a unit é medida "
+    "pelo peso econômico das ações que a formam."
 )
 AVISO_DIVERGENCIA_ACOES = (
     "O número de ações do Fundamentus ({fundamentus}) difere em {divergencia} do da CVM "
