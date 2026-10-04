@@ -1,15 +1,13 @@
 """Testes do dashboard Streamlit (app/main.py) via `streamlit.testing.v1.AppTest`
 — roda o script de verdade (mesmo runner que `streamlit run` usa por baixo),
 sem precisar de navegador. Cobre a degradação graciosa do dropdown de ticker
-na aba "Analisar uma ação" (ver a investigação e o teste manual no navegador
-— URL de `obter_universo_ibovespa` apontada pra um domínio inválido de
-propósito, revertida depois — que motivou o teste original) e, desde
-2026-09-16, a pré-seleção + busca automática de PETR4 só na primeira
-abertura da sessão (ver `TICKER_PADRAO_PRIMEIRA_ABERTURA` em app/main.py).
+na aba "Analisar uma ação" e a pré-seleção + busca automática de PETR4 só na
+primeira abertura da sessão (ver `TICKER_PADRAO_PRIMEIRA_ABERTURA` em
+app/main.py).
 
 Como a busca automática da primeira abertura dispara o mesmo fluxo de
-"Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro e, desde
-que a Correlação com fatores externos passou a viver dentro desta aba,
+"Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro e, como a
+Correlação com fatores externos vive dentro desta aba,
 também petróleo/câmbio/GPR), os testes que passam pelo carregamento
 inicial da aba com o universo disponível também mockam essas fontes pra
 continuarem rápidos e determinísticos, sem rede de verdade — ver
@@ -38,10 +36,9 @@ from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning
 
-# Ano fixo usado pelos mocks de FCD abaixo — substitui ANO_REFERENCIA_FCD
-# (removida em 2026-09-23, ver docs/correcao-ano-fcd-2026-09-23.md), já
-# que o ano agora é detectado em tempo de execução
-# (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não uma constante.
+# Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
+# execução (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não é uma
+# constante.
 ANO_FCD_MOCK = 2025
 
 
@@ -119,10 +116,9 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     (preço/histórico, indicadores do Fundamentus, dividendos, catálogo de
     emissores da B3, Selic/IPCA/câmbio do BCB e o índice GPR) pra levantar
     rapidamente o mesmo tipo de erro "não encontrado"/"falha" que cada uma
-    já trataria de verdade — mantém os testes que agora disparam a busca
-    automática da primeira abertura (que hoje também inclui a correlação
-    com fatores externos, movida pra dentro desta aba) tão rápidos e
-    determinísticos quanto eram antes. A detecção do ano mais recente da
+    já trataria de verdade — mantém rápidos e determinísticos os testes que
+    disparam a busca automática da primeira abertura (que inclui a correlação
+    com fatores externos). A detecção do ano mais recente da
     CVM é mockada à parte, pra todo o arquivo — ver
     `_simular_ano_cvm_fixo`."""
     # BCB simulado fora do ar de propósito aqui — filtra o aviso que isso
@@ -278,14 +274,13 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
 
 def test_historico_vazio_sem_excecao_vira_erro_tratado_nao_crash(monkeypatch):
-    # Regressão: obter_historico devolvendo um DataFrame vazio SEM
-    # levantar exceção (teoricamente só possível com um cache em disco
-    # corrompido/truncado — o caminho de busca nova já levanta
-    # TickerInvalido nesse caso, ver ingest/precos.py) chegava até
-    # `preco_atual = float(historico_preco_atual["Close"].iloc[-1])` sem
-    # nenhum guard — IndexError cru, não tratado. _buscar_historico/
-    # _buscar_historico_ibovespa agora tratam DataFrame vazio como erro,
-    # mesmo par (None, motivo) de uma exceção real.
+    # Regressão: obter_historico devolvendo um DataFrame vazio SEM levantar
+    # exceção (teoricamente só possível com um cache em disco corrompido/
+    # truncado — o caminho de busca nova já levanta TickerInvalido nesse caso,
+    # ver ingest/precos.py) não pode chegar em
+    # `preco_atual = float(historico_preco_atual["Close"].iloc[-1])` (IndexError
+    # cru): _buscar_historico/_buscar_historico_ibovespa tratam DataFrame vazio
+    # como erro, mesmo par (None, motivo) de uma exceção real.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -372,9 +367,8 @@ def test_pagina_da_acao_com_preco_atual_vazio_mostra_aviso_e_nao_calcula_potenci
 def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     # Regressão: o histórico diário mais longo (period="3mo", usado pra
     # volume/volatilidade) atrasa um pregão inteiro no yfinance, mesmo já
-    # encerrado — descoberto comparando "Preço atual" contra o preço ao
-    # vivo do widget do TradingView (PETR4: R$ 48,92 no card vs. R$ 50,43
-    # no TradingView, um pregão inteiro de defasagem). "Preço atual"
+    # encerrado (PETR4: R$ 48,92 no card contra R$ 50,43 no TradingView).
+    # "Preço atual"
     # precisa vir de PERIODO_PRECO_ATUAL ("1d"), não do mesmo histórico
     # usado pra volume/volatilidade — os dois têm valores DIFERENTES aqui
     # de propósito, pra provar que vêm de buscas separadas.
@@ -417,8 +411,8 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
 
 
 def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monkeypatch):
-    # A antiga aba "Correlação com fatores externos" foi removida — a
-    # seção agora mora dentro de "Analisar uma ação" e aparece junto do
+    # A correlação com fatores externos não é uma aba separada: mora dentro de
+    # "Analisar uma ação" e aparece junto do
     # resto, reaproveitando o ticker já buscado ali. Confirmado logo no
     # primeiro carregamento da sessão (busca automática de PETR4), sem
     # precisar de nenhum clique extra.
@@ -1006,8 +1000,8 @@ def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
 
 
 def test_fcd_nao_mostra_rotulo_do_ano_no_caso_normal_sem_fallback(monkeypatch):
-    # Ajuste de 2026-09-26: a legenda "FCD calculado com a demonstração
-    # financeira anual de X (CVM)" saiu do cartão no caso SEM fallback —
+    # No caso SEM fallback o cartão não traz a legenda "FCD calculado com a
+    # demonstração financeira anual de X (CVM)" —
     # essa informação já aparece no bloco "Datas de referência dos dados
     # usados", texto repetido. Só a variante de fallback (que diz algo
     # específico dessa ação) continua no cartão — ver o teste seguinte.
@@ -1045,8 +1039,8 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
     )
 
 
-# --- Proporção reinvestida no cartão do FCD (investigação de 2026-09-25:
-# FCD sistematicamente baixo em empresas de investimento pesado, ver
+# --- Proporção reinvestida no cartão do FCD (contexto: FCD sistematicamente
+# baixo em empresas de investimento pesado, ver
 # docs/correcao-cnpj-2026-09-25.md, seção 7) ------------------------------
 
 
@@ -1066,9 +1060,8 @@ def _preparar_fcd_com_cfo_cfi(
 
 def test_caption_reinvestimento_caso_normal(monkeypatch):
     # CFO=1.000.000, CFI=-300.000 -> reinvestiu 30% do caixa operacional.
-    # Texto curto (2026-09-26): a explicação de por que isso reduz o FCD
-    # ficou só no expander "Como funciona esse cálculo?", não repetida
-    # aqui no cartão.
+    # Texto curto: a explicação de por que isso reduz o FCD fica só no
+    # expander "Como funciona esse cálculo?", não repetida aqui no cartão.
     _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=1_000_000.0, cfi_atual=-300_000.0)
 
     at = AppTest.from_file(CAMINHO_APP)
@@ -1231,9 +1224,9 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
 
 
 def test_caption_screener_topo_e_curta(monkeypatch):
-    # Ajuste de 2026-09-27: a legenda do topo virou um parágrafo curto —
-    # o detalhe de cada coluna foi pro expander "Como ler esta tabela"
-    # (ver testes abaixo), pra não crescer sem limite a cada coluna nova.
+    # A legenda do topo é um parágrafo curto — o detalhe de cada coluna fica no
+    # expander "Como ler esta tabela" (ver testes abaixo), pra não crescer sem
+    # limite a cada coluna nova.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -1328,10 +1321,10 @@ def test_expander_como_ler_tabela_explica_coluna_reinvestimento(monkeypatch):
     )
 
 
-# --- Bloco "Datas de referência dos dados usados" (investigação de
-# 2026-09-24: preço/beta/IPCA vêm de datas diferentes entre si e do
-# balanço usado pelos indicadores do Fundamentus — não é bug, é o padrão
-# de mercado, mas ficava invisível na tela até este bloco). Os mocks de
+# --- Bloco "Datas de referência dos dados usados" (preço/beta/IPCA vêm de
+# datas diferentes entre si e do balanço usado pelos indicadores do
+# Fundamentus — é o padrão de mercado, mas ficaria invisível na tela sem este
+# bloco). Os mocks de
 # `_preparar_fcd_aplicavel` (via `_historico_por_periodo`) fixam a mesma
 # data (2026-09-15) pra preço E beta — não testa datas DIFERENTES entre
 # os dois (isso é conteúdo do próprio yfinance, não da lógica deste
@@ -1448,7 +1441,7 @@ def test_buscar_macro_nao_cacheia_erro_e_funciona_na_segunda_chamada(monkeypatch
 
 
 def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatch):
-    # Correção de 2026-09-23: segmento "Bancos" -> FCD "não aplicável",
+    # Segmento "Bancos" -> FCD "não aplicável",
     # mesmo padrão de Graham/Bazin quando não se aplicam (não é erro nem
     # exceção, é um resultado explícito). Bazin mockado com histórico
     # válido de dividendo (diferente da fixture padrão de
@@ -1594,7 +1587,7 @@ def test_expander_valor_combinado_usa_yield_da_constante(monkeypatch):
 
 
 def test_expander_bazin_menciona_que_fonte_nao_distingue_extraordinario(monkeypatch):
-    # Investigação de 2026-09-25 (achado em revisão externa): o preço teto
+    # O preço teto
     # do Bazin soma os dividendos dos últimos 12 meses sem distinguir
     # pagamento ordinário de extraordinário — o parágrafo do Bazin no
     # expander precisa deixar essa limitação da fonte explícita.
@@ -1680,11 +1673,9 @@ def test_caption_dividendos_atipicos_nao_aparece_abaixo_do_corte(monkeypatch):
 
 
 def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
-    # ROE/Margem líquida/LPA/VPA/Liquidez corrente usavam `_fmt()` sem
-    # conversão de ponto pra vírgula (ex: "15.0%"/"R$ 5.00" em vez de
-    # "15,0%"/"R$ 5,00") — bug real confirmado por screenshot, mesma
-    # família do "Preço atual" corrigido em 2026-09-21 (aqui é `_fmt` em
-    # si que estava sem a conversão, não um call site isolado).
+    # ROE/Margem líquida/LPA/VPA/Liquidez corrente passam por `_fmt()` com
+    # conversão de ponto pra vírgula (ex: "15,0%"/"R$ 5,00", não
+    # "15.0%"/"R$ 5.00").
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -1716,8 +1707,7 @@ def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
 
 
 def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
-    # _cartao_correlacao usava f"{...:.2f}" sem conversão de ponto pra
-    # vírgula (ex: "1.00" em vez de "1,00") — mesma família de bug.
+    # _cartao_correlacao converte o ponto decimal em vírgula (ex: "1,00", não "1.00").
     # Petróleo em queda constante e ação em alta constante -> correlação
     # perfeita negativa (-1,00), fácil de prever exatamente.
     monkeypatch.setattr(
@@ -1757,8 +1747,8 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
 
     # Correlação calculada sobre retorno % dia a dia, não sobre o nível
     # bruto — não vale a pena prever o coeficiente exato aqui (não é -1,00
-    # só porque os níveis são lineares opostos); o que importa pro bug
-    # corrigido é o formato: vírgula decimal, não ponto.
+    # só porque os níveis são lineares opostos); o que importa é o formato:
+    # vírgula decimal, não ponto.
     valor_petroleo = _metrica_por_label(at, "Petróleo (Brent)").value
     assert re.fullmatch(r"-?\d,\d\d", valor_petroleo), (
         f"correlação não está no formato brasileiro esperado: {valor_petroleo!r}"
@@ -1812,8 +1802,8 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
     # — o d3-format que o Plotly usa por trás desses especificadores tem o
     # mesmo problema de locale do _fmt/_fmt_bilhoes (sem vírgula decimal
     # brasileira sem registrar um locale que o bundle do Streamlit não
-    # traz). Corrigido pré-formatando `text` com _fmt_bilhoes/
-    # _fmt_percentual e usando "%{text}" (passthrough) no texttemplate.
+    # traz). `text` é pré-formatado com _fmt_bilhoes/
+    # _fmt_percentual e usa "%{text}" (passthrough) no texttemplate.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -1957,10 +1947,10 @@ def test_grafico_preco_vs_ibovespa_mensagem_generica_quando_as_duas_series_falha
 
 # --- Formatação abreviada de Valor de mercado/Dívida líquida/Valor de firma --
 #
-# Regressão: sem abreviação, o valor por extenso (ex: "R$ 625,10 bi") ficava
-# truncado com reticências pelo st.metric dentro da coluna estreita de 4 da
-# seção "Saúde financeira" (ex: "R$ 625,1...") — bug real encontrado em
-# produção, não hipotético. `_fmt_bilhoes` cobre isso com "X,X bi"/"X,X mi".
+# Sem abreviação, o valor por extenso (ex: "R$ 625,10 bi") seria truncado com
+# reticências pelo st.metric dentro da coluna estreita de 4 da seção "Saúde
+# financeira" (ex: "R$ 625,1..."). `_fmt_bilhoes` cobre isso com "X,X bi"/"X,X
+# mi".
 
 
 def _indicadores_falsos_com(numero_acoes: float, divida_liquida: float) -> dict:
@@ -2224,10 +2214,10 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkey
 
 
 def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monkeypatch, tmp_path):
-    # Bug real: a faixa amarela mandava ver a coluna "aviso_desconto_
-    # extremo" (nome interno do CSV), mas a tabela mostra essa coluna
-    # como "Aviso" (ver column_config em app/main.py) -- quem lesse a
-    # faixa não achava nenhuma coluna com esse nome na tela.
+    # A faixa amarela deve citar o nome visível da coluna ("Aviso", ver
+    # column_config em app/main.py), não o nome interno do CSV
+    # ("aviso_desconto_extremo") -- quem lesse a faixa não acharia nenhuma coluna
+    # com esse nome na tela.
     import avaliador_b3.screener as screener_mod
     from avaliador_b3.screener import COLUNAS_RESULTADO
 
@@ -2267,7 +2257,7 @@ def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monk
 
 
 def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkeypatch):
-    # Correção de 2026-09-23: warnings.warn dentro de rodar_screener vai só
+    # warnings.warn dentro de rodar_screener vai só
     # pro log do servidor, invisível pra quem clicou no botão — sem essa
     # captura+reexibição em session_state, a coluna do FCD ficaria vazia
     # sem nenhuma explicação na tela. rodar_screener é substituído por um
@@ -2310,10 +2300,9 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
 
 def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
     # P07 (docs/auditoria-tecnica-2026-09-27.md): _buscar_macro (Selic/
-    # IPCA do BCB) falhando dentro de rodar_screener era engolido em
-    # silêncio (except Exception: selic_meta = ipca_12m = None, sem
-    # aviso nenhum) — o FCD de todas as ações da rodada sumia sem
-    # explicação em lugar nenhum visível. Mesmo padrão do teste acima
+    # IPCA do BCB) falhando dentro de rodar_screener não pode ser silencioso —
+    # sem aviso, o FCD de todas as ações da rodada sumiria sem explicação em
+    # lugar nenhum visível. Mesmo padrão do teste acima
     # pra detecção do ano da CVM: rodar_screener é substituído por um
     # fake que só emite o aviso (o comportamento real de emiti-lo
     # quando _buscar_macro falha já é coberto em tests/test_screener.py).
@@ -2423,8 +2412,7 @@ def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypa
     # não se aplica quanto (raramente) quando a mediana dos 5 anos sai
     # zero — o item do expander "Como ler esta tabela" precisa deixar
     # isso claro, sem deixar a coluna vazia parecendo um dado faltando
-    # por erro. Movido de `st.caption` (legenda antiga) pra `st.markdown`
-    # dentro do expander em 2026-09-27.
+    # por erro. O texto fica em `st.markdown` dentro do expander.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),

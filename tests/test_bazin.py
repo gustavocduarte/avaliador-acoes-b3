@@ -77,7 +77,7 @@ def test_nao_aplicavel_sem_nenhum_dividendo():
 
 
 def test_dataframe_vazio_sem_coluna_data_nao_quebra():
-    # Guard defensivo, não regressão de um bug observado: o produtor real
+    # Guard defensivo: o produtor real
     # (ingest.precos.obter_dividendos) sempre garante a coluna "data" mesmo
     # vazio, mas a função não deve quebrar com KeyError se um chamador
     # futuro violar esse contrato — deve cair no mesmo "não aplicável" de
@@ -92,8 +92,7 @@ def test_dataframe_vazio_sem_coluna_data_nao_quebra():
 
 def test_aplicavel_com_datas_com_timezone_igual_ao_yfinance():
     # ingest.precos.obter_dividendos devolve datas tz-aware (vêm do
-    # yfinance) — regressão pro TypeError de comparar tz-aware com
-    # tz-naive que apareceu na validação manual contra dado real.
+    # yfinance) — comparar tz-aware com tz-naive levantaria TypeError.
     dividendos = pd.DataFrame(
         {
             "data": pd.to_datetime(

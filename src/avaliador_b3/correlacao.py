@@ -44,11 +44,10 @@ def _niveis_por_data(df: pd.DataFrame, coluna_valor: str, sufixo: str) -> pd.Dat
     """Níveis de `coluna_valor` com a coluna `data` normalizada (ver
     `_normalizar_data`) e renomeada pra `valor_{sufixo}`, pronta pra
     alinhar com outra série pela data ANTES de calcular retorno — mesmo
-    cuidado de `empresa.comportamento.calcular_beta`, que junta os
-    preços primeiro. Calcular o retorno em cada série no seu próprio
-    calendário e só depois juntar pela data (como este módulo fazia
-    antes) compara variações de períodos diferentes sempre que os dois
-    calendários não batem dia a dia — o GPR tem leitura em fins de
+    cuidado de `empresa.comportamento.calcular_beta`, que junta os preços
+    primeiro. Calcular o retorno em cada série no seu próprio calendário e só
+    depois juntar pela data compara variações de períodos diferentes sempre
+    que os dois calendários não batem dia a dia — o GPR tem leitura em fins de
     semana, por exemplo."""
     ordenado = df[["data", coluna_valor]].dropna().sort_values("data")
     return pd.DataFrame(

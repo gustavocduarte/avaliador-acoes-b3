@@ -203,12 +203,10 @@ def _ler_cache_com_schema_atual(caminho: Path) -> dict | None:
     """Lê o cache só se a versão de schema gravada bater com
     `VERSAO_SCHEMA_FUNDAMENTUS` atual — devolve `None` (tratado como cache
     miss por `obter_indicadores`, força busca nova) se a versão não bater
-    ou o envelope estiver em formato inesperado. Existe pra evitar repetir
-    o bug real já acontecido nesta sessão: quando `CAMPOS_FUNDAMENTUS`/
-    `CAMPOS_FUNDAMENTUS_OPCIONAIS` ganharam um campo novo, um JSON já
-    cacheado (no formato antigo, sem envelope de versão nenhum) continuava
-    sendo servido sem esse campo, e o primeiro código que tentasse ler a
-    chave nova quebrava com KeyError."""
+    ou o envelope estiver em formato inesperado. Evita servir um JSON
+    cacheado sem um campo novo (formato sem envelope de versão): quando
+    `CAMPOS_FUNDAMENTUS`/`CAMPOS_FUNDAMENTUS_OPCIONAIS` ganham um campo, o
+    primeiro código que lesse a chave nova quebraria com KeyError."""
     bruto = json.loads(caminho.read_text(encoding="utf-8"))
     if bruto.get("versao_schema") != VERSAO_SCHEMA_FUNDAMENTUS:
         return None

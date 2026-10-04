@@ -146,7 +146,7 @@ def calcular_totais_carteira(tabela_carteira: pd.DataFrame) -> dict:
     individuais; `pandas.Series.sum` já ignora os `None`/NaN dos tickers
     sem cenário aplicável, então eles não entram na soma).
 
-    `soma_investida_com_cenario` (bug real corrigido em 2026-09-21): soma
+    `soma_investida_com_cenario`: soma
     só o capital dos tickers `aplicavel` — o mesmo subconjunto que já
     alimenta `total_otimista`/`total_base`/`total_pessimista`. Existe
     porque `soma_investida` (o total, incluindo tickers sem cenário) NÃO

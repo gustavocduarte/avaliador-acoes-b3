@@ -249,12 +249,11 @@ def test_calcular_totais_soma_projecoes_de_multiplas_acoes_aplicaveis():
 
 
 def test_calcular_totais_soma_investida_com_cenario_exclui_acao_sem_cenario():
-    # Regressão (bug real, corrigido em 2026-09-21): soma_investida_com_cenario
-    # precisa somar só o capital dos tickers com cenário aplicável — o mesmo
-    # universo que já alimenta total_otimista/total_base/total_pessimista.
-    # Misturar soma_investida (total, inclui CCCC4) com os totais por cenário
-    # (só AAAA4) como base do potencial subestimava o potencial da parte com
-    # cenário.
+    # soma_investida_com_cenario precisa somar só o capital dos tickers com
+    # cenário aplicável — o mesmo universo que alimenta
+    # total_otimista/total_base/total_pessimista. Misturar soma_investida (total,
+    # inclui CCCC4) com os totais por cenário (só AAAA4) como base do potencial
+    # subestimaria o potencial da parte com cenário.
     tabela_screener = _tabela_screener_exemplo()
     investimentos = {"AAAA4": 1000.0, "CCCC4": 500.0}
     tabela_carteira = carteira.montar_tabela_carteira(tabela_screener, investimentos)

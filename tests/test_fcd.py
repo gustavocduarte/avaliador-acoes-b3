@@ -424,10 +424,10 @@ def test_calcular_valor_justo_fcd_beta_real_muda_o_valor_justo():
     assert resultado_beta_padrao["valor_justo"] > resultado_beta_alto["valor_justo"]
 
 
-# --- Correção de 2026-09-23: EV -> Equity Value via dedução de dívida ------
-# líquida — ver justificativa completa em config.py e no docstring de
-# `calcular_valor_justo_fcd`. Caso fabricado equivalente ao verificado à mão
-# nesta sessão pra PETR4 (dívida líquida ~R$312,8 bi, ~12,89 bi ações, FCD
+# --- EV -> Equity Value via dedução de dívida líquida — ver justificativa
+# completa em config.py e no docstring de `calcular_valor_justo_fcd`. Caso
+# fabricado equivalente ao verificado à mão pra PETR4 (dívida líquida
+# ~R$312,8 bi, ~12,89 bi ações, FCD
 # caindo de ~R$118,99 pra ~R$94,72) — não precisa bater esses números
 # exatos, só confirmar que a subtração em si está correta.
 
@@ -794,8 +794,8 @@ def test_calcular_valor_justo_fcd_divida_liquida_negativa_aumenta_o_valor():
 
 
 def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_deduzir():
-    # divida_liquida=None (default) preserva o comportamento de antes da
-    # correção de 2026-09-23: aplicável normalmente, valor_justo =
+    # divida_liquida=None (default) não deduz nada: aplicável normalmente,
+    # valor_justo =
     # Enterprise Value / número de ações, sem nenhuma dedução — e o
     # retorno sinaliza isso explicitamente (divida_liquida_deduzida=False)
     # pra app/main.py avisar na UI. Mesmos parâmetros do teste "caminho
@@ -823,9 +823,8 @@ def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_dedu
     assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)
 
 
-# --- Correção de 2026-09-23: FCD "não aplicável" pra instituições --------
-# financeiras (segmento "Bancos") — segundo achado da mesma revisão externa
-# de 2026-09-23. Critério é segmento_setorial (crosswalk_cnpj, campo oficial
+# --- FCD "não aplicável" pra instituições financeiras (segmento "Bancos") ---
+# Critério é segmento_setorial (crosswalk_cnpj, campo oficial
 # da B3), não divida_liquida is None — ver justificativa completa em
 # config.SEGMENTOS_FCD_NAO_APLICAVEL.
 

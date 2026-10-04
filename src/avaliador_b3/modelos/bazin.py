@@ -14,8 +14,7 @@ que não paga dividendo de forma consistente.
 
 O resultado também traz `razao_dividendos_12m_vs_mediana_5a`: a razão entre
 os dividendos dos últimos 12 meses e a mediana dos totais anuais dos mesmos
-5 anos exigidos acima. Investigação em 2026-09-25 (achado em revisão
-externa) confirmou que o yfinance não distingue pagamento ordinário de
+5 anos exigidos acima. O yfinance não distingue pagamento ordinário de
 extraordinário — essa razão é um sinal estatístico de que o pagamento
 recente pode ter sido inflado por um provento pontual, não uma confirmação
 (pode ser crescimento real do payout da empresa também).
@@ -71,8 +70,7 @@ def _razao_dividendos_12m_vs_mediana(
     anuais dos mesmos `ANOS_HISTORICO_MINIMO_BAZIN` anos civis que
     `_tem_historico_relevante` já exige (não uma janela nova) — sinal de que
     o pagamento recente pode incluir provento extraordinário, já que o
-    yfinance não distingue ordinário de extraordinário (investigado em
-    2026-09-25, achado em revisão externa). `None` quando a mediana
+    yfinance não distingue ordinário de extraordinário. `None` quando a mediana
     sai zero (evita divisão por zero) — na prática só ocorre se algum dos 5
     anos tiver dividendo registrado com valor 0, já que `_tem_historico_
     relevante` já garante pelo menos um pagamento em cada ano."""
@@ -105,8 +103,8 @@ def calcular_preco_teto_bazin(
     # importa pra esse cálculo — comparar tz-aware com tz-naive levanta
     # TypeError no pandas.
     #
-    # `not dividendos.empty and` é defensivo, não correção de um bug
-    # observado: o único produtor real (`ingest.precos.obter_dividendos`)
+    # `not dividendos.empty and` é defensivo: o único produtor real
+    # (`ingest.precos.obter_dividendos`)
     # sempre garante a coluna "data" mesmo com o DataFrame vazio (empresa
     # sem nenhum dividendo pago) — mas sem esse guard, um chamador futuro
     # que violasse esse contrato (DataFrame vazio SEM a coluna "data")

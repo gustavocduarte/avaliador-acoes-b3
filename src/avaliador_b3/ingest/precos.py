@@ -75,10 +75,9 @@ def _caminho_cache(
     # pra cálculo de retorno/Beta) e preço nominal da época (bom pra
     # Dividend Yield histórico, ver graficos.calcular_dividend_yield_por_ano)
     # são dados BEM diferentes pro mesmo ticker/período — sem isso, uma
-    # busca sobrescreveria o cache da outra silenciosamente, igual ao bug
-    # de período já corrigido aqui. Sem sufixo no caso padrão (auto_adjust
-    # True) pra não invalidar nenhum cache já gravado em disco antes dessa
-    # mudança.
+    # busca sobrescreveria o cache da outra silenciosamente. Sem sufixo no
+    # caso padrão (auto_adjust True), mantendo os nomes de arquivo
+    # existentes.
     sufixo_ajuste = "" if auto_adjust else "_naoajustado"
     return diretorio_cache / "precos" / f"{ticker_yahoo}_{periodo}{sufixo_ajuste}.csv"
 
@@ -135,9 +134,8 @@ def obter_historico(
     usar o preço ajustado ali sub-avalia (às vezes bem) o preço da época,
     porque um ajuste retroativo por TODOS os dividendos futuros também
     "desconta" dividendos que ainda nem tinham sido pagos naquele
-    momento — bug real encontrado comparando o Dividend Yield de 2021 da
-    PETR4 contra uma fonte de mercado externa (~20% esperado, 73,5%
-    calculado com preço ajustado).
+    momento (ex.: Dividend Yield de 2021 da PETR4: ~20% numa fonte de
+    mercado externa, 73,5% com o preço ajustado).
     """
     ticker_yahoo = _ticker_yahoo(ticker)
     caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache, auto_adjust)

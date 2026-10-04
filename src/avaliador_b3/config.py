@@ -91,17 +91,14 @@ PERIODO_BETA = "1y"
 # mercado padrão — usada em `empresa.comportamento.calcular_volatilidade_anualizada`.
 DIAS_UTEIS_POR_ANO = 252
 
-# Período separado só pro card "Preço atual" (2026-09-16): investigando uma
-# discrepância real (PETR4 mostrando R$ 48,92 no nosso card contra R$ 50,43
-# ao vivo no widget do TradingView, ~3% de diferença batendo com a alta
-# intradiária do dia), confirmamos que o endpoint de histórico DIÁRIO do
+# Período separado só pro card "Preço atual": o endpoint de histórico DIÁRIO do
 # yfinance (period="3mo"/"5d", usado em PERIODO_HISTORICO_COMPORTAMENTO)
 # atrasa um pregão inteiro — não só o candle do dia ainda em aberto, mesmo
 # o fechamento do dia anterior, já encerrado, pode estar ausente. Testado
 # diretamente contra o yfinance: period="5d" parou em 2026-09-14 (uma
 # segunda-feira), enquanto period="1d" já trazia o fechamento de
-# 2026-09-15 (R$ 50,43, batendo com o TradingView). "Preço atual" passou a
-# usar esse período separado; volume médio/volatilidade (mesmo bloco de
+# 2026-09-15 (R$ 50,43, batendo com o TradingView). O "preço atual" usa
+# esse período separado; volume médio/volatilidade (mesmo bloco de
 # "Comportamento da ação") continuam em PERIODO_HISTORICO_COMPORTAMENTO —
 # o atraso de um pregão é um problema real pro preço mostrado como "atual"
 # na tela, mas irrelevante pra uma métrica de janela de 3 meses.
@@ -189,29 +186,23 @@ DELAY_FUNDAMENTUS_SEGUNDOS = 1.5
 # 1. Versionamento de schema (VERSAO_SCHEMA_FUNDAMENTUS): o cache guarda
 #    essa versão dentro do próprio JSON; se o código atual espera uma
 #    versão diferente da gravada, o cache é tratado como inválido e uma
-#    busca nova é feita. Ataca a causa raiz de um bug real já acontecido
-#    nesta sessão: quando CAMPOS_FUNDAMENTUS/CAMPOS_FUNDAMENTUS_OPCIONAIS
-#    ganharam um campo novo (Patrim. Líq/Dív. Líquida), o cache antigo
-#    continuou sendo servido sem esse campo, e o primeiro código que tentou
-#    ler a chave nova quebrou com KeyError — só resolvido apagando o cache
-#    manualmente. Começa em 2 (não 1) porque o schema já mudou pelo menos
-#    uma vez nesta sessão antes de esse mecanismo existir; nunca houve uma
-#    "versão 1" com controle de versão de verdade.
+#    busca nova é feita. Evita servir um cache sem o campo novo depois de uma
+#    mudança em CAMPOS_FUNDAMENTUS/CAMPOS_FUNDAMENTUS_OPCIONAIS (a leitura da
+#    chave nova quebraria com KeyError). Começa em 2 porque o schema já tinha
+#    mudado antes de existir esse controle.
 # 2. TTL (TTL_CACHE_FUNDAMENTUS_SEGUNDOS): rede de segurança geral pra
 #    dado que fica desatualizado mesmo SEM mudança de schema — indicador
 #    fundamentalista (ROE, margem, LPA/VPA, etc.) muda no máximo por
-#    trimestre de resultado, mas nada garantia isso até agora (o cache não
-#    tinha limite temporal nenhum, só existia/não existia). 24h é
+#    trimestre de resultado, e sem TTL o cache só existia ou não existia, sem
+#    limite temporal. 24h é
 #    suficiente pra nunca segurar um resultado por mais de um dia, sem
 #    tornar o cache inútil (o adapter é batido dezenas de vezes em
 #    sequência pelo screener).
 #
-# Incrementada pra 3 em 2026-09-24: `data_balanco_fundamentus` (data do
-# campo "Últ balanço processado", ver ROTULO_FUNDAMENTUS_DATA_BALANCO
-# abaixo) virou um campo novo do envelope de indicadores — exatamente o
-# cenário que esse mecanismo existe pra cobrir (campo novo, cache velho
-# sem ele), mesmo caso real do KeyError de "Patrim. Líq/Dív. Líquida"
-# citado acima.
+# Cada campo novo do envelope de indicadores incrementa a versão (ex.:
+# `data_balanco_fundamentus`, data do campo "Últ balanço processado", ver
+# ROTULO_FUNDAMENTUS_DATA_BALANCO abaixo): é exatamente o cenário que esse
+# mecanismo existe pra cobrir — campo novo, cache velho sem ele.
 VERSAO_SCHEMA_FUNDAMENTUS = 5
 TTL_CACHE_FUNDAMENTUS_SEGUNDOS = 24 * 60 * 60
 
@@ -305,16 +296,12 @@ URLS_CVM_ZIP = {"dfp": URL_CVM_DFP_ZIP, "itr": URL_CVM_ITR_ZIP}
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
-# Bug real encontrado em 2026-09-23 (ver docs/correcao-ano-fcd-2026-09-23.md):
-# ingest.cvm._baixar_zip_ano cacheava o zip anual da CVM pra sempre, sem
-# prazo de validade — "existe no disco?" era a única checagem. Isso é
-# inofensivo pra anos fechados (a CVM não reabre exercícios encerrados,
-# então o arquivo não muda mais), mas quebra o ano ainda em preenchimento:
-# a CVM atualiza esse mesmo zip ao longo do ano conforme empresas entregam
-# a DFP (inclusive fora do prazo), então um zip baixado cedo (ex: na janela
-# jan-mar, ainda incompleto) ficava preso pra sempre localmente — empresas
-# que entregassem depois nunca mais apareceriam nesse zip aqui, mesmo com
-# a CVM já tendo atualizado o arquivo remoto há meses.
+# O zip anual da CVM é cacheado com prazo de validade só pro(s) ano(s) ainda
+# em preenchimento: anos fechados não mudam mais, mas a CVM atualiza o zip do
+# ano corrente conforme as empresas entregam a DFP (inclusive fora do prazo).
+# Sem prazo, um zip baixado cedo (ex: na janela jan-mar, ainda incompleto)
+# ficaria preso localmente e as empresas que entregassem depois nunca
+# apareceriam. Ver docs/correcao-ano-fcd-2026-09-23.md.
 #
 # Prazo de validade de 7 dias (escolha redonda, não uma medição — a DFP não
 # muda hora a hora, então checar 1x/semana já evita ficar preso por meses,
@@ -335,13 +322,10 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # Versionamento do cache por (CNPJ, ano) de `ingest.cvm.obter_fluxo_caixa_
 # livre` (`data/raw/cvm/fcf_<cnpj>_<ano>.json`) — mesmo mecanismo e mesmo
 # motivo de `VERSAO_SCHEMA_FUNDAMENTUS` (ver comentário completo mais
-# abaixo, na seção do Fundamentus): quando `cfo_atual`/`cfi_atual` foram
-# adicionados ao resultado (2026-09-25, ver a investigação na seção do FCD
-# abaixo), um cache já gravado antes disso não teria essas chaves — sem
-# essa versão, o primeiro código que tentasse ler `cfo_atual` quebraria com
-# KeyError pra qualquer CNPJ/ano já cacheado. Começa em 1 porque esse cache
-# nunca teve controle de versão antes (diferente do Fundamentus, que já
-# tinha passado por uma mudança de schema sem esse mecanismo).
+# abaixo, na seção do Fundamentus): sem a versão, um cache gravado antes de
+# um campo novo (como `cfo_atual`/`cfi_atual`) seria servido sem a chave e
+# quebraria com KeyError pra qualquer CNPJ/ano já cacheado. Cada mudança de
+# schema incrementa a versão.
 VERSAO_SCHEMA_CVM_FCF = 3
 
 # --- Capex e juros pagos da DFC, por descrição das subcontas ---
@@ -452,7 +436,7 @@ PREFIXOS_CONTAS_PASSIVO = ("2.01.", "2.02.")
 TERMOS_PASSIVO_ARRENDAMENTO = ("arrendamento", "locacao", "locacoes")
 MESES_DIAS_BALANCO_ITR = ("03-31", "06-30", "09-30")
 MES_DIA_BALANCO_DFP = "12-31"
-# Salvaguardas do número de ações em circulação (ver relatório, seção 12):
+# Salvaguardas do número de ações em circulação:
 # 22 empresas informam a composição em milhares (o número do Fundamentus é cerca
 # de 1.000 vezes o da CVM); tesouraria acima do limite indica erro de escala nos
 # dados (TEND3); o integralizado já líquido de tesouraria (VALE3) é reconhecido
@@ -573,36 +557,23 @@ TAMANHO_PAGINA_API_B3_CATALOGO = 100
 # CNPJ), por isso um prazo bem mais longo que os outros caches do projeto.
 DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3 = 30
 
-# Bug real encontrado em 2026-09-25 (achado em revisão externa, investigando
-# por que o FCD do ABEV3 sempre falhava com CnpjNaoEncontrado): a validação
-# manual acima (2026-09-14) só testou Petrobras/Vale/Itaú, três empresas cujo
-# CNPJ NÃO começa com zero — por isso não pegou o defeito. A API
-# "GetInitialCompanies" devolve "cnpj" e "codeCVM" como NÚMERO JSON, não como
-# texto; um literal numérico JSON não pode ter zero à esquerda (inválido pela
-# própria especificação do formato), então o dígito já se perde na resposta
-# da API, antes de qualquer código deste projeto rodar — não é um bug de
-# normalização nosso, é um defeito de tipagem na origem que precisa ser
-# compensado. Confirmado sistêmico: 954 dos ~3523 registros do catálogo
-# completo (27%) têm "cnpj" com menos de 14 dígitos; 906 têm "codigo_cvm" com
-# menos de 6. Caso confirmado contra a CVM: ABEV3 (AMBEV S.A.) — catálogo da
-# B3 trazia cnpj="7526557000100" (13 dígitos) e codigo_cvm="23264" (5), CVM
-# tem CNPJ_CIA="07.526.557/0001-00" (14) e CD_CVM="023264" (6) pra essa
-# mesma empresa — mesmo CNPJ, só faltando o(s) zero(s) à esquerda. ENGI11
-# (Energisa) confirma que pode faltar mais de um zero: CVM tem
-# CNPJ_CIA="00.864.214/0001-06" (dois zeros), catálogo da B3 trazia
-# "864214000106" (12 dígitos, os dois sumiram).
+# O catálogo da B3 ("GetInitialCompanies") devolve "cnpj" e "codeCVM" como
+# NÚMERO JSON, e um literal numérico não tem zero à esquerda: o dígito já se
+# perde na resposta, antes de qualquer código do projeto. É sistêmico: 954
+# dos ~3523 registros do catálogo (27%) têm "cnpj" com menos de 14 dígitos e
+# 906 têm "codigo_cvm" com menos de 6. Ex.: ABEV3 vem com cnpj="7526557000100"
+# e codigo_cvm="23264", enquanto a CVM tem CNPJ_CIA="07.526.557/0001-00" e
+# CD_CVM="023264"; ENGI11 perde dois zeros ("864214000106" contra
+# "00.864.214/0001-06").
 #
-# Correção: completar com zeros à esquerda até a largura fixa de cada campo
-# — CNPJ sempre tem 14 dígitos (formato brasileiro) e CD_CVM sempre tem 6
-# (confirmado em todos os registros dos zips da CVM lidos por este projeto).
-# Largura fixa e conhecida elimina qualquer ambiguidade: completar com zeros
-# só restaura dígitos que sabemos que existiam, nunca cria colisão com outra
-# empresa. Aplicado em TRÊS camadas (ver docs/correcao-cnpj-2026-09-25.md):
-# na origem (crosswalk_cnpj._registro_para_linha, pra dado novo vindo da
-# API), na leitura do cache (crosswalk_cnpj.obter_catalogo_emissores, pra
-# qualquer cache antigo já salvo em disco ficar correto sem novo download) e
-# como camada defensiva em cvm._normalizar_cnpj (protege contra qualquer
-# outra fonte futura com o mesmo defeito).
+# Os campos são completados com zeros à esquerda até a largura fixa: CNPJ
+# sempre tem 14 dígitos e CD_CVM sempre tem 6 (em todos os registros dos zips
+# da CVM lidos pelo projeto). Isso só restaura dígitos que existiam, sem
+# colidir com outra empresa. Aplicado em três camadas (ver
+# docs/correcao-cnpj-2026-09-25.md): na origem
+# (crosswalk_cnpj._registro_para_linha), na leitura do cache
+# (crosswalk_cnpj.obter_catalogo_emissores, pra caches já gravados) e como
+# camada defensiva em cvm._normalizar_cnpj.
 TAMANHO_CNPJ = 14
 TAMANHO_CODIGO_CVM = 6
 
@@ -622,8 +593,8 @@ FATOR_GRAHAM = 22.5
 YIELD_MINIMO_BAZIN = 0.06
 ANOS_HISTORICO_MINIMO_BAZIN = 5
 
-# Corte de "razão de dividendos atípica" (2026-09-25, achado em revisão
-# externa): o preço teto usa a soma dos dividendos dos últimos 12 meses, mas
+# Corte de "razão de dividendos atípica": o preço teto usa a soma dos
+# dividendos dos últimos 12 meses, mas
 # o yfinance (fonte, ver ingest.precos.obter_dividendos) não distingue
 # pagamento ordinário de extraordinário — um provento pontual grande entra
 # na mesma soma e pode inflar o preço teto sem aviso nenhum.
@@ -661,27 +632,18 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 # fluxos é o Enterprise Value — valor da empresa como um todo, dívida
 # incluída.
 #
-# Correção em 2026-09-23 (achado numa revisão externa do projeto): até
-# então, esse Enterprise Value era dividido direto pelo número de ações,
-# sem abater a dívida líquida — na prática tratando o resultado como se
-# já fosse Equity Value (valor só do patrimônio dos acionistas), o que
-# inflava o valor justo por ação de qualquer empresa com dívida líquida
-# positiva. A premissa original registrada aqui era "ainda não extraímos
-# dívida líquida em valor absoluto do balanço patrimonial da CVM (BPP)"
-# — verdade sobre a CVM, mas o projeto já extraía essa dívida por OUTRA
-# fonte desde o início: o campo "Dív. Líquida" do Fundamentus
-# (`divida_liquida` em `CAMPOS_FUNDAMENTUS_OPCIONAIS`), o mesmo já usado
-# em `empresa.valor_mercado.calcular_valor_mercado_e_firma` e exibido em
-# "Saúde financeira" — só não estava sendo passado pro FCD. Agora está:
-# o Enterprise Value é convertido pra Equity Value subtraindo essa
-# dívida líquida ANTES de dividir pelo número de ações (ver
-# `modelos.fcd.calcular_valor_justo_fcd`); dívida líquida negativa
-# (posição de caixa líquido) soma ao valor normalmente, mesma convenção
-# de `calcular_valor_mercado_e_firma`, sem caso especial. Quando a
-# dívida líquida não está disponível pra uma empresa, o cálculo cai de
-# volta na aproximação antiga só pra esse caso específico, com um aviso
-# explícito na UI
-# (`divida_liquida_deduzida=False` no retorno da função).
+# O Enterprise Value é convertido em Equity Value (valor só do patrimônio dos
+# acionistas) subtraindo a dívida líquida ANTES de dividir pelo número de
+# ações (ver `modelos.fcd.calcular_valor_justo_fcd`); sem isso o valor justo
+# por ação de empresa com dívida líquida positiva seria inflado. A dívida
+# líquida vem do campo "Dív. Líquida" do Fundamentus (`divida_liquida` em
+# `CAMPOS_FUNDAMENTUS_OPCIONAIS`), o mesmo de
+# `empresa.valor_mercado.calcular_valor_mercado_e_firma` e de "Saúde
+# financeira". Dívida líquida negativa (posição de caixa líquido) soma ao
+# valor normalmente, sem caso especial. Quando a dívida líquida não está
+# disponível pra uma empresa, o EV é dividido direto pelo número de ações,
+# com aviso explícito na UI (`divida_liquida_deduzida=False` no retorno da
+# função).
 #
 # Dividido pelo número de ações (Fundamentus, campo "Nro. Ações") pra
 # chegar num valor justo por ação comparável a Graham/Bazin.
@@ -704,8 +666,8 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 #
 # Dívida líquida alta amplia o efeito e, num caso (AXIA3: FCD 91% abaixo de
 # Graham com reinvestimento de só 38%, abaixo da mediana), é o fator
-# dominante sozinho — a dedução da dívida líquida (correção de 2026-09-23
-# acima) pesa mais que o reinvestimento nesse caso específico. Reinvestimento
+# dominante sozinho — a dedução da dívida líquida (acima) pesa mais que o
+# reinvestimento nesse caso específico. Reinvestimento
 # não explica tudo sozinho, por isso a decisão foi mostrar a proporção
 # reinvestida como contexto (ver `_cartao_metodo`/coluna "Reinvestimento" no
 # Screener), não excluir setores nem ajustar o cálculo do FCF.
@@ -720,14 +682,12 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 # `CONTA_LUCRO_POR_ACAO_CVM` (a conta de Lucro Líquido da DRE também não é
 # fixa). Extrair de forma confiável exigiria busca por descrição (texto
 # contendo "epreciaç"/"mortiza"), o mesmo tipo de heurística frágil já usado
-# pro Lucro Líquido — fica registrado como evolução futura possível, não
-# implementado agora.
+# pro Lucro Líquido — evolução futura possível, não implementada.
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 
-# Correção em 2026-09-23 (segundo achado da mesma revisão externa, pouco
-# depois da correção EV->Equity acima, ainda no mesmo dia): FCD "não
-# aplicável" pra instituições financeiras, pelo segmento setorial oficial da B3
+# FCD "não aplicável" pra instituições financeiras, pelo segmento setorial
+# oficial da B3
 # (`ingest.crosswalk_cnpj`, campo "segment" do catálogo de emissores) —
 # NÃO por `divida_liquida is None`, que é lacuna de UMA fonte de dado
 # (Fundamentus não reporta "Dív. Líquida" pra banco), não uma
@@ -826,19 +786,13 @@ MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
     "sendo calculados quando se aplicam."
 )
 
-# Correção em 2026-09-23 (terceiro achado da mesma revisão externa, ainda
-# no mesmo dia das duas correções acima): o ano de referência do FCD era
-# uma constante fixa aqui, ANO_REFERENCIA_FCD = 2024, com a justificativa
-# original de que "2025 ainda não estava publicado pela CVM na época em
-# que isso foi escrito (confirmado no adapter da CVM)". Essa premissa
-# ficou desatualizada — confirmado em 2026-09-23 que o zip de 2025 já
-# estava disponível e completo (FCF calculável, comparado ano a ano, pra
-# PETR4/VALE3/WEGE3/RADL3), então o valor fixo defasava o FCD de TODAS as
-# empresas por um exercício inteiro sem nenhum aviso na tela — ver
+# O ano de referência do FCD não é uma constante fixa: um valor fixo (ex.:
+# 2024) defasaria o FCD de TODAS as empresas por um exercício inteiro, sem
+# nenhum aviso na tela, assim que a CVM publicasse o exercício seguinte — ver
 # docs/correcao-ano-fcd-2026-09-23.md.
 #
-# Substituído por detecção automática em dois níveis, sem constante fixa
-# aqui (cada busca resolve o ano em tempo de execução):
+# A detecção é automática, em dois níveis, sem constante fixa aqui (cada
+# busca resolve o ano em tempo de execução):
 # - Nível arquivo (`ingest.cvm.resolver_ano_mais_recente_disponivel`):
 #   existe zip da CVM pro ano corrente - 1? Se a CVM ainda não publicou
 #   (404 — janela jan-mar, antes do prazo legal de entrega da DFP), cai
@@ -866,9 +820,8 @@ TAXA_CRESCIMENTO_FCD_MAXIMA = 0.30
 # WACC via CAPM simplificado: WACC = We×Ke + Wd×Kd×(1-alíquota).
 #
 # Ke (custo de capital próprio) = Selic (meta, via BCB) + Beta × prêmio de
-# risco de mercado. Beta ainda não temos calculado (isso é o bloco de
-# comportamento da ação, futuro) — usa BETA_PADRAO=1,0 (risco médio de
-# mercado) como placeholder documentado até lá.
+# risco de mercado. BETA_PADRAO=1,0 (risco médio de mercado) é o valor usado
+# quando o Beta da ação não é calculável.
 BETA_PADRAO = 1.0
 
 # Prêmio de risco de mercado do Brasil: confirmado em 2026-09-14 direto na
@@ -989,14 +942,14 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 # ações com valor combinado aplicável, na mesma rodada de validação do
 # screener:
 #
-# - Lado positivo: a sugestão inicial de +200% se confirmou um bom corte —
+# - Lado positivo: +200% é um bom corte —
 #   a distribuição é densa e contínua até ~206% (COGN3), com um salto
 #   grande pro próximo valor (763%, MGLU3). +200% separa 4 outliers claros
 #   do resto sem cortar no meio de um aglomerado.
-# - Lado negativo: a sugestão inicial de -70% foi trocada por -100%. Com
-#   -70%, 8 das 74 ações (11%) seriam marcadas, numa faixa contínua e sem
-#   quebra visível (de -73% a -109%) — não parecia capturar "extremo", só
-#   "preço bem acima do valor". -100% tem uma justificativa estrutural, não só
+# - Lado negativo: -100% em vez de -70%. Com -70%, 8 das 74 ações (11%)
+#   seriam marcadas, numa faixa contínua e sem quebra visível (de -73% a
+#   -109%) — não capturaria "extremo", só "preço bem acima do valor". -100%
+#   tem uma justificativa estrutural, não só
 #   estatística: potencial < -100% só é matematicamente possível quando o
 #   valor_combinado é negativo — um "valor justo negativo" é sempre
 #   artefato das premissas do modelo (nunca uma leitura literal de que a
@@ -1006,16 +959,11 @@ MARGEM_SEGURANCA_PERPETUIDADE_FCD = 0.01
 DESCONTO_EXTREMO_LIMITE_SUPERIOR = 200.0
 DESCONTO_EXTREMO_LIMITE_INFERIOR = -100.0
 
-# Correção em 2026-09-24: o aviso era um texto ÚNICO, sempre culpando o
-# FCD, independente de quais métodos realmente entraram no valor
-# combinado daquela ação — achado real, revisando o Screener publicado
-# (screenshot da aba Screener): COGN3 disparava o limiar positivo só com
-# Graham (FCD nem aplicável ali), mas o texto dizia "sensibilidade da
-# CAGR do FCD" mesmo assim. Virou 4 textos, escolhidos em
-# avaliador_b3.screener._aviso_desconto_extremo por sinal do potencial
-# (positivo/negativo) × presença de "fcd" em `metodos_utilizados` — os
-# LIMIARES não mudaram, só qual texto explica cada combinação. Nenhum
-# cita nome de arquivo/código nem jargão técnico (linguagem visível ao
+# O aviso tem 4 textos, escolhidos em avaliador_b3.screener.
+# _aviso_desconto_extremo por sinal do potencial (positivo/negativo) ×
+# presença de "fcd" em `metodos_utilizados`: um texto único culpando sempre o
+# FCD estaria errado quando o valor combinado vem só do Graham (ex.: COGN3).
+# Nenhum cita nome de arquivo/código nem jargão técnico (linguagem visível ao
 # usuário).
 AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD = (
     "Potencial extremo — provavelmente vem da taxa de crescimento "
@@ -1225,14 +1173,13 @@ TIMEOUT_SEGUNDOS_BCB_SGS = 10
 
 # Segunda fonte do BCB para as mesmas séries do SGS (432 Selic meta, 433 IPCA
 # mensal, 1 câmbio): o serviço SOAP legado do SGS no www3, que seguiu no ar
-# quando api.bcb.gov.br deixou de resolver (NXDOMAIN, 03/10/2026; ver
-# %TEMP%\investigacao_bcb). Mesmos códigos e valores. Pior caso de espera da
-# cadeia inteira (tudo por timeout), com falha rápida (uma fonte que falha na
-# primeira série é abandonada para a outra) e uma nova tentativa nas fontes
-# secundárias: REST 3 × 10 + 2 + 5 = 37s, SOAP 2 × 10 + 2 = 22s, mais o IBGE
-# (IPCA, 22s) = 81s, contra os 74s do REST sozinho (N07). Com a falha de DNS
-# de hoje cada tentativa falha na hora, e a cadeia inteira leva só as pausas
-# (cerca de 11s).
+# quando api.bcb.gov.br deixou de resolver (NXDOMAIN, 03/10/2026). Mesmos
+# códigos e valores. Pior caso de espera da cadeia inteira (tudo por timeout),
+# com falha rápida (uma fonte que falha na primeira série é abandonada para a
+# outra) e uma nova tentativa nas fontes secundárias: REST 3 × 10 + 2 + 5 =
+# 37s, SOAP 2 × 10 + 2 = 22s, mais o IBGE (IPCA, 22s) = 81s, contra os 74s do
+# REST sozinho (N07). Com falha de DNS cada tentativa falha na hora, e a
+# cadeia inteira leva só as pausas (cerca de 11s).
 URL_BCB_SOAP = "https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS"
 TIMEOUT_SEGUNDOS_BCB_SOAP = 10
 PAUSAS_RETRY_FONTE_SECUNDARIA_SEGUNDOS = (2,)

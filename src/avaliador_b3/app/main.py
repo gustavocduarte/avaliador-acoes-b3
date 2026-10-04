@@ -573,8 +573,8 @@ def _cartao_metodo(
     `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD
     (ver modelos/fcd.py) — quando presente e `False`, mostra um aviso no
     lugar de "Aplicável": o valor não teve dívida líquida deduzida (dado
-    ausente pra essa empresa específica — desde 2026-09-23, banco nunca
-    chega mais aqui, já é "não aplicável" antes, ver
+    ausente pra essa empresa específica — banco nunca chega aqui, já é
+    "não aplicável" antes, ver
     config.SEGMENTOS_FCD_NAO_APLICAVEL), então aproxima Enterprise Value
     como Equity Value em vez do valor real por ação."""
     if resultado["aplicavel"]:
@@ -688,10 +688,9 @@ def _fmt_bilhoes(valor: float | None) -> str:
     decimal) — não faz sentido abreviar R$ 1.000 pra "R$ 0,0 mi". "N/D" se
     ausente.
 
-    Sem essa abreviação (ou com o piso baixo demais), valores grandes
-    ficavam truncados com reticências pelo st.metric dentro das colunas
-    estreitas de 4 do projeto (ex: "R$ 625,1..." em "Saúde financeira") —
-    bug real, não hipotético, achado em produção. "N/D" se ausente
+    Sem essa abreviação (ou com o piso baixo demais), valores grandes seriam
+    truncados com reticências pelo st.metric dentro das colunas estreitas de 4
+    do projeto (ex: "R$ 625,1..." em "Saúde financeira"). "N/D" se ausente
     (`pd.isna`, ver `_fmt`)."""
     if pd.isna(valor):
         return "N/D"
@@ -708,7 +707,7 @@ def _fmt_bilhoes_md(valor: float | None) -> str:
     cru, sem markdown — a barra invertida apareceria literalmente na
     tela). Sem isso, DUAS chamadas de `_fmt_bilhoes` na mesma caption
     (ex: "de R$ X a R$ Y") criam um par de "$" que o Streamlit interpreta
-    como abre/fecha de fórmula LaTeX — bug real encontrado ao vivo: o
+    como abre/fecha de fórmula LaTeX: o
     trecho entre os dois cifrões virava matemática renderizada, cortando
     o texto ("R" de um lado, o valor seguinte do outro). Escapar os dois
     "$" resolve sem precisar reescrever o texto pra evitar o padrão."""
@@ -1168,7 +1167,7 @@ with aba_analisar:
                 # Fundamentus (últimos 12 meses), sem relação com esse ano.
                 # Caso normal (sem fallback) não tem legenda própria aqui —
                 # o ano já aparece no bloco "Datas de referência dos dados
-                # usados" (2026-09-26, pra reduzir texto repetido); a
+                # usados" (pra reduzir texto repetido); a
                 # variante de fallback fica, porque diz algo específico
                 # dessa ação que não está em lugar nenhum.
                 if fcd_usou_fallback:
@@ -1248,7 +1247,7 @@ with aba_analisar:
             # já calculado acima pro cartão do FCD. IPCA reaproveita
             # data_ipca de _buscar_macro. Selic normalmente não tem uma
             # data própria pra mostrar — é recalculada com a data de hoje
-            # a cada busca (ver investigação de 2026-09-24) — exceto
+            # a cada busca — exceto
             # quando o Banco Central está fora do ar e o valor guardado
             # entra em uso: aí a data que importa é a da última busca com
             # sucesso, não a de hoje. Dividendos do Bazin continuam
@@ -1454,7 +1453,7 @@ with aba_analisar:
             else:
                 volume_medio = calcular_volume_medio(historico)
                 volatilidade = calcular_volatilidade_anualizada(historico)
-                # calcular_volume_medio agora pode devolver None (histórico
+                # calcular_volume_medio pode devolver None (histórico
                 # vazio) — _fmt já trata isso como "N/D" no resto do
                 # arquivo; sem essa checagem, f"{None:,.0f}" levantaria
                 # TypeError. _fmt já converte pro padrão brasileiro

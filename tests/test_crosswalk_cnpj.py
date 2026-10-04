@@ -98,7 +98,7 @@ def test_registro_para_linha_caminho_feliz():
 
 def test_registro_para_linha_forca_codigo_cvm_pra_string_mesmo_vindo_como_numero():
     # Regressão: o JSON bruto da API devolve "codeCVM" como número — sem
-    # forçar str() aqui, resolver_cnpj() devolvia um "codigo_cvm" com tipo
+    # forçar str() aqui, resolver_cnpj() devolveria um "codigo_cvm" com tipo
     # diferente (int) do que vem do cache lido em disco (que já usa
     # dtype=str explicitamente, ver obter_catalogo_emissores), uma
     # inconsistência de tipo latente entre execução fresca e com cache.
@@ -108,7 +108,7 @@ def test_registro_para_linha_forca_codigo_cvm_pra_string_mesmo_vindo_como_numero
 
 
 def test_registro_para_linha_completa_codigo_cvm_com_zeros_a_esquerda():
-    # Bug real encontrado em 2026-09-25 (ver config.py, TAMANHO_CODIGO_CVM):
+    # Ver config.py, TAMANHO_CODIGO_CVM:
     # str() sozinho (teste acima) corrige o TIPO mas não devolve o zero que
     # a API já tinha perdido ao mandar "codeCVM" como número JSON — um
     # código CVM sempre tem 6 dígitos, então precisa completar com zero.
@@ -117,19 +117,18 @@ def test_registro_para_linha_completa_codigo_cvm_com_zeros_a_esquerda():
 
 
 def test_registro_para_linha_completa_cnpj_com_um_zero_a_esquerda_caso_ambev():
-    # Achado real investigando o FCD do ABEV3 (2026-09-25): a API da B3
-    # devolvia cnpj=7526557000100 (13 dígitos, número JSON) pro CNPJ real
-    # da AMBEV S.A., 07.526.557/0001-00 (confirmado contra a CVM) — o zero
-    # à esquerda já se perde na resposta da API, antes de qualquer
-    # normalização nossa rodar.
+    # Caso ABEV3: a API da B3 devolve cnpj=7526557000100 (13 dígitos, número
+    # JSON) pro CNPJ real da AMBEV S.A., 07.526.557/0001-00 (confirmado contra a
+    # CVM) — o zero à esquerda já se perde na resposta da API, antes de
+    # qualquer normalização nossa rodar.
     linha = crosswalk_cnpj._registro_para_linha(_registro(cnpj=7526557000100))
     assert linha["cnpj"] == "07526557000100"
 
 
 def test_registro_para_linha_completa_cnpj_com_dois_zeros_a_esquerda_caso_energisa():
-    # Mesmo bug, confirmando que pode faltar mais de um zero: CNPJ real da
-    # Energisa S.A. é 00.864.214/0001-06 (dois zeros); a API da B3 devolvia
-    # 864214000106 (12 dígitos).
+    # Pode faltar mais de um zero: CNPJ real da Energisa S.A. é
+    # 00.864.214/0001-06 (dois zeros); a API da B3 devolve 864214000106 (12
+    # dígitos).
     linha = crosswalk_cnpj._registro_para_linha(_registro(cnpj=864214000106))
     assert linha["cnpj"] == "00864214000106"
 
@@ -241,14 +240,13 @@ def test_obter_catalogo_emissores_usa_cache_e_nao_bate_na_rede_de_novo(tmp_path,
 
 
 def test_obter_catalogo_emissores_corrige_cache_antigo_sem_zero_a_esquerda(tmp_path, monkeypatch):
-    # O cache não tem TTL (comentário no docstring da função) — um arquivo
-    # salvo em disco ANTES da correção de 2026-09-25 continuaria com
-    # "cnpj"/"codigo_cvm" sem o(s) zero(s) perdido(s) pra sempre, sem essa
-    # normalização também na leitura. Escreve o CSV já no formato "sujo"
-    # (como um cache real gravado antes da correção) e confirma que a
-    # leitura devolve os valores já corrigidos — SEM bater na rede de novo
-    # (get_falso levantaria se fosse chamado), já que o objetivo é corrigir
-    # o cache existente sem precisar re-baixar as ~36 páginas da API.
+    # O cache não tem TTL (comentário no docstring da função) — um arquivo já
+    # salvo em disco com "cnpj"/"codigo_cvm" sem o(s) zero(s) perdido(s) ficaria
+    # assim pra sempre, sem essa normalização também na leitura. Escreve o CSV
+    # no formato "sujo" e confirma que a leitura devolve os valores corrigidos
+    # — SEM bater na rede de novo (get_falso levantaria se fosse chamado), já
+    # que o objetivo é corrigir o cache existente sem re-baixar as ~36 páginas
+    # da API.
     caminho_cache = tmp_path / "b3" / "catalogo_emissores.csv"
     caminho_cache.parent.mkdir(parents=True)
     pd.DataFrame(

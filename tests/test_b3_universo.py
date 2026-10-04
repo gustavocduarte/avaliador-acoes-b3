@@ -87,7 +87,7 @@ def test_registro_para_linha_levanta_erro_quando_campo_falta():
         b3_universo._registro_para_linha(registro_quebrado)
 
 
-# Busca de fato (requests.get) acontece dentro de ingest._paginacao agora —
+# Busca de fato (requests.get) acontece dentro de ingest._paginacao —
 # ver tests/test_paginacao.py pro comportamento genérico de paginação
 # (erro de JSON inválido, delay entre páginas, etc.). Os testes abaixo
 # monkeypatcham `_paginacao.requests`, não `b3_universo.requests`.

@@ -48,9 +48,8 @@ def ticks_mensais_pt_br(datas: pd.Series, max_ticks: int = 8) -> tuple[list, lis
     "redondo" (`PASSOS_MENSAIS_CANDIDATOS`) que mantém a contagem de
     ticks dentro de `max_ticks`, depois anda de `passo` em `passo` meses
     a partir da ÚLTIMA data (a mais recente, geralmente "hoje") pra trás
-    — a data mais recente fica sempre como âncora à direita do eixo,
-    igual ao comportamento anterior, só o espaçamento das anteriores é
-    regular agora. Datas não precisam corresponder a candles reais do
+    — a data mais recente fica sempre como âncora à direita do eixo e o
+    espaçamento das anteriores é regular. Datas não precisam corresponder a candles reais do
     histórico, são só posições no eixo contínuo de tempo. Série vazia
     (após remover nulos) devolve duas listas vazias.
     """

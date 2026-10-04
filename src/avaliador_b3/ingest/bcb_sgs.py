@@ -117,18 +117,13 @@ def _registros_para_dataframe(registros: list[dict]) -> pd.DataFrame:
 def _caminho_cache(
     codigo: int, data_inicial: str | None, data_final: str | None, diretorio_cache: Path
 ) -> Path:
-    # data_inicial/data_final precisam fazer parte da chave de cache — sem
-    # isso, um chamador com janela ROLANTE (ex: app/main.py recalcula
-    # "hoje - N dias" a "hoje" a cada execução) fica preso pra sempre na
-    # janela do primeiro fetch, porque a única checagem de validade era
-    # `caminho.exists()`: qualquer chamada seguinte, em qualquer dia
-    # futuro, lia esse mesmo arquivo desatualizado, silenciosamente. Mesmo
-    # bug já corrigido em ingest/precos.py pro parâmetro `periodo` (ver
-    # comentário lá) — datas trocam "/" por "-" pra virarem nome de
-    # arquivo válido. Sem sufixo quando as duas datas são None (== série
-    # inteira), pra não invalidar cache já gravado em disco antes dessa
-    # mudança nesse caso específico (só usado em teste hoje — todo
-    # chamador real sempre passa datas explícitas).
+    # data_inicial/data_final fazem parte da chave de cache: um chamador com
+    # janela ROLANTE (ex: app/main.py recalcula "hoje - N dias" a "hoje" a cada
+    # execução) ficaria preso à janela do primeiro fetch, já que a única
+    # checagem de validade é `caminho.exists()`. Mesma ideia da chave por
+    # `periodo` em ingest/precos.py. As datas trocam "/" por "-" pra virarem
+    # nome de arquivo válido. Sem sufixo quando as duas são None (série
+    # inteira), caso só usado em teste (todo chamador real passa datas).
     sufixo_janela = ""
     if data_inicial or data_final:
         inicio = (data_inicial or "inicio").replace("/", "-")

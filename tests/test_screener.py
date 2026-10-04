@@ -11,11 +11,9 @@ from avaliador_b3.config import MENSAGEM_PRECO_INDISPONIVEL_SCREENER
 from avaliador_b3.ingest import bcb_sgs
 from avaliador_b3.ingest.precos import TickerInvalido
 
-# Ano fixo usado pelos mocks de FCD abaixo — substitui screener.
-# ANO_REFERENCIA_FCD (removida em 2026-09-23, ver
-# docs/correcao-ano-fcd-2026-09-23.md), já que o ano agora é detectado em
-# tempo de execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não
-# uma constante.
+# Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
+# execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não é uma
+# constante.
 ANO_FCD_MOCK = 2025
 
 # A fixture `ambiente_feliz` troca `screener._buscar_macro`; os testes de BCB usam a real.
@@ -49,9 +47,8 @@ def _indicadores(
         "vpa": vpa,
         "numero_acoes": numero_acoes,
         "divida_liquida_sobre_patrimonio": divida_liquida_sobre_patrimonio,
-        # None por padrão (não deduzida do FCD) — preserva os valores/
-        # potenciais que os testes existentes já esperavam antes da
-        # correção de 2026-09-23; ver test_fcd.py pra cobertura da
+        # None por padrão (não deduzida do FCD), pra os valores/potenciais dos
+        # testes não dependerem da dedução; ver test_fcd.py pra cobertura da
         # dedução em si.
         "divida_liquida": divida_liquida,
         "data_balanco_fundamentus": data_balanco_fundamentus,
@@ -227,7 +224,7 @@ def test_rodar_screener_divergencia_fica_nula_com_um_so_metodo_aplicavel(
 def test_calcular_linha_ticker_bazin_razao_dividendos_percentual(
     ambiente_feliz, tmp_path, monkeypatch
 ):
-    # Investigação de 2026-09-25 (achado em revisão externa): o preço teto
+    # O preço teto
     # do Bazin usa só os últimos 12 meses, sem distinguir provento
     # ordinário de extraordinário — a razão contra a mediana dos 5 anos
     # anteriores é o sinal disso. R$3,00 nos últimos 12 meses (ano_atual-1)
@@ -760,11 +757,10 @@ def test_rodar_screener_avisa_globalmente_quando_deteccao_do_ano_falha(
 
 
 def test_rodar_screener_avisa_globalmente_quando_bcb_falha(ambiente_feliz, tmp_path, monkeypatch):
-    # P07 (docs/auditoria-tecnica-2026-09-27.md): antes desta correção,
-    # a falha do BCB era engolida em silêncio (except Exception: selic_
-    # meta = ipca_12m = None, sem warnings.warn nenhum) — mesmo problema
-    # que a detecção do ano da CVM já tinha, corrigido acima com o
-    # mesmo padrão de aviso global.
+    # P07 (docs/auditoria-tecnica-2026-09-27.md): a falha do BCB não pode ser
+    # silenciosa (sem warnings.warn, selic_meta = ipca_12m = None sumiria com o
+    # FCD sem explicação) — mesmo padrão de aviso global da detecção do ano da
+    # CVM.
     def buscar_macro_falso(diretorio_cache):
         raise RuntimeError("BCB fora do ar (simulado)")
 
@@ -1307,9 +1303,8 @@ def test_aviso_desconto_extremo_positivo_com_fcd():
 
 
 def test_aviso_desconto_extremo_positivo_sem_fcd():
-    # Achado real que motivou a correção: COGN3 dispara o limiar positivo
-    # só com Graham, sem FCD entre os métodos — o texto não pode culpar
-    # a CAGR do FCD nesse caso.
+    # COGN3 dispara o limiar positivo só com Graham, sem FCD entre os
+    # métodos — o texto não pode culpar a CAGR do FCD nesse caso.
     aviso = screener._aviso_desconto_extremo(225.68, ["graham"])
     assert aviso == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
 

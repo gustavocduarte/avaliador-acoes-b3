@@ -104,8 +104,7 @@ def test_obter_historico_sobrevive_a_cache_com_fuso_que_observa_horario_de_verao
     # atravessa a transição tem offsets diferentes (-04:00/-05:00) na
     # mesma coluna. Sem normalizar pra UTC antes de cachear, o CSV grava
     # os offsets misturados como texto, e relê-lo depois (cache hit)
-    # levanta `ValueError: Mixed timezones detected` — bug real
-    # encontrado testando o painel de correlação contra BZ=F no navegador.
+    # levanta `ValueError: Mixed timezones detected`.
     indice = pd.DatetimeIndex(["2025-01-02", "2025-07-01"], name="Date", tz="America/New_York")
     historico = pd.DataFrame(
         {
@@ -126,7 +125,7 @@ def test_obter_historico_sobrevive_a_cache_com_fuso_que_observa_horario_de_verao
     df_buscado = precos.obter_historico("BZ=F", periodo="2y", diretorio_cache=tmp_path)
     assert df_buscado["data"].dt.tz is not None
 
-    # Segunda chamada: lê do cache — é aqui que o bug original quebrava.
+    # Segunda chamada: lê do cache — é aqui que offsets misturados quebrariam.
     df_cache = precos.obter_historico("BZ=F", periodo="2y", diretorio_cache=tmp_path)
     assert ticker_falso.chamadas == 1  # confirma que essa segunda veio do cache
     assert len(df_cache) == 2
@@ -199,8 +198,8 @@ def test_obter_historico_repassa_auto_adjust_false_pro_yfinance(tmp_path, monkey
     # Preço NOMINAL da época (não ajustado por dividendos futuros) —
     # necessário pro Dividend Yield histórico, ver
     # graficos.calcular_dividend_yield_por_ano e o docstring de
-    # obter_historico pro bug real que isso corrigiu (PETR4 2021: 73,5%
-    # calculado com preço ajustado vs. ~20% esperado, preço nominal).
+    # obter_historico (PETR4 2021: 73,5% com preço ajustado contra ~20% com
+    # preço nominal).
     ticker_falso = _TickerFalso(resultado=_historico_falso())
     monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
 
@@ -210,10 +209,10 @@ def test_obter_historico_repassa_auto_adjust_false_pro_yfinance(tmp_path, monkey
 
 
 def test_obter_historico_cache_nao_mistura_auto_adjust_diferente(tmp_path, monkeypatch):
-    # Regressão do bug real: preço ajustado e preço nominal são dados BEM
+    # Preço ajustado e preço nominal são dados BEM
     # diferentes pro mesmo ticker/período — sem uma chave de cache
     # separada, uma busca sobrescreveria (ou leria) o cache da outra
-    # silenciosamente, mesma categoria do bug de período já coberto acima.
+    # silenciosamente.
     chamadas_por_auto_adjust = {True: 0, False: 0}
 
     class _TickerFalsoPorAjuste:

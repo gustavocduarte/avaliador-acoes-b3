@@ -53,9 +53,8 @@ def test_registros_para_dataframe_vazio():
 
 
 def test_caminho_cache_sem_datas_nao_tem_sufixo_de_janela(tmp_path):
-    # Compatibilidade com o único caso onde isso era chamado sem datas
-    # até agora (testes) — todo chamador real (app/main.py) sempre passa
-    # data_inicial/data_final.
+    # Série inteira (sem datas): caso só usado em teste — todo chamador real
+    # (app/main.py) sempre passa data_inicial/data_final.
     caminho = bcb_sgs._caminho_cache(432, None, None, tmp_path)
     assert caminho.name == "serie_432.csv"
 
@@ -66,11 +65,10 @@ def test_caminho_cache_inclui_janela_quando_datas_sao_passadas(tmp_path):
 
 
 def test_caminho_cache_janelas_diferentes_geram_arquivos_diferentes(tmp_path):
-    # Regressão: essa era a causa raiz do bug real — duas janelas
-    # diferentes pro mesmo código de série precisam virar dois arquivos de
-    # cache diferentes, senão uma busca com janela rolante (ex:
+    # Duas janelas diferentes pro mesmo código de série precisam virar dois
+    # arquivos de cache diferentes, senão uma busca com janela rolante (ex:
     # app/main.py._buscar_cambio_correlacao, recalculada a cada execução a
-    # partir de "hoje") fica presa pra sempre na janela do primeiro fetch.
+    # partir de "hoje") ficaria presa pra sempre na janela do primeiro fetch.
     caminho_1 = bcb_sgs._caminho_cache(432, "01/01/2024", "01/03/2024", tmp_path)
     caminho_2 = bcb_sgs._caminho_cache(432, "15/06/2024", "15/08/2024", tmp_path)
     assert caminho_1 != caminho_2

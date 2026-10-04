@@ -342,10 +342,9 @@ def test_obter_indicadores_grava_cache_com_envelope_de_versao_de_schema(tmp_path
 
 
 def test_obter_indicadores_cache_com_schema_desatualizado_busca_de_novo(tmp_path, monkeypatch):
-    # Regressão do bug real desta sessão: um cache no formato ANTIGO (dict
-    # plano, sem envelope de versão nenhum — como todo JSON já gravado em
-    # disco antes dessa mudança) precisa ser tratado como inválido, não
-    # servido incompleto pra quem espera os campos do schema atual.
+    # Um cache sem envelope de versão (dict plano) precisa ser tratado como
+    # inválido, não servido incompleto pra quem espera os campos do schema
+    # atual.
     caminho = tmp_path / "fundamentus" / "PETR4.json"
     caminho.parent.mkdir(parents=True)
     caminho.write_text(json.dumps({"ticker": "PETR4", "roe_percentual": 1.0}), encoding="utf-8")
@@ -369,7 +368,7 @@ def test_obter_indicadores_cache_com_schema_desatualizado_busca_de_novo(tmp_path
 def test_obter_indicadores_cache_com_versao_de_schema_antiga_busca_de_novo(tmp_path, monkeypatch):
     # Mesmo caso do teste acima, mas pro cenário em que um envelope de
     # versão JÁ existe, só que de uma versão anterior à atual (em vez de
-    # ausente por completo, caso do cache "formato antigo pré-versionamento").
+    # ausente por completo, como no teste acima).
     caminho = tmp_path / "fundamentus" / "PETR4.json"
     caminho.parent.mkdir(parents=True)
     caminho.write_text(
@@ -400,10 +399,8 @@ def test_obter_indicadores_cache_com_versao_de_schema_antiga_busca_de_novo(tmp_p
 def test_obter_indicadores_cache_versao_anterior_sem_campo_novo_busca_de_novo_e_traz_o_campo(
     tmp_path, monkeypatch
 ):
-    # Regressão específica do incremento de VERSAO_SCHEMA_FUNDAMENTUS pra 3
-    # (adição de data_balanco_fundamentus): um cache gravado na versão
-    # anterior (sem o campo novo, cenário real de qualquer cache já em
-    # disco antes desta mudança) não pode ser servido faltando o campo —
+    # Um cache gravado numa versão de schema anterior (sem
+    # data_balanco_fundamentus) não pode ser servido faltando o campo —
     # tem que ser tratado como inválido e rebuscado, mesmo mecanismo do
     # teste acima, mas confirmando o RESULTADO (campo presente), não só a
     # contagem de chamadas.

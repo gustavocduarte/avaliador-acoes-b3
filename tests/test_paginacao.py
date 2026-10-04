@@ -88,9 +88,8 @@ def test_buscar_registros_paginados_multiplas_paginas_acumula_registros(monkeypa
 def test_buscar_registros_paginados_aplica_delay_entre_paginas_mas_nao_antes_da_primeira(
     monkeypatch,
 ):
-    # Regressão: b3_universo.py/crosswalk_cnpj.py não tinham NENHUM delay
-    # entre páginas antes dessa mudança, apesar de crosswalk_cnpj.py
-    # paginar até ~36 vezes contra a API da B3 (ver
+    # b3_universo.py/crosswalk_cnpj.py precisam esperar entre páginas
+    # (crosswalk_cnpj.py pagina até ~36 vezes contra a API da B3, ver
     # TAMANHO_PAGINA_API_B3_CATALOGO em config.py). Confirma que o delay é
     # aplicado só ENTRE páginas, não antes da primeira requisição da
     # sequência.

@@ -8,8 +8,7 @@ Esse é o adapter mais "bruto" do projeto — não é uma API nem uma página
 HTML formatada, é um zip anual (~13 MB) com vários CSVs de dados contábeis
 em formato de plano de contas padronizado, ";"-separado, ISO-8859-1.
 
-Duas coisas exigiram investigação antes de implementar (documentadas com
-mais detalhe em config.py):
+Duas características do formato (documentadas com mais detalhe em config.py):
 
 1. Cada arquivo anual já traz DOIS períodos por conta (ORDEM_EXERC
    "ÚLTIMO"/"PENÚLTIMO"), então um ano baixado basta para crescimento ano
@@ -113,8 +112,8 @@ class ContaFluxoCaixaNaoEncontrada(ErroCVM):
 
 def _normalizar_cnpj(cnpj: str) -> str:
     """Remove pontuação e completa com zeros à esquerda até
-    `TAMANHO_CNPJ` (14) dígitos — camada DEFENSIVA (ver a correção
-    completa em `crosswalk_cnpj._completar_zeros`/config.py, 2026-09-25):
+    `TAMANHO_CNPJ` (14) dígitos — camada DEFENSIVA (ver
+    `crosswalk_cnpj._completar_zeros`/config.py):
     o crosswalk da B3 já corrige o zero perdido na origem e na leitura do
     cache, então esse `.zfill` aqui normalmente não faz nada. Existe pra
     proteger contra qualquer OUTRA fonte futura de CNPJ com o mesmo
@@ -157,9 +156,9 @@ def _baixar_zip_ano(
 
     Cache é permanente pra anos fechados, mas expira pro ano ainda em
     preenchimento depois de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE`
-    dias — ver `_cache_zip_expirado` e o comentário em config.py (bug
-    real corrigido em 2026-09-23: sem isso, um zip baixado cedo na
-    janela jan-mar ficava incompleto pra sempre localmente).
+    dias — ver `_cache_zip_expirado` e o comentário em config.py (sem isso, um
+    zip baixado cedo na janela jan-mar ficaria incompleto pra sempre
+    localmente).
 
     Se o prazo venceu mas o download de atualização falha (CVM fora do
     ar, timeout, erro de rede) e já existe um zip em cache pra esse ano,
@@ -366,11 +365,10 @@ def _cfo_cfi_do_periodo(linhas_periodo: list[dict]) -> tuple[float, float]:
     """Caixa Líquido Atividades Operacionais e Caixa Líquido Atividades de
     Investimento, separados — FCF (ver justificativa em config.py) é a
     soma dos dois, mas os componentes em si são expostos separadamente
-    (ver `_montar_resultado_fcf`/`obter_fluxo_caixa_livre`) desde
-    2026-09-25, pra dar pra calcular a proporção reinvestida do caixa
-    operacional (`modelos.fcd.calcular_proporcao_reinvestimento_
-    percentual`) — investigação de por que o FCD sai sistematicamente
-    baixo em empresas de investimento pesado, ver config.py.
+    (ver `_montar_resultado_fcf`/`obter_fluxo_caixa_livre`), pra calcular a
+    proporção reinvestida do caixa operacional (`modelos.fcd.calcular_
+    proporcao_reinvestimento_percentual`) — o contexto de o FCD sair baixo em
+    empresas de investimento pesado está em config.py.
 
     `_valor_conta` recebe `ContaFluxoCaixaNaoEncontrada` explicitamente —
     sem isso, uma escala monetária desconhecida numa conta CFO/CFI
@@ -525,12 +523,10 @@ def _ler_cache_fcf_com_schema_atual(caminho: Path) -> dict | None:
     """Lê o cache do FCF só se a versão de schema gravada bater com
     `VERSAO_SCHEMA_CVM_FCF` atual — devolve `None` (tratado como cache
     miss por `obter_fluxo_caixa_livre`, força busca nova) se a versão não
-    bater ou o arquivo estiver no formato antigo (sem envelope, de antes
-    de 2026-09-25). Mesmo padrão de
-    `ingest.fundamentus._ler_cache_com_schema_atual`, pro mesmo tipo de
-    bug: um cache gravado antes de `cfo_atual`/`cfi_atual` existirem no
-    resultado seria servido sem esses campos, e o primeiro código que
-    tentasse ler uma dessas chaves novas quebraria com `KeyError`."""
+    bater ou o arquivo estiver sem envelope de versão. Mesmo padrão de
+    `ingest.fundamentus._ler_cache_com_schema_atual`: um cache gravado antes
+    de um campo novo seria servido sem ele, e o primeiro código que tentasse
+    ler a chave nova quebraria com `KeyError`."""
     bruto = json.loads(caminho.read_text(encoding="utf-8"))
     if bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_FCF:
         return None
@@ -699,8 +695,7 @@ def obter_fluxo_caixa_livre_com_fallback(
     contas 6.01/6.02 não estão no formato esperado) NÃO dispara esse
     fallback — é sinal de mudança de layout/parsing, não de "ainda não
     publicado", e cair pro ano anterior nesse caso esconderia um erro real
-    atrás de um número (de outro ano) que parece válido. Propaga, como
-    sempre propagou.
+    atrás de um número (de outro ano) que parece válido. Propaga.
 
     Se a empresa também não aparecer no ano de fallback, a exceção
     (`CnpjNaoEncontrado` ou `ContaFluxoCaixaNaoEncontrada`) propaga

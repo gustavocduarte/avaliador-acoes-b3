@@ -30,7 +30,7 @@ Fontes compartilhadas entre todas as ações (não buscadas por ação):
 O yfinance (histórico de preço, dividendos) é a fonte com risco real de
 rate-limit rodando várias dezenas de vezes em sequência — por isso
 `ingest.precos` tem `DELAY_PRECOS_SEGUNDOS` aplicado antes de cada
-requisição real (decisão alinhada com o usuário antes de implementar).
+requisição real.
 """
 
 from __future__ import annotations
@@ -224,11 +224,10 @@ def _aviso_desconto_extremo(
     """Sinaliza (sem filtrar) potenciais fora da faixa considerada
     confiável — ver a justificativa dos limiares em config.py (esses não
     mudam aqui). O TEXTO do aviso, por outro lado, depende de quais
-    métodos entraram no valor combinado daquela ação específica — achado
-    real, revisando o Screener publicado (screenshot da aba Screener,
-    2026-09-24): um texto único que sempre citava o FCD ficava errado
-    pra ações como COGN3, onde só Graham disparava o limiar positivo,
-    sem FCD nenhum na conta. Quatro casos, por sinal do
+    métodos entraram no valor combinado daquela ação específica: um texto
+    único que sempre citasse o FCD estaria errado pra ações como COGN3, onde
+    só Graham dispara o limiar positivo, sem FCD nenhum na conta. Quatro
+    casos, por sinal do
     potencial × presença de "fcd" em `metodos_utilizados`:
     - positivo + FCD: taxa de crescimento de 2 pontos do FCD (o caso mais
       comum, mas não mais o único assumido).
@@ -462,9 +461,8 @@ def _calcular_linha_ticker(
     # rodar_screener) tem prioridade sobre o motivo genérico de "FCF
     # indisponível" que calcular_valor_justo_fcd devolveria com
     # fcf_atual=None: sem essa checagem explícita, a causa real (detecção
-    # do ano quebrada) ficava indistinguível de uma empresa que
-    # simplesmente não tem FCD na CVM — mascarando um bug de
-    # infraestrutura atrás de um motivo que parece só "sem dado".
+    # do ano quebrada) ficaria indistinguível de uma empresa que
+    # simplesmente não tem FCD na CVM.
     if fundamentus_pulado:
         resultado_fcd = {
             "aplicavel": False,
@@ -569,9 +567,8 @@ def _executar_rodada(
     do Ibovespa, alfabética), não por potencial. Depois que o loop termina,
     `caminho_saida` é reescrito de uma vez com a tabela já ordenada, a
     partir dos mesmos dados já calculados em memória (sem reler do disco
-    nem bater na rede de novo) — bug real corrigido em 2026-09-21: antes
-    disso o arquivo em disco nunca refletia a ordenação, só o retorno da
-    função em memória.
+    nem bater na rede de novo), pra o arquivo em disco refletir a mesma
+    ordenação do retorno da função.
     """
     catalogo_emissores = obter_catalogo_emissores(diretorio_cache=diretorio_cache)
 

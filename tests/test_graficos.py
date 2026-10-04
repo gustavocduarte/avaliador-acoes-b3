@@ -61,8 +61,8 @@ def _passos_em_meses(tickvals: list) -> list[int]:
 
 
 def test_ticks_mensais_pt_br_passo_constante_janela_de_1_ano():
-    # Mesma janela usada em "Preço vs. Ibovespa" (1 ano) — a que mostrou o
-    # pulo inconsistente 2/2/1/2/2/1/2 no bug real.
+    # Mesma janela usada em "Preço vs. Ibovespa" (1 ano); o passo precisa ser
+    # constante (não 2/2/1/2/2/1/2 meses).
     datas = pd.Series(pd.to_datetime(["2025-09-22", "2026-09-22"]))
 
     tickvals, _ = graficos.ticks_mensais_pt_br(datas, max_ticks=8)
@@ -73,8 +73,8 @@ def test_ticks_mensais_pt_br_passo_constante_janela_de_1_ano():
 
 
 def test_ticks_mensais_pt_br_passo_constante_janela_de_2_anos():
-    # Mesma janela padrão do seletor "Comparando com Petróleo" (2 anos) —
-    # a que mostrou o pulo inconsistente 4/3/4/3/3/4/3 no bug real.
+    # Mesma janela padrão do seletor "Comparando com Petróleo" (2 anos); o passo
+    # precisa ser constante (não 4/3/4/3/3/4/3 meses).
     datas = pd.Series(pd.to_datetime(["2024-09-22", "2026-09-22"]))
 
     tickvals, _ = graficos.ticks_mensais_pt_br(datas, max_ticks=8)

@@ -85,9 +85,7 @@ def test_alinhamento_funciona_com_fusos_e_resolucoes_diferentes():
     # Reproduz o formato real das fontes: o yfinance (ação, petróleo)
     # devolve "data" com fuso horário (America/Sao_Paulo); o BCB e o GPR
     # devolvem sem fuso, em resolução diferente. Sem normalizar antes do
-    # merge, pandas levanta ValueError por dtypes datetime64
-    # incompatíveis — bug real encontrado testando contra PETR4 no
-    # navegador, não só um caso hipotético.
+    # merge, pandas levantaria ValueError por dtypes datetime64 incompatíveis.
     datas_com_fuso = pd.to_datetime(
         ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04"]
     ).tz_localize("America/Sao_Paulo")
@@ -103,11 +101,10 @@ def test_alinhamento_funciona_com_fusos_e_resolucoes_diferentes():
 
 
 def test_mesma_serie_em_calendarios_diferentes_tem_correlacao_um():
-    # Achado de auditoria (docs/auditoria-tecnica-2026-09-27.md, P05):
-    # calcular retorno em cada calendário próprio e só depois alinhar
-    # pelas datas em comum compara variações de períodos diferentes
-    # sempre que os dois calendários não batem dia a dia — mesmo
-    # movimento, calendário diferente, tinha que dar 1,0 e não dava.
+    # P05 (docs/auditoria-tecnica-2026-09-27.md): calcular retorno em cada
+    # calendário próprio e só depois alinhar pelas datas em comum compara
+    # variações de períodos diferentes sempre que os dois calendários não batem
+    # dia a dia — o mesmo movimento em calendário diferente tem que dar 1,0.
     df_diaria = _serie_ondulada(n=60)
     df_dias_uteis = df_diaria[df_diaria["data"].dt.weekday < 5].reset_index(drop=True)
 
@@ -150,13 +147,12 @@ def test_serie_sem_variacao_fica_nao_aplicavel():
 
 
 def test_nivel_zero_num_unico_dia_nao_derruba_a_correlacao_inteira():
-    # Bug real encontrado testando contra PETR4 no navegador: o GPR teve
-    # uma leitura de 0.0 num único dia (2025-02-09), o que faz o retorno
-    # do dia seguinte virar ±infinito (divisão por zero: (novo-0)/0). Um
-    # `inf` sozinho contaminava a média/desvio padrão de toda a série e a
-    # correlação inteira virava NaN — reportado (incorretamente) como
-    # "série sem variação". Aqui, a série B passa por exatamente zero no
-    # meio (índice 2), mas varia normalmente antes e depois.
+    # O GPR pode ter uma leitura de 0.0 num único dia (ex.: 2025-02-09), o que
+    # faz o retorno do dia seguinte virar ±infinito (divisão por zero: (novo-0)/0).
+    # Um `inf` sozinho contaminaria a média/desvio padrão de toda a série e a
+    # correlação inteira viraria NaN (reportada, incorretamente, como "série sem
+    # variação"). Aqui, a série B passa por exatamente zero no meio (índice 2),
+    # mas varia normalmente antes e depois.
     offsets = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     valores_a = [100.0, 101.0, 99.0, 103.0, 102.0, 105.0, 104.0, 106.0, 108.0]
     valores_b = [50.0, 52.0, 0.0, 48.0, 51.0, 49.0, 53.0, 50.0, 52.0]

@@ -2,7 +2,7 @@
 `b3_universo.py` (universo de ações, indexado por ticker) a `cvm.py`
 (demonstrações financeiras, indexado por CNPJ).
 
-Investigação feita antes de implementar:
+Fontes avaliadas:
 
 1. A resposta de `indexProxy/indexCall/GetPortfolioDay` (usada em
    b3_universo.py) só traz `cod`/`asset`/`type`/`part`/`partAcum`/
@@ -82,13 +82,12 @@ def _montar_url(pagina: int, tamanho_pagina: int) -> str:
 
 def _completar_zeros(valor, tamanho: int) -> str:
     """Completa `valor` (str ou int) com zeros à esquerda até `tamanho`
-    dígitos. Bug real encontrado em 2026-09-25 (ver o comentário completo em
-    config.py, junto de TAMANHO_CNPJ/TAMANHO_CODIGO_CVM): a API
-    "GetInitialCompanies" devolve "cnpj" e "codeCVM" como NÚMERO JSON, e um
-    literal numérico JSON não pode ter zero à esquerda — o dígito já se
-    perde na resposta da API, antes de qualquer código deste projeto rodar.
-    `str()` sozinho (usado antes aqui só pra "codigo_cvm") corrige o TIPO
-    (int -> str) mas não restaura o zero perdido — só `.zfill` faz isso.
+    dígitos. A API "GetInitialCompanies" devolve "cnpj" e "codeCVM" como
+    NÚMERO JSON, e um literal numérico JSON não pode ter zero à esquerda — o
+    dígito já se perde na resposta da API, antes de qualquer código deste
+    projeto rodar (ver o comentário completo em config.py, junto de
+    TAMANHO_CNPJ/TAMANHO_CODIGO_CVM). `str()` sozinho corrige o TIPO (int ->
+    str) mas não restaura o zero perdido — só `.zfill` faz isso.
     Seguro porque CNPJ e código CVM têm largura FIXA e conhecida (14 e 6
     dígitos respectivamente, confirmado contra os zips da CVM): completar
     com zero só restaura um dígito que sabemos que existia, nunca cria

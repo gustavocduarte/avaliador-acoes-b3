@@ -65,7 +65,7 @@ def test_normalizar_cnpj():
 
 
 def test_normalizar_cnpj_completa_zero_a_esquerda_perdido():
-    # Camada defensiva (2026-09-25, ver config.py/crosswalk_cnpj.py): o
+    # Camada defensiva (ver config.py/crosswalk_cnpj.py): o
     # crosswalk da B3 já corrige o zero perdido antes de chamar o adapter
     # da CVM, mas _normalizar_cnpj completa de novo aqui — protege contra
     # qualquer outra fonte futura de CNPJ com o mesmo defeito (número JSON
@@ -128,8 +128,8 @@ def test_valor_conta_levanta_erro_para_escala_desconhecida():
 
 def test_valor_conta_aceita_classe_de_erro_explicita():
     # Regressão: _valor_conta é compartilhada entre o caminho de Lucro
-    # Líquido e o de Fluxo de Caixa (_fcf_do_periodo) — antes de aceitar
-    # classe_erro, uma escala desconhecida numa conta CFO/CFI levantava
+    # Líquido e o de Fluxo de Caixa (_cfo_cfi_do_periodo) — sem aceitar
+    # classe_erro, uma escala desconhecida numa conta CFO/CFI levantaria
     # ContaLucroNaoEncontrada (mensagem enganosa, citando "Lucro Líquido"
     # num contexto de Fluxo de Caixa).
     with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="Escala monetária"):
@@ -299,8 +299,8 @@ def test_baixar_zip_ano_propaga_erro_quando_fora_do_ar(tmp_path, monkeypatch):
         cvm._baixar_zip_ano(2024, tmp_path, forcar_atualizacao=False)
 
 
-# --- Prazo de validade do cache do zip pro ano em preenchimento (correção
-# de 2026-09-23) — ver docs/correcao-ano-fcd-2026-09-23.md e o comentário
+# --- Prazo de validade do cache do zip pro ano em preenchimento — ver
+# docs/correcao-ano-fcd-2026-09-23.md e o comentário
 # de DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE em config.py.
 
 
@@ -409,9 +409,8 @@ def test_linha_por_codigo_levanta_erro_quando_nao_encontrada():
 
 
 def test_cfo_cfi_do_periodo_devolve_os_dois_componentes_separados():
-    # Regressão (2026-09-25): _fcf_do_periodo virou _cfo_cfi_do_periodo —
-    # devolve os dois componentes separados (não só a soma), usados pra
-    # calcular a proporção reinvestida (ver modelos.fcd.calcular_
+    # _cfo_cfi_do_periodo devolve os dois componentes separados (não só a soma),
+    # usados pra calcular a proporção reinvestida (ver modelos.fcd.calcular_
     # proporcao_reinvestimento_percentual).
     linhas = [
         {"CD_CONTA": "6.01", "VL_CONTA": "204037000.0000000000", "ESCALA_MOEDA": "MIL"},
@@ -600,8 +599,8 @@ def test_obter_fluxo_caixa_livre_as_duas_zeradas_mantem_a_consolidada(tmp_path, 
 
 
 def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_anterior_do_schema(tmp_path, monkeypatch):
-    # Cache gravado com a escolha antiga (consolidada zerada) não pode ser
-    # servido depois da mudança de critério.
+    # Cache de uma versão anterior do schema (escolha de demonstração com
+    # consolidada zerada) não pode ser servido.
     caminho_cache = tmp_path / "cvm" / "fcf_00000000000400_2024.json"
     caminho_cache.parent.mkdir(parents=True)
     caminho_cache.write_text(
@@ -628,10 +627,10 @@ def test_obter_fluxo_caixa_livre_levanta_cnpj_nao_encontrado(tmp_path, monkeypat
 
 
 def test_obter_fluxo_caixa_livre_devolve_cfo_e_cfi_separados(tmp_path, monkeypatch):
-    # 2026-09-25: cfo_atual/cfi_atual expostos separados no resultado, pra
-    # calcular a proporção reinvestida (ver modelos.fcd.calcular_
-    # proporcao_reinvestimento_percentual) — mesmos números que já
-    # compunham fcf_atual em test_obter_fluxo_caixa_livre_prefere_mi_
+    # cfo_atual/cfi_atual são expostos separados no resultado, pra calcular a
+    # proporção reinvestida (ver modelos.fcd.calcular_
+    # proporcao_reinvestimento_percentual) — mesmos números que compõem
+    # fcf_atual em test_obter_fluxo_caixa_livre_prefere_mi_
     # consolidado (204037000000 + (-72363000000) = 131674000000).
     monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
 
@@ -643,11 +642,9 @@ def test_obter_fluxo_caixa_livre_devolve_cfo_e_cfi_separados(tmp_path, monkeypat
 
 
 def test_obter_fluxo_caixa_livre_ignora_cache_em_formato_antigo_sem_envelope(tmp_path, monkeypatch):
-    # Regressão (2026-09-25, mesmo padrão de
-    # fundamentus._ler_cache_com_schema_atual): um cache gravado ANTES da
-    # versão com cfo_atual/cfi_atual (formato antigo, sem o envelope
-    # {"versao_schema": ..., "resultado": ...}) precisa ser tratado como
-    # cache miss, não devolvido sem essas chaves novas.
+    # Mesmo padrão de fundamentus._ler_cache_com_schema_atual: um cache em
+    # formato sem o envelope {"versao_schema": ..., "resultado": ...} precisa ser
+    # tratado como cache miss, não devolvido sem as chaves cfo_atual/cfi_atual.
     caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
     caminho_cache.parent.mkdir(parents=True)
     caminho_cache.write_text('{"fcf_atual": 999.0}', encoding="utf-8")
@@ -694,9 +691,9 @@ def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_pa
     assert (tmp_path / "cvm" / "fcf_33000167000101_2024.json").exists()
 
 
-# --- Detecção automática do ano de referência (correção de 2026-09-23) ---
-# Ver docs/correcao-ano-fcd-2026-09-23.md: constante fixa ANO_REFERENCIA_FCD
-# removida de config.py, substituída por detecção em dois níveis. Os testes
+# --- Detecção automática do ano de referência -------------------------------
+# Ver docs/correcao-ano-fcd-2026-09-23.md: o ano é detectado em dois níveis,
+# sem constante fixa. Os testes
 # abaixo mockam `_baixar_zip_ano`/`obter_fluxo_caixa_livre` diretamente (não
 # `requests.get`) porque testam a ORQUESTRAÇÃO da detecção, não o download
 # ou o parsing em si (já cobertos acima).
