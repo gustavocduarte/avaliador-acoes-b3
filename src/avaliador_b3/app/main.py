@@ -60,6 +60,8 @@ from avaliador_b3.config import (
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
+    TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
+    TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
@@ -627,6 +629,18 @@ def _cartao_metodo(
         motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
         if motivo_crescimento_ipca:
             st.caption(TEXTO_CRESCIMENTO_IPCA.format(motivo=motivo_crescimento_ipca))
+        if resultado.get("crescimento_limitado_pela_receita"):
+            st.caption(
+                TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA.format(
+                    taxa=_fmt_percentual(resultado["taxa_crescimento_receita"] * 100, 1)
+                )
+            )
+        elif resultado.get("motivo_sem_limite_da_receita"):
+            st.caption(
+                TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA.format(
+                    motivo=resultado["motivo_sem_limite_da_receita"]
+                )
+            )
     else:
         st.metric(nome, "—")
         st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")

@@ -43,9 +43,13 @@ from avaliador_b3.config import (
     CODIGO_CFI_CVM,
     CODIGO_CFO_CVM,
     CONTA_LUCRO_POR_ACAO_CVM,
+    CONTA_RECEITA_LIQUIDA_CVM,
     DATA_RAW_DIR,
     DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE,
     FATOR_ESCALA_MOEDA_CVM,
+    MOTIVO_RECEITA_NAO_LIDA,
+    MOTIVO_RECEITA_SEM_CONTA,
+    MOTIVO_RECEITA_SEM_DRE,
     TAMANHO_CNPJ,
     TERMO_CAPEX_ACRESCIMO,
     TERMO_CAPEX_REDUCAO,
@@ -496,7 +500,53 @@ def _extrair_juros_pagos_6_01(linhas_periodo: list[dict]) -> dict:
     return {"valor": -sum(linha["valor"] for linha in usadas) if usadas else 0.0, "linhas": usadas}
 
 
-def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) -> dict:
+def _versao_das_linhas(linhas: list[dict]) -> int | None:
+    versoes = [int(linha["VERSAO"]) for linha in linhas if linha.get("VERSAO")]
+    return max(versoes) if versoes else None
+
+
+def _receita_do_ano(
+    caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str, versao_dfc: int | None
+) -> dict:
+    """Receita líquida (conta 3.01, período ÚLTIMO) da DRE do mesmo `tipo` ("con"/"ind") e
+    da mesma versão da DFC usada no fluxo do ano (a mais recente, se a versão não existir na
+    DRE). Devolve `valor` (ou `None`), `versao` e `motivo` (quando `valor` é `None`); receita
+    ausente nunca derruba a leitura do fluxo."""
+    try:
+        linhas = _linhas_do_membro(
+            caminho_zip,
+            f"dfp_cia_aberta_DRE_{tipo}_{ano}.csv",
+            ano,
+            cnpj_normalizado,
+            ContaFluxoCaixaNaoEncontrada,
+        )
+    except ContaFluxoCaixaNaoEncontrada:
+        return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_DRE}
+    if not linhas:
+        return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_DRE}
+    candidatas = [
+        linha
+        for linha in linhas
+        if linha["ORDEM_EXERC"] == "ÚLTIMO" and linha["CD_CONTA"] == CONTA_RECEITA_LIQUIDA_CVM
+    ]
+    if not candidatas:
+        return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_CONTA}
+
+    def versao(linha: dict) -> int:
+        return int(linha.get("VERSAO") or 0)
+
+    da_versao_do_fluxo = [linha for linha in candidatas if versao(linha) == versao_dfc]
+    linha = max(da_versao_do_fluxo or candidatas, key=versao)
+    try:
+        valor = _valor_conta(linha, ContaFluxoCaixaNaoEncontrada)
+    except ContaFluxoCaixaNaoEncontrada:
+        return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_CONTA}
+    return {"valor": valor, "versao": versao(linha), "motivo": None}
+
+
+def _montar_resultado_fcf(
+    ano: int, tipo: str, metodo: str, linhas: list[dict], receita: dict | None = None
+) -> dict:
     linhas_atual, linhas_anterior = _linhas_por_periodo(linhas, ano, ContaFluxoCaixaNaoEncontrada)
 
     cfo_atual, cfi_atual = _cfo_cfi_do_periodo(linhas_atual)
@@ -516,6 +566,8 @@ def _montar_resultado_fcf(ano: int, tipo: str, metodo: str, linhas: list[dict]) 
         "cfi_atual": cfi_atual,
         "capex_atual": _extrair_capex(linhas_atual),
         "juros_pagos_atual": _extrair_juros_pagos_6_01(linhas_atual),
+        "receita_atual": receita
+        or {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_NAO_LIDA},
     }
 
 
@@ -570,7 +622,8 @@ def obter_fluxo_caixa_livre(
     if escolhida is None:
         raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado na DFC da CVM para {ano}.")
     metodo, tipo, linhas = escolhida
-    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
+    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado, _versao_das_linhas(linhas))
+    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
         caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
@@ -605,7 +658,8 @@ def obter_fluxo_caixa_livre_do_tipo(
     linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
     if not linhas or _fluxo_zerado(linhas):
         return None
-    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas)
+    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado, _versao_das_linhas(linhas))
+    resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
         caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
@@ -744,8 +798,10 @@ def obter_fluxo_caixa_livre_com_fallback(
         cfo_ha_n_anos = resultado_base["cfo_atual"]
         capex_ha_n_anos = resultado_base["capex_atual"]
         juros_pagos_ha_n_anos = resultado_base["juros_pagos_atual"]
+        receita_ha_n_anos = resultado_base.get("receita_atual")
     except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada):
         fcf_ha_n_anos = cfo_ha_n_anos = capex_ha_n_anos = juros_pagos_ha_n_anos = None
+        receita_ha_n_anos = None
 
     return {
         "fcf_atual": resultado_atual["fcf_atual"],
@@ -764,6 +820,8 @@ def obter_fluxo_caixa_livre_com_fallback(
         "cfo_ha_n_anos": cfo_ha_n_anos,
         "capex_ha_n_anos": capex_ha_n_anos,
         "juros_pagos_ha_n_anos": juros_pagos_ha_n_anos,
+        "receita_atual": resultado_atual.get("receita_atual"),
+        "receita_ha_n_anos": receita_ha_n_anos,
     }
 
 

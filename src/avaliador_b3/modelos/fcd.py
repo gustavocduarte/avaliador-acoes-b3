@@ -63,6 +63,8 @@ from avaliador_b3.config import (
     MOTIVO_FCD_HOLDING_FINANCEIRA,
     MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL,
     MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO,
+    MOTIVO_RECEITA_NAO_LIDA,
+    MOTIVO_RECEITA_NAO_POSITIVA,
     MOTIVOS_FCD_POR_SEGMENTO,
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
@@ -104,6 +106,23 @@ def calcular_fluxo_caixa_fcd(cfo: float, capex: dict, juros_pagos: dict) -> floa
     return cfo - capex["valor"] + juros_pagos["valor"] * (1 - ALIQUOTA_IR_CSLL_PADRAO)
 
 
+def _receitas_do_fcd(resultado_cvm: dict) -> dict:
+    """Receita líquida do ano de referência e do ano-base (as chaves são parâmetros de
+    `calcular_valor_justo_fcd`) e o motivo de uma delas faltar."""
+    atual = resultado_cvm.get("receita_atual") or {}
+    base = resultado_cvm.get("receita_ha_n_anos") or {}
+    motivo = None
+    if atual.get("valor") is None:
+        motivo = atual.get("motivo") or MOTIVO_RECEITA_NAO_LIDA
+    elif base.get("valor") is None:
+        motivo = base.get("motivo") or MOTIVO_RECEITA_NAO_LIDA
+    return {
+        "receita_atual": atual.get("valor"),
+        "receita_ha_n_anos": base.get("valor"),
+        "motivo_sem_receita": motivo,
+    }
+
+
 def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
     """Fluxo do FCD dos dois anos (referência e base do crescimento) a partir
     do resultado de `ingest.cvm.obter_fluxo_caixa_livre_com_fallback`, mais o
@@ -116,6 +135,9 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
             "fcf_ha_n_anos": None,
             "motivo_sem_fcf_atual": None,
             "motivo_sem_fcf_ha_n_anos": None,
+            "receita_atual": None,
+            "receita_ha_n_anos": None,
+            "motivo_sem_receita": None,
         }
     fcf_atual = calcular_fluxo_caixa_fcd(
         resultado_cvm["cfo_atual"],
@@ -139,6 +161,7 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
             None if fcf_atual is not None else MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO
         ),
         "motivo_sem_fcf_ha_n_anos": motivo_base,
+        **_receitas_do_fcd(resultado_cvm),
     }
 
 
@@ -277,6 +300,18 @@ def _taxa_crescimento_explicita(fcf_atual: float, fcf_ha_n_anos: float | None) -
     return max(TAXA_CRESCIMENTO_FCD_MINIMA, min(TAXA_CRESCIMENTO_FCD_MAXIMA, taxa))
 
 
+def _taxa_crescimento_receita(
+    receita_atual: float | None, receita_ha_n_anos: float | None
+) -> float | None:
+    """CAGR da receita líquida entre as duas pontas do crescimento do fluxo, ou `None` se
+    alguma ponta faltar ou não for positiva."""
+    if receita_atual is None or receita_ha_n_anos is None:
+        return None
+    if receita_atual <= 0 or receita_ha_n_anos <= 0:
+        return None
+    return (receita_atual / receita_ha_n_anos) ** (1 / ANOS_HISTORICO_CRESCIMENTO_FCD) - 1
+
+
 def _taxa_do_ano(ano: int, taxa_crescimento: float, taxa_perpetuidade: float) -> float:
     """Crescimento do `ano` (1 = primeiro ano projetado): começa em
     `taxa_crescimento` e converge linearmente para `taxa_perpetuidade` no ano
@@ -314,6 +349,9 @@ def calcular_valor_justo_fcd(
     motivo_sem_arrendamento: str | None = None,
     acoes_em_circulacao: float | None = None,
     motivo_sem_acoes_em_circulacao: str | None = None,
+    receita_atual: float | None = None,
+    receita_ha_n_anos: float | None = None,
+    motivo_sem_receita: str | None = None,
 ) -> dict:
     """Calcula o valor justo por ação pelo Fluxo de Caixa Descontado.
 
@@ -441,6 +479,25 @@ def calcular_valor_justo_fcd(
 
     taxa_crescimento = _taxa_crescimento_explicita(fcf_atual, fcf_ha_n_anos)
     motivo_crescimento_ipca = None
+    taxa_receita = None
+    limitado_pela_receita = False
+    motivo_sem_limite_da_receita = None
+    if taxa_crescimento is not None:
+        # O fluxo não cresce, por 5 anos, mais que a receita (margem constante), dentro da
+        # faixa externa; sem receita utilizável vale o crescimento do fluxo.
+        taxa_receita = _taxa_crescimento_receita(receita_atual, receita_ha_n_anos)
+        if taxa_receita is None:
+            tem_as_duas = receita_atual is not None and receita_ha_n_anos is not None
+            motivo_sem_limite_da_receita = (
+                MOTIVO_RECEITA_NAO_POSITIVA
+                if tem_as_duas
+                else (motivo_sem_receita or MOTIVO_RECEITA_NAO_LIDA)
+            )
+        elif taxa_receita < taxa_crescimento:
+            taxa_crescimento = max(
+                TAXA_CRESCIMENTO_FCD_MINIMA, min(TAXA_CRESCIMENTO_FCD_MAXIMA, taxa_receita)
+            )
+            limitado_pela_receita = True
     if taxa_crescimento is None:
         # Sem CAGR confiável (histórico ausente ou base não-positiva):
         # assume crescimento neutro, igual à inflação, e diz por quê.
@@ -509,4 +566,7 @@ def calcular_valor_justo_fcd(
         "taxa_crescimento_explicita": taxa_crescimento,
         "taxa_crescimento_perpetuidade": taxa_perpetuidade,
         "motivo_crescimento_ipca": motivo_crescimento_ipca,
+        "taxa_crescimento_receita": taxa_receita,
+        "crescimento_limitado_pela_receita": limitado_pela_receita,
+        "motivo_sem_limite_da_receita": motivo_sem_limite_da_receita,
     }

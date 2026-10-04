@@ -326,7 +326,26 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # um campo novo (como `cfo_atual`/`cfi_atual`) seria servido sem a chave e
 # quebraria com KeyError pra qualquer CNPJ/ano já cacheado. Cada mudança de
 # schema incrementa a versão.
-VERSAO_SCHEMA_CVM_FCF = 3
+VERSAO_SCHEMA_CVM_FCF = 4
+
+# Receita líquida da DRE (conta 3.01), lida junto com a DFC de cada ano na mesma demonstração
+# (tipo e versão): o crescimento do fluxo do FCD é limitado pelo da receita no mesmo período.
+# Um fluxo que cresce mais que a receita por 5 anos exige margem ou intensidade de capital
+# melhorando sem limite; limitar ao crescimento da receita assume margem constante, premissa
+# neutra e igual para todas as ações. Sem receita utilizável, vale o crescimento do fluxo.
+CONTA_RECEITA_LIQUIDA_CVM = "3.01"
+MOTIVO_RECEITA_NAO_LIDA = "a receita líquida não foi lida"
+MOTIVO_RECEITA_SEM_DRE = "a empresa não tem a DRE desse ano na CVM"
+MOTIVO_RECEITA_SEM_CONTA = "a DRE da CVM não traz a receita líquida (conta 3.01)"
+MOTIVO_RECEITA_NAO_POSITIVA = (
+    "a receita líquida do ano-base ou do ano de referência é zero ou negativa"
+)
+TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA = (
+    "Crescimento do fluxo limitado ao da receita líquida ({taxa} ao ano, no mesmo período)."
+)
+TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA = (
+    "Crescimento do fluxo sem o limite da receita líquida: {motivo}."
+)
 
 # --- Capex e juros pagos da DFC, por descrição das subcontas ---
 #

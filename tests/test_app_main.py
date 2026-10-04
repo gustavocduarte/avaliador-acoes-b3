@@ -28,6 +28,9 @@ from streamlit.testing.v1 import AppTest
 from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    MOTIVO_RECEITA_SEM_DRE,
+    TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
+    TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TICKER_PETROLEO_BRENT,
     YIELD_MINIMO_BAZIN,
@@ -44,7 +47,7 @@ from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivel
 ANO_FCD_MOCK = 2025
 
 
-def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None):
+def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None, receita=None):
     """Resultado do FCF de UM ano (`ingest.cvm.obter_fluxo_caixa_livre`). `capex`
     `None` simula o capex não identificado. O fluxo do FCD é
     cfo - capex + juros_pagos x (1 - alíquota)."""
@@ -59,6 +62,11 @@ def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None):
             "linhas": [],
         },
         "juros_pagos_atual": {"valor": juros_pagos, "linhas": []},
+        "receita_atual": {
+            "valor": receita,
+            "versao": 1 if receita is not None else None,
+            "motivo": None if receita is not None else MOTIVO_RECEITA_SEM_DRE,
+        },
     }
 
 
@@ -1098,6 +1106,55 @@ def _preparar_fcd_com_cfo_cfi(
             else _resultado_fcf_mock(1_000_000.0, 200_000.0)
         ),
     )
+
+
+def _preparar_fcd_com_receita(monkeypatch, receita_atual, receita_base):
+    # Fluxo de 1.400.000 no ano de referência e 500.000 no ano-base: CAGR de ~22,9% ao ano.
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
+        lambda cnpj, ano, *a, **kw: (
+            _resultado_fcf_mock(1_600_000.0, 200_000.0, receita=receita_atual)
+            if ano == ANO_FCD_MOCK
+            else _resultado_fcf_mock(600_000.0, 100_000.0, receita=receita_base)
+        ),
+    )
+
+
+def test_cartao_do_fcd_avisa_quando_a_receita_limita_o_crescimento(monkeypatch):
+    # Receita de 1.000.000 para 1.610.510 em 5 anos: 10,0% ao ano, abaixo do CAGR do fluxo.
+    _preparar_fcd_com_receita(monkeypatch, receita_atual=1_610_510.0, receita_base=1_000_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption]
+    assert TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA.format(taxa="10,0%") in legendas
+    assert not [c for c in legendas if "sem o limite da receita" in c]
+
+
+def test_cartao_do_fcd_nao_avisa_quando_a_receita_cresce_mais_que_o_fluxo(monkeypatch):
+    _preparar_fcd_com_receita(monkeypatch, receita_atual=9_000_000.0, receita_base=1_000_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption]
+    assert not [c for c in legendas if "limitado ao da receita" in c]
+    assert not [c for c in legendas if "sem o limite da receita" in c]
+
+
+def test_cartao_do_fcd_traz_o_motivo_quando_a_receita_esta_indisponivel(monkeypatch):
+    _preparar_fcd_com_receita(monkeypatch, receita_atual=None, receita_base=1_000_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption]
+    assert TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA.format(motivo=MOTIVO_RECEITA_SEM_DRE) in legendas
 
 
 def test_caption_reinvestimento_caso_normal(monkeypatch):

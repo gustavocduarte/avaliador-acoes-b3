@@ -9,6 +9,8 @@ from avaliador_b3.config import (
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
     MOTIVO_FCD_SEGURADORA,
+    MOTIVO_RECEITA_NAO_LIDA,
+    MOTIVO_RECEITA_NAO_POSITIVA,
     PREMIO_RISCO_MERCADO_BRASIL,
     SPREAD_CREDITO_PADRAO,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
@@ -91,6 +93,9 @@ def test_montar_fluxos_fcd_sem_dado_da_cvm_devolve_tudo_nulo():
         "fcf_ha_n_anos": None,
         "motivo_sem_fcf_atual": None,
         "motivo_sem_fcf_ha_n_anos": None,
+        "receita_atual": None,
+        "receita_ha_n_anos": None,
+        "motivo_sem_receita": None,
     }
 
 
@@ -420,6 +425,132 @@ def test_fcd_com_crescimento_igual_ao_da_perpetuidade_nao_muda_com_a_convergenci
     assert resultado["valor_justo"] == pytest.approx(
         _valor_justo_esperado_com_taxas(1000.0, [g_inf] * 5, wacc, g_inf, 100.0)
     )
+
+
+def test_taxa_crescimento_receita_calcula_o_cagr():
+    assert fcd._taxa_crescimento_receita(1610.51, 1000.0) == pytest.approx(0.10)
+
+
+@pytest.mark.parametrize(
+    ("receita_atual", "receita_ha_n_anos"),
+    [(None, 1000.0), (1000.0, None), (0.0, 1000.0), (1000.0, 0.0), (-5.0, 1000.0)],
+)
+def test_taxa_crescimento_receita_none_quando_falta_ou_nao_e_positiva(
+    receita_atual, receita_ha_n_anos
+):
+    assert fcd._taxa_crescimento_receita(receita_atual, receita_ha_n_anos) is None
+
+
+def _fcd_com_receita(
+    receita_atual, receita_ha_n_anos, fcf_atual=372.0, fcf_ha_n_anos=100.0, **extra
+):
+    # fluxo de 100 para 372 em 5 anos: CAGR de 30% ao ano (no teto atual)
+    return fcd.calcular_valor_justo_fcd(
+        fcf_atual=fcf_atual,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=fcf_ha_n_anos,
+        divida_liquida_sobre_patrimonio=None,
+        receita_atual=receita_atual,
+        receita_ha_n_anos=receita_ha_n_anos,
+        **extra,
+    )
+
+
+def test_receita_limita_o_crescimento_do_fluxo():
+    resultado = _fcd_com_receita(receita_atual=1610.51, receita_ha_n_anos=1000.0)  # 10% ao ano
+
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(0.10)
+    assert resultado["crescimento_limitado_pela_receita"] is True
+    assert resultado["taxa_crescimento_receita"] == pytest.approx(0.10)
+    assert resultado["motivo_sem_limite_da_receita"] is None
+    # O valor bate com o cálculo manual com crescimento de 10% convergindo para a perpetuidade.
+    g_inf, wacc = resultado["taxa_crescimento_perpetuidade"], resultado["wacc"]
+    taxas = [0.10 + (g_inf - 0.10) * (ano - 1) / 4 for ano in range(1, 6)]
+    assert resultado["valor_justo"] == pytest.approx(
+        _valor_justo_esperado_com_taxas(372.0, taxas, wacc, g_inf, 100.0)
+    )
+
+
+def test_receita_acima_do_crescimento_do_fluxo_nao_muda_nada():
+    sem_receita = _fcd_com_receita(receita_atual=None, receita_ha_n_anos=None)
+    com_receita = _fcd_com_receita(receita_atual=5000.0, receita_ha_n_anos=1000.0)  # ~38% ao ano
+
+    assert com_receita["crescimento_limitado_pela_receita"] is False
+    assert com_receita["taxa_crescimento_explicita"] == pytest.approx(
+        sem_receita["taxa_crescimento_explicita"]
+    )
+    assert com_receita["valor_justo"] == pytest.approx(sem_receita["valor_justo"])
+    assert com_receita["motivo_sem_limite_da_receita"] is None
+
+
+def test_receita_indisponivel_mantem_a_regra_atual_e_traz_o_motivo():
+    resultado = _fcd_com_receita(
+        receita_atual=None, receita_ha_n_anos=1000.0, motivo_sem_receita="DRE ausente"
+    )
+
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(TAXA_CRESCIMENTO_FCD_MAXIMA)
+    assert resultado["crescimento_limitado_pela_receita"] is False
+    assert resultado["motivo_sem_limite_da_receita"] == "DRE ausente"
+
+
+def test_receita_nao_informada_traz_o_motivo_padrao():
+    resultado = _fcd_com_receita(receita_atual=None, receita_ha_n_anos=None)
+
+    assert resultado["motivo_sem_limite_da_receita"] == MOTIVO_RECEITA_NAO_LIDA
+
+
+def test_receita_nao_positiva_mantem_a_regra_atual_com_o_motivo():
+    resultado = _fcd_com_receita(receita_atual=-10.0, receita_ha_n_anos=1000.0)
+
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(TAXA_CRESCIMENTO_FCD_MAXIMA)
+    assert resultado["motivo_sem_limite_da_receita"] == MOTIVO_RECEITA_NAO_POSITIVA
+
+
+def test_faixa_externa_prevalece_sobre_a_receita_muito_negativa():
+    # Receita caindo 40% ao ano: o crescimento fica no piso de −20%, não em −40%.
+    resultado = _fcd_com_receita(receita_atual=77.76, receita_ha_n_anos=1000.0)
+
+    assert resultado["taxa_crescimento_receita"] < TAXA_CRESCIMENTO_FCD_MINIMA
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(TAXA_CRESCIMENTO_FCD_MINIMA)
+    assert resultado["crescimento_limitado_pela_receita"] is True
+
+
+def test_sem_cagr_do_fluxo_o_ipca_vale_e_a_receita_nao_interfere():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=-400.0,
+        divida_liquida_sobre_patrimonio=None,
+        receita_atual=2000.0,
+        receita_ha_n_anos=1000.0,
+    )
+
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(0.04)
+    assert resultado["crescimento_limitado_pela_receita"] is False
+    assert resultado["motivo_sem_limite_da_receita"] is None
+
+
+def test_montar_fluxos_fcd_traz_as_receitas_e_o_motivo_da_que_falta():
+    resultado = _resultado_cvm()
+    resultado["receita_atual"] = {"valor": 2000.0, "versao": 1, "motivo": None}
+    resultado["receita_ha_n_anos"] = {"valor": None, "versao": None, "motivo": "sem DRE de 2020"}
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fluxos["receita_atual"] == pytest.approx(2000.0)
+    assert fluxos["receita_ha_n_anos"] is None
+    assert fluxos["motivo_sem_receita"] == "sem DRE de 2020"
+
+
+def test_montar_fluxos_fcd_sem_receita_lida_usa_o_motivo_padrao():
+    fluxos = fcd.montar_fluxos_fcd(_resultado_cvm())  # resultado sem as chaves de receita
+
+    assert fluxos["receita_atual"] is None
+    assert fluxos["motivo_sem_receita"] == MOTIVO_RECEITA_NAO_LIDA
 
 
 @pytest.mark.parametrize("fcf_atual", [-500.0, 0.0])

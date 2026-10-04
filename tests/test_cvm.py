@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import requests
 
+from avaliador_b3.config import MOTIVO_RECEITA_SEM_CONTA, MOTIVO_RECEITA_SEM_DRE
 from avaliador_b3.ingest import cvm
 
 DIRETORIO_FIXTURES = Path(__file__).parent / "fixtures"
@@ -1199,3 +1200,205 @@ def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_2_do_schema(tmp_path, mo
     assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
     assert "capex_atual" in resultado
     assert "juros_pagos_atual" in resultado
+
+
+# --- Receita líquida (DRE 3.01) lida junto com a DFC de cada ano ----------------------
+
+
+def test_receita_do_ano_vem_da_dre_consolidada_na_fixture_real_da_petrobras(tmp_path, monkeypatch):
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["tipo_demonstracao"] == "consolidado"
+    assert resultado["receita_atual"]["valor"] == pytest.approx(490_829_000_000.0)
+    assert resultado["receita_atual"]["versao"] == 1
+    assert resultado["receita_atual"]["motivo"] is None
+
+
+CABECALHO_COM_VERSAO = (
+    "CNPJ_CIA;VERSAO;CD_CVM;DENOM_CIA;ESCALA_MOEDA;ORDEM_EXERC;DT_FIM_EXERC;CD_CONTA;DS_CONTA;"
+    "VL_CONTA"
+)
+
+
+def _zip_com_dfc_e_dre(caminho: Path, ano: int, dfc: dict, dre: dict) -> Path:
+    """Zip sintético com a DFC e a DRE de uma empresa. `dfc`: (método, tipo) -> (versão, [(conta,
+    valor)]); `dre`: tipo -> [(versão, ordem, conta, valor)], valores em MIL."""
+    with zipfile.ZipFile(caminho, "w") as arquivo_zip:
+        for metodo in ("MI", "MD"):
+            for tipo in ("con", "ind"):
+                linhas = [CABECALHO_COM_VERSAO]
+                versao, contas = dfc.get((metodo, tipo), (1, []))
+                for codigo, valor in contas:
+                    linhas.append(
+                        f"{CNPJ_SINTETICO_ZERADA};{versao};000001;EMPRESA SINTETICA S.A.;MIL;"
+                        f"ÚLTIMO;{ano}-12-31;{codigo};Conta {codigo};{valor}"
+                    )
+                arquivo_zip.writestr(
+                    f"dfp_cia_aberta_DFC_{metodo}_{tipo}_{ano}.csv",
+                    "\n".join(linhas).encode("iso-8859-1"),
+                )
+        for tipo in ("con", "ind"):
+            if tipo not in dre:
+                continue
+            linhas = [CABECALHO_COM_VERSAO]
+            for versao, ordem, codigo, valor in dre[tipo]:
+                linhas.append(
+                    f"{CNPJ_SINTETICO_ZERADA};{versao};000001;EMPRESA SINTETICA S.A.;MIL;{ordem};"
+                    f"{ano}-12-31;{codigo};Conta {codigo};{valor}"
+                )
+            arquivo_zip.writestr(
+                f"dfp_cia_aberta_DRE_{tipo}_{ano}.csv", "\n".join(linhas).encode("iso-8859-1")
+            )
+    return caminho
+
+
+def _receita_com_zip(tmp_path, monkeypatch, dfc, dre):
+    caminho_zip = _zip_com_dfc_e_dre(tmp_path / "dfp_receita.zip", 2024, dfc, dre)
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: caminho_zip)
+    return cvm.obter_fluxo_caixa_livre(CNPJ_SINTETICO_ZERADA, 2024, diretorio_cache=tmp_path)
+
+
+DFC_CON_SIMPLES = {("MI", "con"): (1, [("6.01", "600"), ("6.02", "-150")])}
+
+
+def test_receita_usa_a_dre_do_mesmo_tipo_da_dfc_escolhida(tmp_path, monkeypatch):
+    # A consolidada da DFC está zerada, então a individual é a escolhida: a receita também
+    # vem da DRE individual (e não da consolidada).
+    dfc = {
+        ("MI", "con"): (1, [("6.01", "0"), ("6.02", "0")]),
+        ("MI", "ind"): (1, [("6.01", "600"), ("6.02", "-150")]),
+    }
+    dre = {
+        "con": [(1, "ÚLTIMO", "3.01", "9000")],
+        "ind": [(1, "ÚLTIMO", "3.01", "4000")],
+    }
+
+    resultado = _receita_com_zip(tmp_path, monkeypatch, dfc, dre)
+
+    assert resultado["tipo_demonstracao"] == "individual"
+    assert resultado["receita_atual"]["valor"] == pytest.approx(4000.0 * 1000)
+
+
+def test_receita_usa_a_versao_da_dre_igual_a_da_dfc(tmp_path, monkeypatch):
+    dfc = {("MI", "con"): (1, [("6.01", "600"), ("6.02", "-150")])}
+    dre = {"con": [(1, "ÚLTIMO", "3.01", "1000"), (2, "ÚLTIMO", "3.01", "1200")]}
+
+    resultado = _receita_com_zip(tmp_path, monkeypatch, dfc, dre)
+
+    assert resultado["receita_atual"]["versao"] == 1
+    assert resultado["receita_atual"]["valor"] == pytest.approx(1000.0 * 1000)
+
+
+def test_receita_sem_a_versao_da_dfc_usa_a_mais_recente_da_dre(tmp_path, monkeypatch):
+    dfc = {("MI", "con"): (3, [("6.01", "600"), ("6.02", "-150")])}
+    dre = {"con": [(1, "ÚLTIMO", "3.01", "1000"), (2, "ÚLTIMO", "3.01", "1200")]}
+
+    resultado = _receita_com_zip(tmp_path, monkeypatch, dfc, dre)
+
+    assert resultado["receita_atual"]["versao"] == 2
+    assert resultado["receita_atual"]["valor"] == pytest.approx(1200.0 * 1000)
+
+
+def test_receita_ignora_o_periodo_penultimo(tmp_path, monkeypatch):
+    dre = {"con": [(1, "PENÚLTIMO", "3.01", "800"), (1, "ÚLTIMO", "3.01", "1000")]}
+
+    resultado = _receita_com_zip(tmp_path, monkeypatch, DFC_CON_SIMPLES, dre)
+
+    assert resultado["receita_atual"]["valor"] == pytest.approx(1000.0 * 1000)
+
+
+def test_receita_sem_a_dre_do_ano_traz_o_motivo_e_nao_derruba_o_fluxo(tmp_path, monkeypatch):
+    resultado = _receita_com_zip(tmp_path, monkeypatch, DFC_CON_SIMPLES, {})
+
+    assert resultado["fcf_atual"] == pytest.approx(450.0 * 1000)
+    assert resultado["receita_atual"]["valor"] is None
+    assert resultado["receita_atual"]["motivo"] == MOTIVO_RECEITA_SEM_DRE
+
+
+def test_receita_sem_a_conta_3_01_traz_o_motivo(tmp_path, monkeypatch):
+    dre = {"con": [(1, "ÚLTIMO", "3.02", "500")]}
+
+    resultado = _receita_com_zip(tmp_path, monkeypatch, DFC_CON_SIMPLES, dre)
+
+    assert resultado["receita_atual"]["valor"] is None
+    assert resultado["receita_atual"]["motivo"] == MOTIVO_RECEITA_SEM_CONTA
+
+
+def test_receita_e_gravada_no_cache_com_o_schema_novo(tmp_path, monkeypatch):
+    dre = {"con": [(1, "ÚLTIMO", "3.01", "1000")]}
+    _receita_com_zip(tmp_path, monkeypatch, DFC_CON_SIMPLES, dre)
+
+    cache = tmp_path / "cvm" / "fcf_00000000000400_2024.json"
+    envelope = json.loads(cache.read_text(encoding="utf-8"))
+
+    assert envelope["versao_schema"] == cvm.VERSAO_SCHEMA_CVM_FCF
+    assert envelope["resultado"]["receita_atual"]["valor"] == pytest.approx(1000.0 * 1000)
+
+
+def test_obter_fluxo_caixa_livre_ignora_cache_da_versao_3_do_schema_sem_receita(
+    tmp_path, monkeypatch
+):
+    caminho_cache = tmp_path / "cvm" / "fcf_33000167000101_2024.json"
+    caminho_cache.parent.mkdir(parents=True)
+    caminho_cache.write_text(
+        json.dumps({"versao_schema": 3, "resultado": {"fcf_atual": 999.0}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(cvm, "_baixar_zip_ano", lambda *a, **k: ZIP_AMOSTRA)
+
+    resultado = cvm.obter_fluxo_caixa_livre(CNPJ_PETROBRAS, 2024, diretorio_cache=tmp_path)
+
+    assert resultado["fcf_atual"] == pytest.approx(131674000000.0)
+    assert resultado["receita_atual"]["valor"] == pytest.approx(490_829_000_000.0)
+
+
+def test_fallback_devolve_a_receita_do_ano_de_referencia_e_a_do_ano_base(tmp_path, monkeypatch):
+    def obter_falso(cnpj, ano, *a, **k):
+        receita = {"valor": 2000.0 if ano == 2025 else 1000.0, "versao": 1, "motivo": None}
+        return {
+            "fcf_atual": 100.0,
+            "cfo_atual": 60.0,
+            "cfi_atual": -30.0,
+            "receita_atual": receita,
+            **EXTRAS_FCF_MOCK,
+        }
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS,
+        ano_mais_recente=2025,
+        anos_historico_crescimento=5,
+        diretorio_cache=tmp_path,
+    )
+
+    assert resultado["receita_atual"]["valor"] == pytest.approx(2000.0)
+    assert resultado["receita_ha_n_anos"]["valor"] == pytest.approx(1000.0)
+
+
+def test_fallback_sem_demonstracao_do_ano_base_deixa_a_receita_do_ano_base_vazia(
+    tmp_path, monkeypatch
+):
+    def obter_falso(cnpj, ano, *a, **k):
+        if ano == 2020:
+            raise cvm.CnpjNaoEncontrado("sem 2020")
+        return {
+            "fcf_atual": 100.0,
+            "cfo_atual": 60.0,
+            "cfi_atual": -30.0,
+            "receita_atual": {"valor": 2000.0, "versao": 1, "motivo": None},
+            **EXTRAS_FCF_MOCK,
+        }
+
+    monkeypatch.setattr(cvm, "obter_fluxo_caixa_livre", obter_falso)
+
+    resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
+        CNPJ_PETROBRAS,
+        ano_mais_recente=2025,
+        anos_historico_crescimento=5,
+        diretorio_cache=tmp_path,
+    )
+
+    assert resultado["receita_atual"]["valor"] == pytest.approx(2000.0)
+    assert resultado["receita_ha_n_anos"] is None
