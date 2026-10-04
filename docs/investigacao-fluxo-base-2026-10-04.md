@@ -194,7 +194,7 @@ Em 6.01.02 (R$ milhões): fornecedores (6.01.02.07) **+201,2 em 2024** e **−18
 - **2024:** o padrão não aparece. Fornecedores tem sinal positivo no operacional (+201,2), e a entrada de convênio é de apenas R$ 48,2 mi; as duas linhas não se compensam.
 - **Amortização:** a linha "Amortização de fornecedores convênio" existe só em 2025 e com valor 0,0, então não há saída para o convênio captado.
 
-**Conclusão.** Não dá para afirmar que a entrada da VIVA3 seja a mesma operação de convênio em 2024, e em 2025 a coincidência de sinais é plausível, mas é um único ano. **HIPÓTESE** para 2025. Por isso a regra vale só para **saídas** (linhas negativas), no saldo líquido anual das linhas identificadas (que trata o caso da FLRY3), e a VIVA3 fica fora do efeito (suas linhas são entradas) e registrada como pergunta em aberto.
+**Conclusão.** Não dá para afirmar que a entrada da VIVA3 seja a mesma operação de convênio em 2024, e em 2025 a coincidência de sinais é plausível, mas é um único ano. **HIPÓTESE** para 2025. Por isso a regra vale só para **saídas** (linhas negativas), no saldo líquido anual das linhas identificadas (que trata o caso da FLRY3), e a VIVA3 fica fora do efeito (suas linhas são entradas). **Decisão (04/10/2026):** ver a seção 8, item 5.
 
 ## 5. MGLU3 em detalhe
 
@@ -259,7 +259,7 @@ Com o N4, o fluxo de 2025 cai de R$ 14.828 mi para R$ 1.359 mi (R$ 14.828 mi men
 
 ## 7. Perguntas em aberto
 
-1. **VIVA3:** a captação de convênio (+R$ 48,2 mi em 2024 e +R$ 146,6 mi em 2025) é a mesma operação de financiamento de fornecedores? Em 2025 o padrão de sinais é compatível, em 2024 não; a resposta depende das notas explicativas. Enquanto isso, as entradas ficam fora da regra.
+1. **VIVA3 (decidida em 04/10/2026):** as entradas de convênio (+R$ 48,2 mi em 2024 e +R$ 146,6 mi em 2025) não são ajustadas; ver a seção 8, item 5.
 2. A natureza do convênio da MGLU3 e a mudança de apresentação em 2024 seguem como HIPÓTESE apoiada pelos números (decisão da seção 8).
 3. Como mostrar na tela o ajuste (decidido na seção 8: valor reclassificado e motivo no cartão do FCD), e se o Screener também ganha uma indicação.
 4. Investigar uma janela mais longa para normalizar a margem das cíclicas. **CONFIRMADO:** os zips da DFP existem nos dados abertos desde 2010 (HEAD 200 para 2010 a 2019; 2008 e 2009 dão 404), o que daria até 16 anos de DFC; **HIPÓTESE:** que o layout das DFC de 2010 a 2018 seja o mesmo usado pelo projeto (não verificado). Qual janela e que tratamento de capex de expansão?
@@ -268,12 +268,13 @@ Com o N4, o fluxo de 2025 cai de R$ 14.828 mi para R$ 1.359 mi (R$ 14.828 mi men
 
 ## 8. Decisões (04/10/2026)
 
-Nenhuma das decisões abaixo está implementada; elas definem o que será feito nas próximas etapas.
+Nenhuma das decisões abaixo está implementada (na data da investigação, 04/10/2026; o N4 foi implementado depois, nos commits a3b78ee, 5127245, a7d5f05, 6b7d114 e edf8e31, com a regeneração dos dados em 5ee4248 e a correção dos textos em 189fa45, e a decisão do item 5 não exige implementação); elas definem o que será feito nas próximas etapas.
 
-1. **N4 adotado.** As linhas de 6.03 identificadas pela descrição como convênio, risco sacado, forfait ou cessão de crédito por fornecedores são tratadas como operacionais e somadas ao caixa operacional, no ano de referência e no ano-base, na mesma demonstração. **Sinal:** só saídas (linhas negativas), conforme a conclusão da seção 4.3; as entradas ficam de fora, e o caso da VIVA3 fica como pergunta em aberto. Quando um mesmo programa tem entrada e saída no mesmo ano (FLRY3, 2025), vale o saldo líquido anual, aplicado só quando for saída. O saldo continua em fornecedores, fora da dívida líquida, o que mantém a regra coerente.
+1. **N4 adotado.** As linhas de 6.03 identificadas pela descrição como convênio, risco sacado, forfait ou cessão de crédito por fornecedores são tratadas como operacionais e somadas ao caixa operacional, no ano de referência e no ano-base, na mesma demonstração. **Sinal:** só saídas (linhas negativas), conforme a conclusão da seção 4.3; as entradas ficam de fora (o caso da VIVA3 está decidido no item 5). Quando um mesmo programa tem entrada e saída no mesmo ano (FLRY3, 2025), vale o saldo líquido anual, aplicado só quando for saída. O saldo continua em fornecedores, fora da dívida líquida, o que mantém a regra coerente.
 2. **Tela.** Quando o ajuste for aplicado, o cartão do FCD diz o valor reclassificado e o motivo.
 3. **N1 e N2 descartadas. N3 adiada.** A normalização das cíclicas depende de uma janela mais longa de dados (verificar desde quando a CVM publica a DFP nos dados abertos; ver a pergunta 4: desde 2010 para os zips) e de um critério objetivo de cíclica. VALE3 e GGBR4 seguem como limitação documentada.
 4. **A natureza do convênio da MGLU3 fica como HIPÓTESE apoiada pelos números** (saída no 6.03 quase igual ao aumento de fornecedores no 6.01.02: 93% em 2024 e 92% em 2025); não é preciso verificar nas notas explicativas antes de implementar.
+5. **VIVA3: entradas de convênio não são ajustadas (decidido em 04/10/2026).** Na apresentação bruta (o banco paga o fornecedor e a empresa registra uma entrada de financiamento), o pagamento ao fornecedor já está no caixa operacional como saída, e o caixa operacional não fica inflado; não há o que reclassificar. **Ressalva:** em 2024 esse padrão não aparece (entrada de R$ 48 mi contra aumento de fornecedores de R$ 201 mi), então a natureza das entradas da VIVA3 fica como **HIPÓTESE**.
 
 ## 9. Confirmado e hipóteses
 
