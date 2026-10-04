@@ -62,7 +62,7 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
 
 ### Crescimento e perpetuidade
 
-- **Crescimento por dois pontos, limitado pela receita.** O crescimento dos 5 anos projetados começa na taxa composta anual entre o fluxo do último ano (2025) e o de 5 anos antes. Ele é limitado por cima pelo crescimento da receita líquida no mesmo período, porque um fluxo que cresce mais que a receita por 5 anos exigiria margem melhorando sem limite; limitar ao crescimento da receita assume margem constante. A faixa de −20% a +30% ao ano continua valendo como limite externo. Em 04/10/2026, 18 das 53 ações com FCD ficam limitadas pela receita, 3 ficam no teto de +30% (AZZA3, CURY3 e RENT3) e uma no piso (ENGI11).
+- **Crescimento por dois pontos, limitado pela receita.** O crescimento dos 5 anos projetados começa na taxa composta anual entre o fluxo do último ano (2025) e o de 5 anos antes. Ele é limitado por cima pelo crescimento da receita líquida no mesmo período, porque um fluxo que cresce mais que a receita por 5 anos exigiria margem melhorando sem limite; limitar ao crescimento da receita assume margem constante. A faixa de −20% a +30% ao ano continua valendo como limite externo. Em 04/10/2026, 17 das 53 ações com FCD ficam limitadas pela receita, 3 ficam no teto de +30% (AZZA3, CURY3 e RENT3) e uma no piso (ENGI11).
   - *Efeito:* reduz o valor de quem tinha um crescimento do fluxo bem acima do da receita. Por exemplo, a TIMS3 (receita de R$ 17,3 bi em 2020 para R$ 26,6 bi em 2025, 9,0% ao ano) fica com FCD de R$ 27,63 contra o preço de R$ 18,55.
   - *Na tela:* o cartão do FCD diz quando o crescimento foi limitado pela receita e qual foi a taxa; sem receita utilizável (a BRAP4 tem receita não positiva), vale o crescimento do fluxo, e o cartão diz o motivo.
 - **Convergência para a perpetuidade.** O crescimento do ano 1 é o calculado, e ele cai em passos iguais até o da perpetuidade no ano 5, sem salto de um ano para o outro. A regra vale nos dois sentidos: reduz o valor de quem tem crescimento alto e aumenta o de quem tem crescimento negativo (a PETR4, com crescimento de −5,0%, converge para cima).
@@ -73,7 +73,7 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
 - **Receita que cresce por mudança de perímetro deixa o teto frouxo.** A receita pode crescer por aquisições ou reorganização societária, e não por crescimento operacional, e então limitar o fluxo a esse crescimento deixa de ser um limite. Na CSAN3, a receita vai de R$ 13,5 bi em 2020 para R$ 40,4 bi em 2025 (24,5% ao ano), com saltos em 2021 e 2022 compatíveis com mudanças de perímetro (a causa não foi verificada nas notas explicativas).
   - *Efeito:* o crescimento do fluxo limitado por uma receita inflada fica alto, e o valor, para mais.
 - **Concessões podem registrar receita de construção.** Em concessões, a receita pode incluir uma receita de construção que acompanha o investimento, e isso distorce o teto pela receita. É uma hipótese não verificada: na EGIE3, a receita varia pouco (de R$ 12,3 bi em 2020 para R$ 12,9 bi em 2025, 1,0% ao ano) enquanto o fluxo cresce 20,5% ao ano, e o teto pela receita derruba o crescimento do fluxo para 1,0%.
-- **A perpetuidade pesa muito no valor.** Depois do 5º ano, vale o crescimento do IPCA de 12 meses (4,22% em 04/10/2026), e a mediana do peso da perpetuidade é 57% do valor do FCD (de 43% a 72% entre as ações calculadas). A premissa de longo prazo importa mais do que a projeção explícita.
+- **A perpetuidade pesa muito no valor.** Depois do 5º ano, vale o crescimento do IPCA de 12 meses (4,22% em 04/10/2026), e a mediana do peso da perpetuidade é 57% do valor do FCD (de 42% a 72% entre as ações calculadas). A premissa de longo prazo importa mais do que a projeção explícita.
 - **A perpetuidade cresce pelo IPCA de 12 meses**, um número de um momento só, que muda de mês a mês. Isso equivale a crescimento real zero. O app limita o crescimento a 1 ponto percentual abaixo do WACC, mas esse limite não foi acionado em nenhuma ação em 04/10/2026.
 - **Tudo é nominal**: Selic nominal, fluxos em reais correntes e perpetuidade pelo IPCA.
 
@@ -103,9 +103,9 @@ O fluxo é o caixa das operações menos o **capex** (gasto em máquinas, prédi
 
 ### Valores extremos
 
-Em 04/10/2026, entre as 53 ações com FCD, 2 têm FCD acima de 3 vezes o preço (MGLU3 e BEEF3), 12 têm FCD negativo e 3 estão abaixo de −1 vez o preço (ENGI11, GOAU4 e MRVE3). Quase sempre isso reflete a sensibilidade do modelo às premissas acima, e não uma oportunidade ou um desastre.
+Em 04/10/2026, entre as 53 ações com FCD, 1 tem FCD acima de 3 vezes o preço (BEEF3), 13 têm FCD negativo e 3 estão abaixo de −1 vez o preço (ENGI11, GOAU4 e MRVE3). Quase sempre isso reflete a sensibilidade do modelo às premissas acima, e não uma oportunidade ou um desastre.
 
-- *Na tela:* o Screener marca com um aviso as ações cujo potencial passa de +200% ou fica abaixo de −100% (7 ações em 04/10/2026), e o texto do aviso depende dos métodos que entraram no valor combinado.
+- *Na tela:* o Screener marca com um aviso as ações cujo potencial passa de +200% ou fica abaixo de −100% (6 ações em 04/10/2026), e o texto do aviso depende dos métodos que entraram no valor combinado.
 
 ## Dados e fontes
 
