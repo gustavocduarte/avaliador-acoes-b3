@@ -96,6 +96,7 @@ def _resultado_fcf_cvm(
     capex_base=200_000.0,
     juros=0.0,
     cfi=None,
+    risco_sacado=0.0,
 ):
     """Resultado de `obter_fluxo_caixa_livre_com_fallback`: com os padrões, o
     fluxo do FCD é 1.000.000 no ano de referência e 800.000 no ano-base."""
@@ -112,6 +113,8 @@ def _resultado_fcf_cvm(
         "cfo_ha_n_anos": cfo_base,
         "capex_ha_n_anos": _capex(capex_base),
         "juros_pagos_ha_n_anos": {"valor": juros, "linhas": []},
+        "risco_sacado_atual": {"valor": risco_sacado, "saldo": risco_sacado, "linhas": []},
+        "risco_sacado_ha_n_anos": {"valor": risco_sacado, "saldo": risco_sacado, "linhas": []},
     }
 
 
@@ -1495,3 +1498,13 @@ def test_rodar_screener_sinaliza_so_a_acao_com_desconto_extremo(
         linha_extrema["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
     )
     assert linha_normal["aviso_desconto_extremo"] == ""
+
+
+def test_proporcao_reinvestimento_divide_pelo_caixa_operacional_do_fcd(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    # Caixa do FCD: 1.200.000 - 400.000 (convênio) + 100.000 x 0,66 = 866.000; capex 200.000.
+    linha = _linha_com_fcf(tmp_path, monkeypatch, juros=100_000.0, risco_sacado=-400_000.0)
+
+    assert linha["fcd_valor_justo"] is not None
+    assert linha["proporcao_reinvestimento_percentual"] == pytest.approx(200_000 / 866_000 * 100)

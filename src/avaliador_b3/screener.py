@@ -99,6 +99,7 @@ from avaliador_b3.ingest.precos import (
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import (
+    calcular_caixa_operacional_fcd,
     calcular_proporcao_capex_caixa_operacional_percentual,
     calcular_valor_justo_fcd,
     montar_ajustes_balanco,
@@ -407,7 +408,7 @@ def _calcular_linha_ticker(
             ano_referencia_fcd = resultado_fcf["ano_referencia_utilizado"]
             proporcao_reinvestimento_percentual = (
                 calcular_proporcao_capex_caixa_operacional_percentual(
-                    resultado_fcf["cfo_atual"], resultado_fcf["capex_atual"]
+                    calcular_caixa_operacional_fcd(resultado_fcf), resultado_fcf["capex_atual"]
                 )
             )
         except (CnpjNaoEncontrado, ContaFluxoCaixaNaoEncontrada, requests.RequestException) as erro:

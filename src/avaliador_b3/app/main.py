@@ -130,6 +130,7 @@ from avaliador_b3.ingest.precos import (
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
 from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
 from avaliador_b3.modelos.fcd import (
+    calcular_caixa_operacional_fcd,
     calcular_proporcao_capex_caixa_operacional_percentual,
     calcular_valor_justo_fcd,
     montar_ajustes_balanco,
@@ -382,9 +383,10 @@ def _buscar_fcf_fcd(
     do crescimento (que anda junto do ano efetivamente usado, não fica
     preso a `ano_mais_recente - ANOS_HISTORICO_CRESCIMENTO_FCD`).
 
-    Devolve (fluxos, ano_utilizado, usou_fallback, cfo_atual, capex_atual,
+    Devolve (fluxos, ano_utilizado, usou_fallback, caixa_operacional, capex_atual,
     erro) — `fluxos` é o dict de `modelos.fcd.montar_fluxos_fcd` (fluxo do
-    FCD dos dois anos e os motivos de indisponibilidade); `cfo_atual`/
+    FCD dos dois anos e os motivos de indisponibilidade); `caixa_operacional`
+    (o do FCD, ajustado pelo risco sacado e com os juros somados de volta) e
     `capex_atual` (do ano efetivamente usado) alimentam a
     caption de proporção reinvestida no cartão do FCD (ver
     `modelos.fcd.calcular_proporcao_capex_caixa_operacional_percentual`). Erro
@@ -399,7 +401,7 @@ def _buscar_fcf_fcd(
             montar_fluxos_fcd(resultado),
             resultado["ano_referencia_utilizado"],
             resultado["usou_fallback"],
-            resultado["cfo_atual"],
+            calcular_caixa_operacional_fcd(resultado),
             resultado["capex_atual"],
             None,
         )
@@ -1020,13 +1022,13 @@ with aba_analisar:
             fluxos_fcd = montar_fluxos_fcd(None)
             ano_fcd_utilizado = None
             fcd_usou_fallback = False
-            cfo_fcd_utilizado = capex_fcd_utilizado = None
+            caixa_fcd_utilizado = capex_fcd_utilizado = None
             if cnpj and ano_fcd_mais_recente is not None:
                 (
                     fluxos_fcd,
                     ano_fcd_utilizado,
                     fcd_usou_fallback,
-                    cfo_fcd_utilizado,
+                    caixa_fcd_utilizado,
                     capex_fcd_utilizado,
                     _,
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
@@ -1200,15 +1202,10 @@ with aba_analisar:
                         f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
                         "ainda não foi entregue por essa empresa."
                     )
-                if cfo_fcd_utilizado is not None and cfo_fcd_utilizado <= 0:
-                    st.caption(
-                        f"Em {ano_fcd_utilizado}, o caixa gerado pela operação foi "
-                        "negativo, o que por si só leva o FCD para baixo."
-                    )
-                elif cfo_fcd_utilizado is not None and capex_fcd_utilizado is not None:
+                if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
                     proporcao_reinvestimento = (
                         calcular_proporcao_capex_caixa_operacional_percentual(
-                            cfo_fcd_utilizado, capex_fcd_utilizado
+                            caixa_fcd_utilizado, capex_fcd_utilizado
                         )
                     )
                     # Sem capex identificado, sem legenda (o FCD nem é calculado).

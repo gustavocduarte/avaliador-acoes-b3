@@ -47,7 +47,9 @@ from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivel
 ANO_FCD_MOCK = 2025
 
 
-def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None, receita=None):
+def _resultado_fcf_mock(
+    cfo_atual, capex, juros_pagos=0.0, cfi_atual=None, receita=None, risco_sacado=0.0
+):
     """Resultado do FCF de UM ano (`ingest.cvm.obter_fluxo_caixa_livre`). `capex`
     `None` simula o capex não identificado. O fluxo do FCD é
     cfo - capex + juros_pagos x (1 - alíquota)."""
@@ -62,6 +64,7 @@ def _resultado_fcf_mock(cfo_atual, capex, juros_pagos=0.0, cfi_atual=None, recei
             "linhas": [],
         },
         "juros_pagos_atual": {"valor": juros_pagos, "linhas": []},
+        "risco_sacado_atual": {"valor": risco_sacado, "saldo": risco_sacado, "linhas": []},
         "receita_atual": {
             "valor": receita,
             "versao": 1 if receita is not None else None,
@@ -1094,6 +1097,7 @@ def _preparar_fcd_com_cfo_cfi(
     cfi_atual: float,
     juros_pagos: float = 0.0,
     capex: float | None = -1.0,
+    risco_sacado: float = 0.0,
 ) -> None:
     """`capex` -1.0 (padrão) usa -CFI (se negativo); `None` simula capex não identificado."""
     capex_do_ano = max(-cfi_atual, 0.0) if capex == -1.0 else capex
@@ -1101,7 +1105,9 @@ def _preparar_fcd_com_cfo_cfi(
     monkeypatch.setattr(
         "avaliador_b3.ingest.cvm.obter_fluxo_caixa_livre",
         lambda cnpj, ano, *a, **kw: (
-            _resultado_fcf_mock(cfo_atual, capex_do_ano, juros_pagos, cfi_atual)
+            _resultado_fcf_mock(
+                cfo_atual, capex_do_ano, juros_pagos, cfi_atual, risco_sacado=risco_sacado
+            )
             if ano == ANO_FCD_MOCK
             else _resultado_fcf_mock(1_000_000.0, 200_000.0)
         ),
@@ -1254,28 +1260,41 @@ def test_fcd_com_capex_do_ano_base_nao_identificado_mostra_que_o_crescimento_uso
     assert esperado in [c.value for c in at.caption]
 
 
-def test_caption_reinvestimento_caixa_operacional_negativo(monkeypatch):
-    # Caso raro: caixa operacional negativo, mas os juros pagos somados de
-    # volta deixam o fluxo do FCD positivo (-500 - 100 + 1.000 x 0,66 > 0),
-    # então o FCD é calculado; com fluxo zero ou negativo ele não seria.
+def test_caption_reinvestimento_divide_pelo_caixa_operacional_do_fcd(monkeypatch):
+    # CFO negativo, mas os juros somados de volta (1.000.000 x 0,66) deixam o caixa operacional
+    # do FCD em 160.000: a legenda divide o capex (90.000) por ele, não pelo CFO.
     _preparar_fcd_com_cfo_cfi(
-        monkeypatch, cfo_atual=-500_000.0, cfi_atual=-100_000.0, juros_pagos=1_000_000.0
+        monkeypatch, cfo_atual=-500_000.0, cfi_atual=-90_000.0, juros_pagos=1_000_000.0
     )
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
-    captions = [
-        c.value for c in at.caption if "o caixa gerado pela operação foi negativo" in c.value
+    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    assert legendas == [
+        LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=90_000 / 160_000 * 100)
     ]
-    assert len(captions) == 1
-    assert captions[0] == (
-        f"Em {ANO_FCD_MOCK}, o caixa gerado pela operação foi negativo, o que por "
-        "si só leva o FCD para baixo."
+
+
+def test_caption_reinvestimento_usa_o_caixa_ajustado_pelo_risco_sacado(monkeypatch):
+    # Caixa do FCD: 1.000.000 - 400.000 (convênio) + 100.000 x 0,66 = 666.000; capex 300.000.
+    _preparar_fcd_com_cfo_cfi(
+        monkeypatch,
+        cfo_atual=1_000_000.0,
+        cfi_atual=-300_000.0,
+        juros_pagos=100_000.0,
+        risco_sacado=-400_000.0,
     )
-    # Não mostra a caption de "reinvestiu X%" nesse caso.
-    assert not [c.value for c in at.caption if "reinvestiu" in c.value]
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    assert legendas == [
+        LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=300_000 / 666_000 * 100)
+    ]
 
 
 def test_caption_reinvestimento_usa_o_capex_e_nao_o_caixa_de_investimento(monkeypatch):

@@ -81,9 +81,9 @@ def calcular_proporcao_capex_caixa_operacional_percentual(
     caixa_operacional: float, capex: dict
 ) -> float | None:
     """Quanto do caixa operacional foi para o capex no ano usado pelo FCD:
-    `capex ÷ caixa operacional × 100`, com o mesmo capex do fluxo do FCD
-    (`capex_atual` de `ingest.cvm`, só imobilizado e intangível). `None` se o
-    capex não foi identificado ou se o caixa operacional é zero ou negativo."""
+    `capex ÷ caixa operacional × 100`, com o mesmo capex e o mesmo caixa operacional do fluxo do
+    FCD (`calcular_caixa_operacional_fcd`; capex de `ingest.cvm`, só imobilizado e intangível).
+    `None` se o capex não foi identificado ou se o caixa operacional é zero ou negativo."""
     if capex["status"] != "identificado" or caixa_operacional <= 0:
         return None
     return capex["valor"] / caixa_operacional * 100
@@ -129,6 +129,16 @@ def _ajuste_risco_sacado(resultado_cvm: dict, chave: str) -> float:
     """Saída líquida de risco sacado/convênio (negativa, ou zero) que reduz o caixa operacional
     do ano; zero se o resultado não traz essa leitura."""
     return (resultado_cvm.get(chave) or {}).get("valor") or 0.0
+
+
+def calcular_caixa_operacional_fcd(resultado_cvm: dict) -> float:
+    """Caixa operacional do ano de referência como o FCD o usa: 6.01 ajustado pelo risco sacado,
+    mais os juros pagos líquidos do imposto. É o fluxo do FCD antes de descontar o capex."""
+    return (
+        resultado_cvm["cfo_atual"]
+        + _ajuste_risco_sacado(resultado_cvm, "risco_sacado_atual")
+        + resultado_cvm["juros_pagos_atual"]["valor"] * (1 - ALIQUOTA_IR_CSLL_PADRAO)
+    )
 
 
 def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:

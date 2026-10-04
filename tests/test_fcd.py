@@ -1225,3 +1225,41 @@ def test_fluxo_ajustado_menor_que_zero_deixa_o_fcd_nao_aplicavel():
 
     assert r["aplicavel"] is False
     assert r["motivo_nao_aplicavel"] == MOTIVO_FCD_FLUXO_NAO_POSITIVO
+
+
+# --- Caixa operacional do FCD e proporção reinvestida -----------------------------------
+
+
+def _resultado_com_caixa(cfo, juros, risco_sacado=0.0, capex=300.0):
+    return {
+        "cfo_atual": cfo,
+        "juros_pagos_atual": _juros(juros),
+        "capex_atual": _capex(capex),
+        "risco_sacado_atual": {"valor": risco_sacado, "saldo": risco_sacado, "linhas": []},
+    }
+
+
+def test_caixa_operacional_do_fcd_soma_os_juros_liquidos_e_desconta_o_risco_sacado():
+    resultado = _resultado_com_caixa(1_000.0, 100.0, risco_sacado=-400.0)
+
+    assert fcd.calcular_caixa_operacional_fcd(resultado) == pytest.approx(
+        1_000.0 - 400.0 + 100.0 * 0.66
+    )
+
+
+def test_caixa_operacional_do_fcd_sem_leitura_de_risco_sacado_so_soma_os_juros():
+    resultado = _resultado_com_caixa(1_000.0, 100.0)
+    del resultado["risco_sacado_atual"]
+
+    assert fcd.calcular_caixa_operacional_fcd(resultado) == pytest.approx(1_066.0)
+
+
+def test_caixa_operacional_menos_capex_e_o_fluxo_do_fcd():
+    resultado = _resultado_com_caixa(1_000.0, 100.0, risco_sacado=-400.0, capex=300.0)
+    resultado.update(cfo_ha_n_anos=None, capex_ha_n_anos=None, juros_pagos_ha_n_anos=None)
+
+    fluxos = fcd.montar_fluxos_fcd(resultado)
+
+    assert fcd.calcular_caixa_operacional_fcd(resultado) - 300.0 == pytest.approx(
+        fluxos["fcf_atual"]
+    )
