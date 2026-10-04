@@ -318,6 +318,110 @@ def test_calcular_valor_justo_fcd_caminho_feliz_sem_crescimento_bate_formula_fec
     assert resultado["valor_justo"] == pytest.approx(valor_justo_esperado)
 
 
+def test_taxa_do_ano_comeca_na_taxa_calculada_e_chega_na_da_perpetuidade_no_ano_final():
+    ano_final = fcd.ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD
+
+    assert fcd._taxa_do_ano(1, 0.30, 0.04) == pytest.approx(0.30)
+    assert fcd._taxa_do_ano(ano_final, 0.30, 0.04) == pytest.approx(0.04)
+    # Passos iguais entre o primeiro e o último ano (convergência linear).
+    taxas = [fcd._taxa_do_ano(ano, 0.30, 0.04) for ano in range(1, ano_final + 1)]
+    passos = [taxas[i + 1] - taxas[i] for i in range(len(taxas) - 1)]
+    assert passos == pytest.approx([passos[0]] * len(passos))
+    assert passos[0] < 0
+
+
+def test_taxa_do_ano_negativa_converge_para_cima_ate_a_da_perpetuidade():
+    taxas = [fcd._taxa_do_ano(ano, -0.10, 0.04) for ano in range(1, 6)]
+
+    assert taxas[0] == pytest.approx(-0.10)
+    assert taxas[-1] == pytest.approx(0.04)
+    assert taxas == sorted(taxas)  # sobe a cada ano
+
+
+def test_taxa_do_ano_igual_a_da_perpetuidade_nao_muda_nada():
+    assert [fcd._taxa_do_ano(ano, 0.04, 0.04) for ano in range(1, 8)] == pytest.approx([0.04] * 7)
+
+
+def test_taxa_do_ano_depois_do_ano_final_fica_na_da_perpetuidade():
+    assert fcd._taxa_do_ano(fcd.ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD + 3, 0.30, 0.04) == (
+        pytest.approx(0.04)
+    )
+
+
+def _valor_justo_esperado_com_taxas(fcf_atual, taxas_por_ano, wacc, g_perpetuidade, acoes):
+    fcf = fcf_atual
+    pv_explicito = 0.0
+    for ano, taxa in enumerate(taxas_por_ano, start=1):
+        fcf *= 1 + taxa
+        pv_explicito += fcf / (1 + wacc) ** ano
+    terminal = fcf * (1 + g_perpetuidade) / (wacc - g_perpetuidade)
+    return (pv_explicito + terminal / (1 + wacc) ** len(taxas_por_ano)) / acoes
+
+
+def test_fcd_com_crescimento_positivo_converge_para_a_perpetuidade_e_vale_menos_que_sem_convergir():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=500.0,  # CAGR de 14,9% ao ano
+        divida_liquida_sobre_patrimonio=None,
+    )
+    g0, g_inf, wacc = (
+        resultado["taxa_crescimento_explicita"],
+        resultado["taxa_crescimento_perpetuidade"],
+        resultado["wacc"],
+    )
+    taxas = [g0 + (g_inf - g0) * (ano - 1) / 4 for ano in range(1, 6)]
+
+    assert resultado["valor_justo"] == pytest.approx(
+        _valor_justo_esperado_com_taxas(1000.0, taxas, wacc, g_inf, 100.0)
+    )
+    sem_convergencia = _valor_justo_esperado_com_taxas(1000.0, [g0] * 5, wacc, g_inf, 100.0)
+    assert resultado["valor_justo"] < sem_convergencia
+
+
+def test_fcd_com_crescimento_negativo_converge_para_cima_e_vale_mais_que_sem_convergir():
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        fcf_ha_n_anos=1500.0,  # CAGR de −8,0% ao ano
+        divida_liquida_sobre_patrimonio=None,
+    )
+    g0, g_inf, wacc = (
+        resultado["taxa_crescimento_explicita"],
+        resultado["taxa_crescimento_perpetuidade"],
+        resultado["wacc"],
+    )
+    assert g0 < 0
+    taxas = [g0 + (g_inf - g0) * (ano - 1) / 4 for ano in range(1, 6)]
+
+    assert resultado["valor_justo"] == pytest.approx(
+        _valor_justo_esperado_com_taxas(1000.0, taxas, wacc, g_inf, 100.0)
+    )
+    sem_convergencia = _valor_justo_esperado_com_taxas(1000.0, [g0] * 5, wacc, g_inf, 100.0)
+    assert resultado["valor_justo"] > sem_convergencia
+
+
+def test_fcd_com_crescimento_igual_ao_da_perpetuidade_nao_muda_com_a_convergencia():
+    # Sem histórico, o crescimento explícito é o IPCA, igual ao da perpetuidade.
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=1000.0,
+        numero_acoes=100.0,
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        divida_liquida_sobre_patrimonio=None,
+    )
+    g_inf, wacc = resultado["taxa_crescimento_perpetuidade"], resultado["wacc"]
+    assert resultado["taxa_crescimento_explicita"] == pytest.approx(g_inf)
+
+    assert resultado["valor_justo"] == pytest.approx(
+        _valor_justo_esperado_com_taxas(1000.0, [g_inf] * 5, wacc, g_inf, 100.0)
+    )
+
+
 @pytest.mark.parametrize("fcf_atual", [-500.0, 0.0])
 def test_calcular_valor_justo_fcd_fcf_do_ano_de_referencia_nao_positivo_e_nao_aplicavel(
     fcf_atual,

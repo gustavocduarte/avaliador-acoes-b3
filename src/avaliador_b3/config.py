@@ -700,6 +700,13 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 HORIZONTE_PROJECAO_FCD_ANOS = 5
 ANOS_HISTORICO_CRESCIMENTO_FCD = 5
 
+# Convergência do crescimento explícito: o ano 1 cresce pela taxa calculada (CAGR ou IPCA) e
+# o crescimento converge linearmente para o da perpetuidade, que o ano indicado aqui já usa.
+# Sem a convergência, o crescimento cairia de até 30% para o da perpetuidade (~4%) de um ano
+# para o outro (do ano 5 para o 6), um salto sem base na economia da empresa, e o valor
+# terminal, que pesa mais da metade do FCD, ficaria refém dele.
+ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD = HORIZONTE_PROJECAO_FCD_ANOS
+
 # FCD "não aplicável" pra instituições financeiras, pelo segmento setorial
 # oficial da B3
 # (`ingest.crosswalk_cnpj`, campo "segment" do catálogo de emissores) —

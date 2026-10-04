@@ -34,7 +34,9 @@ Premissas de WACC/crescimento documentadas e justificadas em config.py:
   alavancada (WACC = custo de capital próprio) — simplificação explícita.
 - Taxa de crescimento explícita: CAGR de FCF entre hoje e
   `ANOS_HISTORICO_CRESCIMENTO_FCD` anos atrás; se não for calculável
-  (dado ausente ou base não-positiva), cai pro IPCA como taxa neutra.
+  (dado ausente ou base não-positiva), cai pro IPCA como taxa neutra. Ela vale
+  no ano 1 e converge linearmente para a da perpetuidade, que o ano
+  `ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD` já usa (ver `_taxa_do_ano`).
 - Taxa de crescimento na perpetuidade: IPCA, sempre travada abaixo do WACC
   por uma margem de segurança — nunca deixa o denominador da perpetuidade
   (WACC - g) chegar perto de zero.
@@ -44,6 +46,7 @@ from __future__ import annotations
 
 from avaliador_b3.config import (
     ALIQUOTA_IR_CSLL_PADRAO,
+    ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     BETA_PADRAO,
     HORIZONTE_PROJECAO_FCD_ANOS,
@@ -274,6 +277,15 @@ def _taxa_crescimento_explicita(fcf_atual: float, fcf_ha_n_anos: float | None) -
     return max(TAXA_CRESCIMENTO_FCD_MINIMA, min(TAXA_CRESCIMENTO_FCD_MAXIMA, taxa))
 
 
+def _taxa_do_ano(ano: int, taxa_crescimento: float, taxa_perpetuidade: float) -> float:
+    """Crescimento do `ano` (1 = primeiro ano projetado): começa em
+    `taxa_crescimento` e converge linearmente para `taxa_perpetuidade` no ano
+    `ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD`, sem salto até o valor terminal."""
+    passos = max(1, ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD - 1)
+    fracao = min(1.0, (ano - 1) / passos)
+    return taxa_crescimento + (taxa_perpetuidade - taxa_crescimento) * fracao
+
+
 def _taxa_perpetuidade(ipca_12m: float, wacc: float) -> float:
     """IPCA, travado a pelo menos `MARGEM_SEGURANCA_PERPETUIDADE_FCD`
     abaixo do WACC — nunca deixa o denominador da perpetuidade (WACC - g)
@@ -444,7 +456,7 @@ def calcular_valor_justo_fcd(
     valor_presente_explicito = 0.0
     fcf_projetado = fcf_atual
     for ano in range(1, HORIZONTE_PROJECAO_FCD_ANOS + 1):
-        fcf_projetado *= 1 + taxa_crescimento
+        fcf_projetado *= 1 + _taxa_do_ano(ano, taxa_crescimento, taxa_perpetuidade)
         valor_presente_explicito += fcf_projetado / (1 + wacc) ** ano
 
     valor_terminal = fcf_projetado * (1 + taxa_perpetuidade) / (wacc - taxa_perpetuidade)
