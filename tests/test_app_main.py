@@ -2689,6 +2689,12 @@ def test_cartao_do_fcd_mostra_o_valor_reclassificado_do_risco_sacado_e_o_motivo(
     assert legendas == [
         TEXTO_RISCO_SACADO_RECLASSIFICADO.format(ano=ANO_FCD_MOCK, valor="R\\$ 13,5 bi")
     ]
+    assert legendas[0] == (
+        f"Em {ANO_FCD_MOCK}, R\\$ 13,5 bi pagos a bancos em operações de convênio com "
+        "fornecedores (risco sacado ou similar), registrados no caixa de financiamento, foram "
+        "tratados como operacionais: esses pagamentos substituem pagamentos a fornecedores, e "
+        "sem o ajuste o caixa operacional pode parecer maior do que a geração de caixa da empresa."
+    )
 
 
 def test_cartao_do_fcd_nao_menciona_risco_sacado_quando_nao_ha_ajuste(monkeypatch):
