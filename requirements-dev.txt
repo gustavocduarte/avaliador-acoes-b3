@@ -4,6 +4,7 @@
 
 pytest==9.1.1
 ruff==0.16.7
+mypy==2.4.0
 
 # openpyxl: sem uso em produção (o único adapter que lê Excel, ingest/gpr.py,
 # baixa .xls e usa xlrd), mas tests/test_gpr.py precisa dele para fabricar

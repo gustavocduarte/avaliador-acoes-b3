@@ -372,7 +372,7 @@ def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
 
 def _buscar_fcf_fcd(
     cnpj: str, ano_mais_recente: int
-) -> tuple[dict, int | None, bool, float | None, float | None, str | None]:
+) -> tuple[dict, int | None, bool, float | None, dict | None, str | None]:
     """FCF do FCD com detecção automática de ano POR EMPRESA
     (`ingest.cvm.obter_fluxo_caixa_livre_com_fallback`) — uma chamada só
     que já resolve tanto o ano atual (`ano_mais_recente`, caindo um ano
@@ -696,7 +696,7 @@ def _fmt_bilhoes(valor: float | None) -> str:
     truncados com reticências pelo st.metric dentro das colunas estreitas de 4
     do projeto (ex: "R$ 625,1..." em "Saúde financeira"). "N/D" se ausente
     (`pd.isna`, ver `_fmt`)."""
-    if pd.isna(valor):
+    if valor is None or pd.isna(valor):
         return "N/D"
     if abs(valor) >= 1e9:
         return _pt_br(f"R$ {valor / 1e9:.1f} bi")
@@ -887,6 +887,7 @@ with aba_analisar:
     busca_inicial_ja_feita = st.session_state.get("busca_inicial_automatica_feita", False)
 
     if usando_dropdown:
+        assert universo_ibovespa is not None, "o dropdown só é usado com o universo carregado"
         nomes_por_ticker = dict(
             zip(universo_ibovespa["ticker"], universo_ibovespa["nome"], strict=True)
         )
@@ -1035,6 +1036,7 @@ with aba_analisar:
             st.error(f"Preço: {erro_preco_atual}")
             preco_atual = None
         else:
+            assert historico_preco_atual is not None, "sem erro de preço, o histórico existe"
             preco_atual = float(historico_preco_atual["Close"].iloc[-1])
             if preco_valido(preco_atual):
                 st.metric("Preço atual", _fmt_bilhoes(preco_atual))
@@ -1050,8 +1052,10 @@ with aba_analisar:
             st.warning(f"CNPJ (CVM): {erro_cnpj}")
         if erro_macro:
             st.warning(erro_macro)
-        elif macro_usou_valor_guardado and macro.fonte_selic.startswith(
-            PREFIXO_FONTE_ARQUIVO_REFERENCIA
+        elif (
+            macro is not None
+            and macro_usou_valor_guardado
+            and macro.fonte_selic.startswith(PREFIXO_FONTE_ARQUIVO_REFERENCIA)
         ):
             st.warning(AVISO_MACRO_ARQUIVO_REFERENCIA.format(data=_fmt_data(macro_data_busca)))
         elif macro_usou_valor_guardado:
@@ -1067,7 +1071,9 @@ with aba_analisar:
         # cancelamento depois da data-base) ou número da CVM descartado por divergir demais.
         if leitura_balanco and leitura_balanco.get("aviso_divergencia_acoes"):
             st.warning(leitura_balanco["aviso_divergencia_acoes"])
-        elif (leitura_balanco or {}).get("detalhe_acoes", {}).get("descartada_por_divergencia"):
+        elif leitura_balanco and leitura_balanco.get("detalhe_acoes", {}).get(
+            "descartada_por_divergencia"
+        ):
             st.warning(leitura_balanco["motivo_acoes"])
 
         lpa = indicadores["lpa"] if indicadores else None
@@ -1110,7 +1116,7 @@ with aba_analisar:
         resultado_graham = calcular_valor_justo_graham(
             *reescalar_lpa_vpa(lpa, vpa, numero_acoes, ajustes_balanco["acoes_em_circulacao"])
         )
-        resultado_bazin = (
+        resultado_bazin: dict = (
             calcular_preco_teto_bazin(dividendos)
             if dividendos is not None
             else {
@@ -1263,10 +1269,14 @@ with aba_analisar:
                 if macro_usou_valor_guardado
                 else "calculada com a data de hoje"
             )
-            data_preco_referencia = (
-                None if erro_preco_atual else historico_preco_atual["data"].iloc[-1]
-            )
-            data_beta_referencia = None if erro_historico_beta else historico_beta["data"].iloc[-1]
+            data_preco_referencia = None
+            if not erro_preco_atual:
+                assert historico_preco_atual is not None, "sem erro de preço, o histórico existe"
+                data_preco_referencia = historico_preco_atual["data"].iloc[-1]
+            data_beta_referencia = None
+            if not erro_historico_beta:
+                assert historico_beta is not None, "sem erro de Beta, o histórico existe"
+                data_beta_referencia = historico_beta["data"].iloc[-1]
             data_balanco_referencia = (
                 indicadores["data_balanco_fundamentus"] if indicadores else None
             )

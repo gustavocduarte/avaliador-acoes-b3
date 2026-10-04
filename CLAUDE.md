@@ -2,7 +2,7 @@
 
 - Responder sempre em português do Brasil.
 - Antes de corrigir algo apontado em relatório (vistoria, auditoria), confirmar no código que o problema existe.
-- Rodar `pytest` e `ruff` e informar a contagem de testes pela diferença real desde o último commit, não por estimativa.
+- Rodar `pytest`, `ruff` e `python -m mypy` e informar a contagem de testes pela diferença real desde o último commit, não por estimativa, junto com o resultado do mypy.
 - Mostrar o diff e esperar aprovação antes de commitar.
 - Um commit por assunto. Nunca usar `--amend`.
 - Mensagens de commit em português com acentuação correta, sem nenhum trailer de atribuição (nada de `Co-Authored-By`).

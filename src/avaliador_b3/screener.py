@@ -513,12 +513,14 @@ def _calcular_linha_ticker(
         resultado_combinado["valores_por_metodo"], preco_atual
     )
 
-    erro = None if resultado_combinado["aplicavel"] else resultado_combinado["motivo_nao_aplicavel"]
+    motivo_erro = (
+        None if resultado_combinado["aplicavel"] else resultado_combinado["motivo_nao_aplicavel"]
+    )
     razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
     return {
         "ticker": ticker,
         "sucesso": True,
-        "erro": erro,
+        "erro": motivo_erro,
         "preco_atual": preco_atual,
         "valor_combinado": resultado_combinado["valor_combinado"],
         "desconto_percentual": desconto_percentual,
@@ -586,6 +588,8 @@ def _executar_rodada(
     # "não aplicável" com a Selic/IPCA indisponíveis como causa, sem
     # aparecer em lugar nenhum visível.
     macro_da_rodada: ResultadoMacro | None = None
+    selic_meta: float | None
+    ipca_12m: float | None
     try:
         macro_da_rodada = _buscar_macro(diretorio_cache)
         selic_meta, ipca_12m = macro_da_rodada.selic_meta, macro_da_rodada.ipca_12m

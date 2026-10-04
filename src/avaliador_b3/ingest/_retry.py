@@ -21,9 +21,12 @@ def _segundos_retry_after(resposta: requests.Response | None) -> float | None:
     aceita número de segundos; data HTTP ou valor inválido vira `None`."""
     if resposta is None:
         return None
+    cabecalho = resposta.headers.get("Retry-After")
+    if cabecalho is None:
+        return None
     try:
-        segundos = float(resposta.headers.get("Retry-After"))
-    except (TypeError, ValueError):
+        segundos = float(cabecalho)
+    except ValueError:
         return None
     if segundos < 0:
         return None
@@ -58,6 +61,7 @@ def _com_retry(
             ultimo_erro = erro
         except (requests.Timeout, requests.ConnectionError) as erro:
             ultimo_erro = erro
+    assert ultimo_erro is not None, "o laço sempre registra o erro da última tentativa"
     raise ultimo_erro
 
 

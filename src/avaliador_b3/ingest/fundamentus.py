@@ -142,7 +142,9 @@ def _numero_acoes_na_base_da_cotacao(
     """Número de ações na base da cotação (ver `_fator_acoes_por_cotacao`), ou
     `None` se o fator não for calculável."""
     fator = _fator_acoes_por_cotacao(numero_acoes, cotacao, valor_mercado)
-    return None if fator is None else numero_acoes / fator
+    if fator is None or numero_acoes is None:
+        return None
+    return numero_acoes / fator
 
 
 def _montar_indicadores(ticker: str, rotulos_valores: dict[str, str]) -> dict:

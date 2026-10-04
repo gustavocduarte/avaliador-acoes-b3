@@ -119,6 +119,7 @@ def montar_fluxos_fcd(resultado_cvm: dict | None) -> dict:
         resultado_cvm["capex_atual"],
         resultado_cvm["juros_pagos_atual"],
     )
+    motivo_base: str | None
     if resultado_cvm["capex_ha_n_anos"] is None:
         fcf_ha_n_anos, motivo_base = None, MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE
     else:
@@ -146,6 +147,7 @@ def montar_ajustes_balanco(leitura_balanco: dict | None) -> dict:
     motivo."""
     # As ações em circulação dependem só da composição do capital, não do balanço.
     acoes = leitura_balanco.get("acoes_em_circulacao") if leitura_balanco else None
+    motivo_acoes: str | None
     if leitura_balanco is None:
         motivo_acoes = MOTIVO_BALANCO_NAO_LIDO
     else:
@@ -401,8 +403,10 @@ def calcular_valor_justo_fcd(
             ),
         }
 
-    usar_circulacao = acoes_em_circulacao is not None and acoes_em_circulacao > 0
-    acoes_utilizadas = acoes_em_circulacao if usar_circulacao else numero_acoes
+    acoes_utilizadas = numero_acoes
+    usar_circulacao = False
+    if acoes_em_circulacao is not None and acoes_em_circulacao > 0:
+        acoes_utilizadas, usar_circulacao = acoes_em_circulacao, True
 
     beta_utilizado = beta if beta is not None else BETA_PADRAO
     arrendamento_deduzido = arrendamento_fora_da_divida is not None and divida_liquida is not None
@@ -452,12 +456,12 @@ def calcular_valor_justo_fcd(
     # dividir por número de ações. Negativa (caixa líquido) soma ao valor
     # normalmente, sem caso especial — ver docstring da função.
     divida_liquida_deduzida = divida_liquida is not None
-    if divida_liquida_deduzida:
+    if divida_liquida is not None:
         valor_total -= divida_liquida
-    if arrendamento_deduzido:
+    if arrendamento_fora_da_divida is not None and arrendamento_deduzido:
         valor_total -= arrendamento_fora_da_divida
     nao_controladores_deduzidos = nao_controladores is not None
-    if nao_controladores_deduzidos:
+    if nao_controladores is not None:
         valor_total -= nao_controladores
 
     return {

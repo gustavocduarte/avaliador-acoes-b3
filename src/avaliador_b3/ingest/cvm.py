@@ -617,7 +617,10 @@ def obter_fluxo_caixa_livre_do_tipo(
 def _tipo_da_demonstracao(resultado: dict) -> tuple[str | None, str | None]:
     """(método, tipo) da demonstração de um resultado de FCF, ou `None`s se
     o resultado não traz essa informação."""
-    tipo = {"consolidado": "con", "individual": "ind"}.get(resultado.get("tipo_demonstracao"))
+    tipo_bruto = resultado.get("tipo_demonstracao")
+    tipo = (
+        None if tipo_bruto is None else {"consolidado": "con", "individual": "ind"}.get(tipo_bruto)
+    )
     return resultado.get("metodo_dfc"), tipo
 
 

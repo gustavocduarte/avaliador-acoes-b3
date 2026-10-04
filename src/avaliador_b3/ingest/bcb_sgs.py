@@ -207,7 +207,7 @@ def _parsear_resposta_soap(texto: str, codigo: int) -> list[dict]:
         valor = item.findtext("VALOR")
         if valor is None or len(partes) not in (2, 3):
             continue
-        dia, mes, ano = (1, *partes) if len(partes) == 2 else partes
+        dia, mes, ano = ["1", *partes] if len(partes) == 2 else partes
         registros.append({"data": f"{int(dia):02d}/{int(mes):02d}/{ano}", "valor": valor})
     if not registros:
         raise ValueError(f"Resposta SOAP do BCB sem valores para a série {codigo}.")
