@@ -2767,3 +2767,27 @@ def test_cartao_do_fcd_nao_avisa_quando_o_valor_esta_perto_do_preco(monkeypatch)
 
     assert not at.exception
     assert _avisos_de_valor_extremo(at) == []
+
+
+def test_pagina_avisa_quando_o_fator_de_unit_nao_bate_com_a_tabela(monkeypatch):
+    aviso = "O fator de unit do Fundamentus (3) não bate com a composição registrada para IGTI11."
+    leitura = {**_leitura_balanco_mock(acoes_em_circulacao=80.0), "aviso_unit": aviso}
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0, leitura_balanco=leitura)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert aviso in [w.value for w in at.warning]
+
+
+def test_pagina_sem_aviso_de_unit_quando_a_leitura_nao_traz(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not [
+        w.value for w in at.warning if "fator de unit" in w.value or "é uma unit" in w.value
+    ]

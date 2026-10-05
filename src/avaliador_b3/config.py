@@ -489,6 +489,80 @@ TOLERANCIA_INTEGRALIZADO_LIQUIDO = 0.005
 # quando a diferença é só a tesouraria) acima da qual a tela avisa.
 LIMITE_DIVERGENCIA_ACOES = 0.02
 LIMITE_DIVERGENCIA_ACOES_IMPLAUSIVEL = 0.5
+# Composição das units do Ibovespa: ações ordinárias e preferenciais por unit e peso econômico
+# da preferencial em ordinárias equivalentes (a preferencial da IGTI11 vale 3 ordinárias; nas
+# demais, 1). A composição da CVM conta ações, e o número de ações do Fundamentus está na base
+# da unit (o fator dele já carrega o peso: 7 na IGTI11); por isso a CVM é convertida por
+#   (ON + peso × PN − tesouraria) ÷ (ON por unit + peso × PN por unit).
+# O fator do Fundamentus segue sendo a fonte do valor por unit: a tabela só converte a CVM e
+# confere o fator (`TOLERANCIA_FATOR_UNIT_TABELA`). Fontes consultadas em 04/10/2026.
+# SANB11 e BPAC11: composição HIPÓTESE (só fontes secundárias; os documentos do RI não
+# abriram). O peso 1,0 das preferenciais de SANB11 (que recebem dividendo 10% maior, efeito
+# estimado em 0,06% nas ações), BPAC11, TAEE11 e ENGI11 também é hipótese; só a KLBN11 diz que
+# os direitos econômicos são iguais.
+UNITS_COMPOSICAO = {
+    "IGTI11": {
+        "ordinarias": 1,
+        "preferenciais": 2,
+        "peso_preferencial": 3.0,
+        "fonte": "Fato Relevante da Iguatemi na B3: "
+        "https://b3.com.br/data/files/E7/F5/85/E5/6C1338101E311E28AC094EA8/"
+        "Fato%20Relevante%20-%20Iguatemi_09.09.pdf",
+        "data": "09/09/2022",
+    },
+    "KLBN11": {
+        "ordinarias": 1,
+        "preferenciais": 4,
+        "peso_preferencial": 1.0,
+        "fonte": "RI da Klabin, perguntas frequentes: https://ri.klabin.com.br/en/for-the-investor/faq/",
+        "data": "consultado em 04/10/2026",
+    },
+    "TAEE11": {
+        "ordinarias": 1,
+        "preferenciais": 2,
+        "peso_preferencial": 1.0,
+        "fonte": "RI da Taesa, estrutura societária: "
+        "https://ri.taesa.com.br/en/corporate-governance/corporate-structure/",
+        "data": "29/10/2025",
+    },
+    "ENGI11": {
+        "ordinarias": 1,
+        "preferenciais": 4,
+        "peso_preferencial": 1.0,
+        "fonte": "RI da Energisa, estrutura societária: "
+        "https://ri.energisa.com.br/en/corporate-governance/shareholding-and-corporate-structure/",
+        "data": "31/08/2026",
+    },
+    "SANB11": {
+        "ordinarias": 1,
+        "preferenciais": 1,
+        "peso_preferencial": 1.0,
+        "fonte": "HIPÓTESE: resultados de busca sobre documentos do Santander "
+        "(https://www.santander.com.br/document/wps/AGE_Bonificacao_Grupamento_Units.pdf, "
+        "HTTP 403, não aberto)",
+        "data": "consultado em 04/10/2026",
+    },
+    "BPAC11": {
+        "ordinarias": 1,
+        "preferenciais": 2,
+        "peso_preferencial": 1.0,
+        "fonte": "HIPÓTESE: fontes secundárias (as páginas do RI do BTG Pactual não abriram)",
+        "data": "consultado em 04/10/2026",
+    },
+}
+# Diferença relativa entre o fator do Fundamentus e o da tabela acima da qual a tela avisa.
+TOLERANCIA_FATOR_UNIT_TABELA = 0.05
+AVISO_UNIT_FATOR_DIFERENTE = (
+    "O fator de unit do Fundamentus ({fundamentus}) não bate com a composição registrada para "
+    "{ticker} ({esperado:g} ações ordinárias equivalentes por unit: {ordinarias} ordinária(s) e "
+    "{preferenciais} preferencial(is), cada preferencial valendo {peso:g} da ordinária). O "
+    "valor por unit pode estar errado; confira a composição da unit."
+)
+AVISO_UNIT_FORA_DA_TABELA = (
+    "{ticker} é uma unit ({fator} ações por cotação no Fundamentus) que não está na tabela de "
+    "composições do app; o número de ações da CVM foi convertido pelo fator do Fundamentus, "
+    "que pode não refletir o peso econômico das ações que formam a unit."
+)
 MOTIVO_BALANCO_DATA_FORA_DO_TRIMESTRE = "A data-base do balanço ({data}) não é um fim de trimestre."
 MOTIVO_BALANCO_SEM_DATA_BASE = "A data-base do balanço não está disponível."
 MOTIVO_BALANCO_ARQUIVO_NAO_PUBLICADO = (

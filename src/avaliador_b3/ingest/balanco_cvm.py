@@ -23,6 +23,8 @@ import requests
 
 from avaliador_b3.config import (
     AVISO_DIVERGENCIA_ACOES,
+    AVISO_UNIT_FATOR_DIFERENTE,
+    AVISO_UNIT_FORA_DA_TABELA,
     CODIGO_PATRIMONIO_LIQUIDO_CVM,
     COMPLEMENTO_ACOES_DIVERGENCIA_UNIT,
     DATA_RAW_DIR,
@@ -46,7 +48,9 @@ from avaliador_b3.config import (
     PREFIXOS_CONTAS_PASSIVO,
     TERMO_NAO_CONTROLADORES,
     TERMOS_PASSIVO_ARRENDAMENTO,
+    TOLERANCIA_FATOR_UNIT_TABELA,
     TOLERANCIA_INTEGRALIZADO_LIQUIDO,
+    UNITS_COMPOSICAO,
     VERSAO_SCHEMA_CVM_BALANCO,
 )
 from avaliador_b3.ingest.cvm import (
@@ -279,17 +283,53 @@ def _fmt_acoes(valor: float) -> str:
     return texto.replace(",", "_").replace(".", ",").replace("_", ".") + " mi"
 
 
+def _ordinarias_equivalentes_por_unit(composicao_unit: dict) -> float:
+    """Ordinárias equivalentes de uma unit: ON + peso econômico da PN × PN."""
+    return (
+        composicao_unit["ordinarias"]
+        + composicao_unit["peso_preferencial"] * composicao_unit["preferenciais"]
+    )
+
+
+def montar_aviso_unit(ticker: str | None, acoes_por_cotacao: int | None) -> str | None:
+    """Aviso quando o fator de unit do Fundamentus não bate com a tabela de composições
+    (`config.UNITS_COMPOSICAO`) ou quando uma unit não está na tabela. `None` nos demais casos
+    (inclusive ação comum, fator 1, e fator ou ticker indisponível)."""
+    if not ticker or not acoes_por_cotacao:
+        return None
+    composicao = UNITS_COMPOSICAO.get(ticker)
+    if composicao is None:
+        if acoes_por_cotacao > 1:
+            return AVISO_UNIT_FORA_DA_TABELA.format(ticker=ticker, fator=acoes_por_cotacao)
+        return None
+    esperado = _ordinarias_equivalentes_por_unit(composicao)
+    if abs(acoes_por_cotacao / esperado - 1) <= TOLERANCIA_FATOR_UNIT_TABELA:
+        return None
+    return AVISO_UNIT_FATOR_DIFERENTE.format(
+        fundamentus=acoes_por_cotacao,
+        ticker=ticker,
+        esperado=esperado,
+        ordinarias=composicao["ordinarias"],
+        preferenciais=composicao["preferenciais"],
+        peso=composicao["peso_preferencial"],
+    )
+
+
 def calcular_acoes_em_circulacao(
     capital: dict | None,
     acoes_fundamentus: float | None,
     acoes_por_cotacao: int | None,
     data_base: str,
     documento: str,
+    composicao_unit: dict | None = None,
 ) -> dict:
     """Ações em circulação (integralizado menos tesouraria) na base da cotação.
 
     `acoes_fundamentus` está na base da cotação (units já convertidas) e
     `acoes_por_cotacao` é o número de ações por cotação (1, ou o da unit).
+    Com `composicao_unit` (uma linha de `config.UNITS_COMPOSICAO`), a composição da CVM é
+    convertida por peso econômico: o integralizado conta ON + peso × PN e o fator é
+    ON por unit + peso × PN por unit, em vez de ações físicas e do fator do Fundamentus.
     Salvaguardas: (1) escala: se o número do Fundamentus for cerca de 1.000
     vezes a composição, ela está em milhares; (2) tesouraria acima de
     `LIMITE_TESOURARIA_SOBRE_CAPITAL` do capital é tratada como erro de
@@ -313,7 +353,7 @@ def calcular_acoes_em_circulacao(
     if not acoes_fundamentus or acoes_fundamentus <= 0:
         return {"acoes": None, "motivo": MOTIVO_ACOES_SEM_REFERENCIA, "aviso_divergencia": None}
 
-    fator = acoes_por_cotacao or 1
+    fator: float = acoes_por_cotacao or 1
     referencia = acoes_fundamentus * fator  # em ações, como a CVM
     integralizado = capital["integralizado"]
     tesouraria = capital["tesouraria"]
@@ -324,6 +364,15 @@ def calcular_acoes_em_circulacao(
     if em_milhares:
         integralizado *= FATOR_ESCALA_MILHARES_CVM
         tesouraria *= FATOR_ESCALA_MILHARES_CVM
+
+    ordinarias = capital.get("ordinarias") or 0.0
+    preferenciais = capital.get("preferenciais") or 0.0
+    if composicao_unit is not None and ordinarias + preferenciais > 0:
+        escala = FATOR_ESCALA_MILHARES_CVM if em_milhares else 1.0
+        peso = composicao_unit["peso_preferencial"]
+        integralizado = (ordinarias + peso * preferenciais) * escala
+        fator = _ordinarias_equivalentes_por_unit(composicao_unit)
+        referencia = acoes_fundamentus * fator
 
     base = {
         "escala_em_milhares": em_milhares,
@@ -389,22 +438,32 @@ def obter_leitura_balanco(
     usar_cache: bool = True,
     forcar_atualizacao: bool = False,
     diretorio_cache: Path = DATA_RAW_DIR,
+    ticker: str | None = None,
 ) -> dict:
     """Leitura única: `obter_balanco_cvm` mais as ações em circulação
     (`calcular_acoes_em_circulacao`), com `acoes_em_circulacao`,
-    `motivo_acoes` e `aviso_divergencia_acoes`."""
+    `motivo_acoes`, `aviso_divergencia_acoes` e `aviso_unit`. Com o `ticker` de uma unit da
+    tabela `config.UNITS_COMPOSICAO`, a composição da CVM é convertida por peso econômico."""
     balanco = obter_balanco_cvm(cnpj, data_base, usar_cache, forcar_atualizacao, diretorio_cache)
+    aviso_unit = montar_aviso_unit(ticker, acoes_por_cotacao)
     if "documento" not in balanco:  # nem o arquivo da data-base foi lido
-        return {**balanco, "acoes_em_circulacao": None, "motivo_acoes": balanco["motivo"]}
+        return {
+            **balanco,
+            "acoes_em_circulacao": None,
+            "motivo_acoes": balanco["motivo"],
+            "aviso_unit": aviso_unit,
+        }
     acoes = calcular_acoes_em_circulacao(
         balanco["capital"],
         acoes_fundamentus,
         acoes_por_cotacao,
         balanco["data_base"],
         balanco["documento"],
+        composicao_unit=UNITS_COMPOSICAO.get(ticker) if ticker else None,
     )
     return {
         **balanco,
+        "aviso_unit": aviso_unit,
         "acoes_em_circulacao": acoes["acoes"],
         "motivo_acoes": acoes["motivo"],
         "aviso_divergencia_acoes": acoes["aviso_divergencia"],

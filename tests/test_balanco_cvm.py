@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from avaliador_b3.config import VERSAO_SCHEMA_CVM_BALANCO
+from avaliador_b3.config import UNITS_COMPOSICAO, VERSAO_SCHEMA_CVM_BALANCO
 from avaliador_b3.ingest import balanco_cvm
 
 CNPJ = "12.345.678/0001-90"
@@ -449,3 +449,158 @@ def test_leitura_unica_de_data_fora_do_trimestre_nao_traz_acoes(tmp_path):
     assert r["disponivel"] is False
     assert r["acoes_em_circulacao"] is None
     assert "não é um fim de trimestre" in r["motivo_acoes"]
+
+
+# --- Units: conversão da composição da CVM por peso econômico ---------------------------------
+
+IGTI11 = UNITS_COMPOSICAO["IGTI11"]
+KLBN11 = UNITS_COMPOSICAO["KLBN11"]
+
+
+def _capital_on_pn(on, pn, tesouraria):
+    return {
+        "ordinarias": on,
+        "preferenciais": pn,
+        "integralizado": on + pn,
+        "tesouraria": tesouraria,
+        "versao": 1,
+    }
+
+
+def _acoes_unit(capital, fundamentus, fator, composicao):
+    return balanco_cvm.calcular_acoes_em_circulacao(
+        capital, fundamentus, fator, "2026-06-30", "ITR", composicao_unit=composicao
+    )
+
+
+def test_igti11_converte_a_cvm_por_peso_economico_e_nao_cai_na_trava():
+    # 770,99 mi ON + 435,37 mi PN; a PN vale 3 ON e a unit tem 1 ON + 2 PN (7 equivalentes).
+    capital = _capital_on_pn(770.992429e6, 435.368756e6, 1.794e6)
+
+    r = _acoes_unit(capital, 296.7286e6, 7, IGTI11)
+
+    esperado = (770.992429e6 + 3 * 435.368756e6 - 1.794e6) / 7
+    assert r["acoes"] == pytest.approx(esperado)
+    assert r["acoes"] == pytest.approx(296.7286e6, rel=0.003)
+    assert r["motivo"] is None
+    assert r["aviso_divergencia"] is None
+    assert "descartada_por_divergencia" not in r
+
+
+def test_igti11_sem_a_tabela_continua_caindo_na_trava_de_50_por_cento():
+    capital = _capital_on_pn(770.992429e6, 435.368756e6, 1.794e6)
+
+    r = _acoes_unit(capital, 296.7286e6, 7, None)
+
+    assert r["acoes"] is None
+    assert r["descartada_por_divergencia"] is True
+
+
+def test_unit_de_peso_um_converte_igual_a_conversao_fisica():
+    # KLBN11: 1 ON + 4 PN com os mesmos direitos; o resultado não muda com a tabela.
+    capital = _capital_on_pn(2312.8e6, 3928.7e6, 88.58e6)
+
+    sem_tabela = _acoes_unit(capital, 1248.3e6, 5, None)
+    com_tabela = _acoes_unit(capital, 1248.3e6, 5, KLBN11)
+
+    assert com_tabela["acoes"] == pytest.approx(sem_tabela["acoes"])
+    assert com_tabela["aviso_divergencia"] == sem_tabela["aviso_divergencia"]
+
+
+def test_unit_com_composicao_em_milhares_e_pesos_diferentes():
+    # Composição em milhares (como SANB11 e TAEE11): 1.000.000 ON + 500.000 PN com PN = 3 ON,
+    # unit de 1 ON + 1 PN (4 equivalentes): (1.000.000 + 3 x 500.000) x 1.000 / 4.
+    composicao = {"ordinarias": 1, "preferenciais": 1, "peso_preferencial": 3.0}
+    capital = _capital_on_pn(1_000_000.0, 500_000.0, 0.0)
+
+    r = _acoes_unit(capital, 625_000_000.0, 4, composicao)
+
+    assert r["escala_em_milhares"] is True
+    assert r["acoes"] == pytest.approx(625_000_000.0)
+
+
+def test_composicao_sem_ordinarias_nem_preferenciais_cai_na_conversao_fisica():
+    capital = {"ordinarias": 0.0, "preferenciais": 0.0, "integralizado": 1500e6, "tesouraria": 0.0}
+
+    r = _acoes_unit(capital, 500e6, 3, KLBN11)
+
+    assert r["acoes"] == pytest.approx(500e6)
+
+
+def test_tabela_de_units_tem_o_fator_de_cada_unit_do_ibovespa():
+    fatores = {
+        ticker: balanco_cvm._ordinarias_equivalentes_por_unit(composicao)
+        for ticker, composicao in UNITS_COMPOSICAO.items()
+    }
+
+    assert fatores == {
+        "IGTI11": 7.0,
+        "KLBN11": 5.0,
+        "TAEE11": 3.0,
+        "ENGI11": 5.0,
+        "SANB11": 2.0,
+        "BPAC11": 3.0,
+    }
+    assert all(c["fonte"] and c["data"] for c in UNITS_COMPOSICAO.values())
+    assert all("HIPÓTESE" in UNITS_COMPOSICAO[t]["fonte"] for t in ("SANB11", "BPAC11"))
+
+
+@pytest.mark.parametrize(
+    ("ticker", "fator"), [("IGTI11", 7), ("KLBN11", 5), ("PETR4", 1), ("PETR4", None), (None, 7)]
+)
+def test_aviso_de_unit_nao_aparece_quando_o_fator_bate_ou_nao_e_unit(ticker, fator):
+    assert balanco_cvm.montar_aviso_unit(ticker, fator) is None
+
+
+def test_aviso_de_unit_quando_o_fator_do_fundamentus_nao_bate_com_a_tabela():
+    aviso = balanco_cvm.montar_aviso_unit("IGTI11", 3)
+
+    assert aviso == (
+        "O fator de unit do Fundamentus (3) não bate com a composição registrada para IGTI11 "
+        "(7 ações ordinárias equivalentes por unit: 1 ordinária(s) e 2 preferencial(is), cada "
+        "preferencial valendo 3 da ordinária). O valor por unit pode estar errado; confira a "
+        "composição da unit."
+    )
+
+
+def test_aviso_de_unit_com_fator_dentro_da_tolerancia_nao_avisa():
+    assert balanco_cvm.montar_aviso_unit("IGTI11", 7.2) is None  # 2,9% de diferença
+
+
+def test_aviso_de_unit_fora_da_tabela():
+    aviso = balanco_cvm.montar_aviso_unit("XPTO11", 3)
+
+    assert aviso == (
+        "XPTO11 é uma unit (3 ações por cotação no Fundamentus) que não está na tabela de "
+        "composições do app; o número de ações da CVM foi convertido pelo fator do Fundamentus, "
+        "que pode não refletir o peso econômico das ações que formam a unit."
+    )
+
+
+def test_leitura_unica_da_igti11_usa_a_tabela_e_nao_descarta_a_cvm(tmp_path, baixados):
+    baixados["zips"][("itr", 2026)] = _zip(
+        tmp_path, "itr", 2026, BALANCO_BASE, [_linha_capital(770_992_429, 435_368_756, 1_794_000)]
+    )
+
+    r = balanco_cvm.obter_leitura_balanco(
+        CNPJ, "2026-06-30", 296_728_571.0, 7, diretorio_cache=tmp_path, ticker="IGTI11"
+    )
+
+    assert r["acoes_em_circulacao"] == pytest.approx(
+        (770_992_429 + 3 * 435_368_756 - 1_794_000) / 7
+    )
+    assert r["motivo_acoes"] is None
+    assert r["aviso_unit"] is None
+
+
+def test_leitura_unica_sem_ticker_mantem_a_conversao_fisica_e_avisa_nada(tmp_path, baixados):
+    baixados["zips"][("itr", 2026)] = _zip(
+        tmp_path, "itr", 2026, BALANCO_BASE, [_linha_capital(770_992_429, 435_368_756, 1_794_000)]
+    )
+
+    r = balanco_cvm.obter_leitura_balanco(
+        CNPJ, "2026-06-30", 296_728_571.0, 7, diretorio_cache=tmp_path
+    )
+
+    assert r["acoes_em_circulacao"] is None
+    assert r["aviso_unit"] is None

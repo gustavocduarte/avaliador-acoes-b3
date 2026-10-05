@@ -1529,3 +1529,17 @@ def test_proporcao_reinvestimento_divide_pelo_caixa_operacional_do_fcd(
 
     assert linha["fcd_valor_justo"] is not None
     assert linha["proporcao_reinvestimento_percentual"] == pytest.approx(200_000 / 866_000 * 100)
+
+
+def test_screener_passa_o_ticker_para_a_leitura_do_balanco(ambiente_feliz, tmp_path, monkeypatch):
+    tickers = []
+
+    def leitura(cnpj, data_base, acoes, acoes_por_cotacao, **kw):
+        tickers.append(kw.get("ticker"))
+        return _leitura_balanco()
+
+    monkeypatch.setattr(screener, "obter_leitura_balanco", leitura)
+
+    _linha_ticker("AAAA4", tmp_path)
+
+    assert tickers == ["AAAA4"]

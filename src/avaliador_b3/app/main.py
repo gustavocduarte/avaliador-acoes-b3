@@ -416,7 +416,7 @@ def _buscar_fcf_fcd(
         return montar_fluxos_fcd(None), None, False, None, None, None, mensagem
 
 
-def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None) -> dict:
+def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None, ticker: str) -> dict:
     """Leitura única do balanço da CVM na data-base do Fundamentus. Falha de
     rede ou da CVM não derruba a página: vira "indisponível" com o motivo, e o
     FCD segue sem os ajustes que dependem dela."""
@@ -428,6 +428,7 @@ def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None) -> dict:
             indicadores["data_balanco_fundamentus"],
             indicadores["numero_acoes"],
             indicadores["acoes_por_cotacao"],
+            ticker=ticker,
         )
     except Exception as erro:  # zip da CVM indisponível, erro de rede, etc.
         return {"disponivel": False, "motivo": f"falha ao buscar dados da CVM: {erro}"}
@@ -1037,7 +1038,7 @@ with aba_analisar:
                     risco_sacado_fcd_utilizado,
                     _,
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
-            leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores) if cnpj else None
+            leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores, ticker) if cnpj else None
 
         st.subheader(ticker)
 
@@ -1090,6 +1091,8 @@ with aba_analisar:
             st.warning(erro_ano_fcd)
         # Número de ações do Fundamentus que não bate com a CVM (oferta, bonificação ou
         # cancelamento depois da data-base) ou número da CVM descartado por divergir demais.
+        if leitura_balanco and leitura_balanco.get("aviso_unit"):
+            st.warning(leitura_balanco["aviso_unit"])
         if leitura_balanco and leitura_balanco.get("aviso_divergencia_acoes"):
             st.warning(leitura_balanco["aviso_divergencia_acoes"])
         elif leitura_balanco and leitura_balanco.get("detalhe_acoes", {}).get(

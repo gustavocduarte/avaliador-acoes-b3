@@ -431,6 +431,7 @@ def _calcular_linha_ticker(
                 indicadores["numero_acoes"] if indicadores else None,
                 indicadores["acoes_por_cotacao"] if indicadores else None,
                 diretorio_cache=diretorio_cache,
+                ticker=ticker,
             )
         except requests.RequestException as erro:
             falhas.registrar(ticker, FONTE_CVM)
