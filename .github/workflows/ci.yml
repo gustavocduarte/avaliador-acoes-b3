@@ -1,0 +1,61 @@
+# Integração contínua: roda os testes e as checagens de código a cada push e a cada pull
+# request no master. Os testes não acessam a rede e não gravam em data/.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Só leitura: o CI não grava nada no repositório.
+permissions:
+  contents: read
+
+# Um push novo na mesma branch cancela a execução anterior ainda em andamento.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifica:
+    # Mesma imagem do workflow que atualiza o screener (ver o comentário dele sobre o porquê).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Garante UTF-8 na saída e na leitura de arquivos, independentemente do locale do runner.
+      PYTHONUTF8: "1"
+
+    steps:
+      # 1. Baixa o código do repositório.
+      - name: Baixa o repositório
+        uses: actions/checkout@v7
+
+      # 2. Instala o Python 3.14 e guarda o cache de downloads do pip entre execuções.
+      - name: Instala o Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      # 3. Instala as dependências do app mais pytest, ruff e mypy.
+      - name: Instala as dependências
+        run: python -m pip install -r requirements-dev.txt
+
+      # 4. Testes (sem rede, como é a regra do projeto).
+      - name: Roda os testes
+        run: python -m pytest -q
+
+      # 5. Lint e formatação.
+      - name: Confere o lint
+        run: python -m ruff check .
+
+      - name: Confere a formatação
+        run: python -m ruff format --check src tests
+
+      # 6. Tipagem.
+      - name: Confere os tipos
+        run: python -m mypy
