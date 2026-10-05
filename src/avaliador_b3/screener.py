@@ -49,6 +49,7 @@ from avaliador_b3.config import (
     AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD,
     AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
     AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+    COLUNAS_VALOR_FINITO_SCREENER,
     DATA_PROCESSED_DIR,
     DATA_RAW_DIR,
     DESCONTO_EXTREMO_LIMITE_INFERIOR,
@@ -64,6 +65,7 @@ from avaliador_b3.config import (
     MOTIVO_RODADA_COM_FALHA_DE_FONTE,
     MOTIVO_RODADA_LINHAS_FALTANDO,
     MOTIVO_RODADA_SEM_PRECO,
+    MOTIVO_RODADA_VALOR_NAO_FINITO,
     NOME_ARQUIVO_MACRO_REFERENCIA,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
@@ -106,6 +108,7 @@ from avaliador_b3.modelos.fcd import (
     montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
+from avaliador_b3.numeros import campos_nao_finitos
 
 CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
 
@@ -549,6 +552,16 @@ def _calcular_linha_ticker(
     }
 
 
+def _colunas_nao_finitas(linha: dict) -> list[str]:
+    """Colunas de valor de uma linha com sucesso que trazem NaN ou infinito. Ausente
+    (`None`) é válido: o método não se aplicou."""
+    if not linha.get("sucesso"):
+        return []
+    return campos_nao_finitos(
+        {coluna: linha.get(coluna) for coluna in COLUNAS_VALOR_FINITO_SCREENER}
+    )
+
+
 def _executar_rodada(
     tickers: list[str],
     ano_mais_recente_fcd: int | None,
@@ -687,6 +700,9 @@ def _executar_rodada(
     # nova chamada de rede.
     resultado_ordenado.to_csv(caminho_saida, index=False)
     resultado_ordenado.attrs["macro"] = macro_da_rodada
+    resultado_ordenado.attrs["valores_nao_finitos"] = {
+        linha["ticker"]: colunas for linha in linhas if (colunas := _colunas_nao_finitas(linha))
+    }
 
     return resultado_ordenado
 
@@ -749,6 +765,17 @@ def rodar_screener(
                 quantidade=falhas_de_fonte.total(),
                 limite=LIMITE_ACOES_COM_FALHA_SCREENER,
                 por_fonte=por_fonte,
+            )
+        )
+
+    nao_finitos = resultado.attrs.get("valores_nao_finitos", {})
+    if nao_finitos:
+        motivos.append(
+            MOTIVO_RODADA_VALOR_NAO_FINITO.format(
+                quantidade=len(nao_finitos),
+                por_acao="; ".join(
+                    f"{ticker} ({', '.join(colunas)})" for ticker, colunas in nao_finitos.items()
+                ),
             )
         )
 

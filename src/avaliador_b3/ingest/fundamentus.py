@@ -49,6 +49,7 @@ from avaliador_b3.config import (
     VERSAO_SCHEMA_FUNDAMENTUS,
 )
 from avaliador_b3.ingest._retry import get_com_retry
+from avaliador_b3.numeros import numero_finito
 
 CODIFICACAO_FUNDAMENTUS = "iso-8859-1"
 
@@ -69,12 +70,14 @@ class EstruturaPaginaMudou(ErroFundamentus):
 def _parse_numero(texto: str) -> float | None:
     """Converte um número no formato do Fundamentus (ex: "27,7%",
     "1.844.240.000", "-2,3%") para float. "-" ou vazio vira None
-    (indicador não disponível para aquele papel)."""
+    (indicador não disponível para aquele papel). "NaN" e "Infinity", que o
+    `float` aceitaria, também viram None."""
     texto = texto.strip()
     if texto in ("", "-"):
         return None
     texto = texto.replace("%", "").replace(".", "").replace(",", ".")
-    return float(texto)
+    numero = float(texto)
+    return numero if numero_finito(numero) else None
 
 
 def _parse_data(texto: str | None) -> str | None:

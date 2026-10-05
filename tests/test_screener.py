@@ -1543,3 +1543,48 @@ def test_screener_passa_o_ticker_para_a_leitura_do_balanco(ambiente_feliz, tmp_p
     _linha_ticker("AAAA4", tmp_path)
 
     assert tickers == ["AAAA4"]
+
+
+# --- Valores não finitos ---
+
+
+def test_lpa_nan_nao_chega_ao_csv_e_a_rodada_e_aceita(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        screener, "obter_indicadores", lambda ticker, **kw: _indicadores(lpa=float("nan"))
+    )
+
+    oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    linha = pd.read_csv(oficial).iloc[0]
+    assert pd.isna(linha["graham_valor_justo"])
+    assert "graham" not in linha["metodos_utilizados"]
+    assert linha["valor_combinado"] == pytest.approx(linha["fcd_valor_justo"])
+    assert "nan" not in oficial.read_text(encoding="utf-8").lower()
+    assert resultado.attrs["valores_nao_finitos"] == {}
+
+
+@pytest.mark.parametrize("invalido", [float("nan"), float("inf"), float("-inf")])
+def test_rodada_com_valor_justo_nao_finito_e_rejeitada(
+    ambiente_feliz, tmp_path, monkeypatch, invalido
+):
+    monkeypatch.setattr(
+        screener,
+        "calcular_valor_justo_graham",
+        lambda lpa, vpa: {"aplicavel": True, "valor_justo": invalido, "motivo_nao_aplicavel": None},
+    )
+
+    with pytest.raises(
+        screener.RodadaScreenerRejeitada, match=r"2 ações com valor não finito.*AAAA4"
+    ) as excecao:
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert "graham_valor_justo" in str(excecao.value)
+    assert not (tmp_path / "macro_referencia.json").exists()
+
+
+def test_valor_ausente_nao_conta_como_nao_finito(ambiente_feliz, tmp_path):
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado["bazin_preco_teto"].isna().all()
+    assert resultado.attrs["valores_nao_finitos"] == {}

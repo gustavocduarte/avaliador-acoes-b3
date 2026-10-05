@@ -10,6 +10,8 @@ método vale ou não.
 
 from __future__ import annotations
 
+from avaliador_b3.numeros import numero_finito
+
 # Cada método guarda o valor calculado numa chave diferente — Bazin chama
 # o dele de "preço teto", não "valor justo".
 CHAVE_VALOR_POR_METODO = {
@@ -35,7 +37,8 @@ def calcular_valor_combinado(
     None), `metodos_utilizados` (lista dos nomes que entraram na média —
     importante pra mostrar de forma transparente por que o combinado saiu
     daquele jeito, nunca como caixa-preta) e `valores_por_metodo` (dict
-    nome->valor, só dos métodos aplicáveis). Quando nenhum método é
+    nome->valor, só dos métodos aplicáveis e com valor finito: um método que
+    diga aplicável com NaN ou infinito fica fora da média). Quando nenhum método é
     aplicável, devolve isso explicitamente (`aplicavel=False`), nunca um
     valor None silencioso ou erro.
     """
@@ -48,7 +51,7 @@ def calcular_valor_combinado(
     valores_por_metodo = {
         nome: resultado[CHAVE_VALOR_POR_METODO[nome]]
         for nome, resultado in resultados_por_metodo.items()
-        if resultado.get("aplicavel")
+        if resultado.get("aplicavel") and numero_finito(resultado[CHAVE_VALOR_POR_METODO[nome]])
     }
 
     if not valores_por_metodo:
@@ -111,7 +114,7 @@ def calcular_divergencia_metodos(
     diferenca = maior - menor
 
     divergencia_percentual = None
-    if preco_atual is not None and preco_atual > 0:
+    if preco_atual is not None and numero_finito(preco_atual) and preco_atual > 0:
         divergencia_percentual = diferenca / preco_atual * 100
 
     return {

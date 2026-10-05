@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import pandas as pd
 
+from avaliador_b3.numeros import numero_finito
+
 COLUNAS_METODOS = ("graham_valor_justo", "bazin_preco_teto", "fcd_valor_justo")
 CENARIOS = ("otimista", "base", "pessimista")
 
 
 def _valor_valido(valor) -> bool:
-    return not pd.isna(valor)
+    """Número presente e finito: ausente (None/NaN do CSV) e infinito ficam de fora."""
+    return numero_finito(valor)
 
 
 def derivar_cenarios_ticker(linha: dict) -> dict:
@@ -50,6 +53,17 @@ def derivar_cenarios_ticker(linha: dict) -> dict:
             "pessimista": None,
             "motivo_nao_aplicavel": (
                 "Nenhum método (Graham, Bazin, FCD) aplicável — sem cenário pra projetar."
+            ),
+        }
+
+    if not _valor_valido(linha.get("valor_combinado")):
+        return {
+            "aplicavel": False,
+            "otimista": None,
+            "base": None,
+            "pessimista": None,
+            "motivo_nao_aplicavel": (
+                "Valor combinado indisponível ou inválido — sem cenário base pra projetar."
             ),
         }
 

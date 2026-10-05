@@ -7,6 +7,8 @@ nenhuma, só multiplicação/soma de números já conhecidos.
 
 from __future__ import annotations
 
+from avaliador_b3.numeros import numero_finito
+
 COMPONENTES_VALOR_FIRMA = ("divida_liquida", "nao_controladores", "arrendamento_fora_da_divida")
 
 
@@ -30,15 +32,17 @@ def calcular_valor_mercado_e_firma(
     líquido) é um valor real, não ausente.
     """
     valor_mercado = (
-        preco_atual * numero_acoes if preco_atual is not None and numero_acoes is not None else None
+        preco_atual * numero_acoes
+        if numero_finito(preco_atual) and numero_finito(numero_acoes)
+        else None
     )
     componentes = {
         "divida_liquida": divida_liquida,
         "nao_controladores": nao_controladores,
         "arrendamento_fora_da_divida": arrendamento_fora_da_divida,
     }
-    ausentes = [nome for nome in COMPONENTES_VALOR_FIRMA if componentes[nome] is None]
-    presentes = [valor for valor in componentes.values() if valor is not None]
+    ausentes = [nome for nome in COMPONENTES_VALOR_FIRMA if not numero_finito(componentes[nome])]
+    presentes = [valor for valor in componentes.values() if numero_finito(valor)]
     valor_firma = (
         valor_mercado + sum(presentes) if valor_mercado is not None and presentes else None
     )

@@ -59,6 +59,7 @@ from avaliador_b3.config import (
     MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA,
     MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX,
     MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL,
+    MOTIVO_ENTRADA_NAO_FINITA,
     MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
@@ -66,6 +67,7 @@ from avaliador_b3.config import (
     MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO,
     MOTIVO_RECEITA_NAO_LIDA,
     MOTIVO_RECEITA_NAO_POSITIVA,
+    MOTIVO_RESULTADO_NAO_FINITO,
     MOTIVOS_FCD_POR_SEGMENTO,
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
@@ -75,6 +77,7 @@ from avaliador_b3.config import (
     TAXA_CRESCIMENTO_FCD_MINIMA,
     TICKERS_FCD_NAO_APLICAVEL,
 )
+from avaliador_b3.numeros import campos_nao_finitos, numero_finito
 
 
 def calcular_proporcao_capex_caixa_operacional_percentual(
@@ -448,6 +451,33 @@ def calcular_valor_justo_fcd(
             "motivo_nao_aplicavel": motivo_exclusao,
         }
 
+    # NaN e infinito passam pelas comparações `<= 0` abaixo; dado corrompido deixa o
+    # método de fora, com o campo no motivo, em vez de virar valor justo.
+    invalidos = campos_nao_finitos(
+        {
+            "fluxo de caixa livre": fcf_atual,
+            "fluxo de caixa livre do ano-base": fcf_ha_n_anos,
+            "número de ações": numero_acoes,
+            "ações em circulação": acoes_em_circulacao,
+            "Selic": selic_meta,
+            "IPCA": ipca_12m,
+            "Beta": beta,
+            "dívida líquida": divida_liquida,
+            "dívida líquida sobre patrimônio": divida_liquida_sobre_patrimonio,
+            "patrimônio líquido total": patrimonio_liquido_total,
+            "não controladores": nao_controladores,
+            "arrendamento": arrendamento_fora_da_divida,
+            "receita": receita_atual,
+            "receita do ano-base": receita_ha_n_anos,
+        }
+    )
+    if invalidos:
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_ENTRADA_NAO_FINITA.format(campos=", ".join(invalidos)),
+        }
+
     if fcf_atual is None:
         return {
             "aplicavel": False,
@@ -531,14 +561,21 @@ def calcular_valor_justo_fcd(
 
     taxa_perpetuidade = _taxa_perpetuidade(ipca_12m, wacc)
 
-    valor_presente_explicito = 0.0
-    fcf_projetado = fcf_atual
-    for ano in range(1, HORIZONTE_PROJECAO_FCD_ANOS + 1):
-        fcf_projetado *= 1 + _taxa_do_ano(ano, taxa_crescimento, taxa_perpetuidade)
-        valor_presente_explicito += fcf_projetado / (1 + wacc) ** ano
+    try:
+        valor_presente_explicito = 0.0
+        fcf_projetado = fcf_atual
+        for ano in range(1, HORIZONTE_PROJECAO_FCD_ANOS + 1):
+            fcf_projetado *= 1 + _taxa_do_ano(ano, taxa_crescimento, taxa_perpetuidade)
+            valor_presente_explicito += fcf_projetado / (1 + wacc) ** ano
 
-    valor_terminal = fcf_projetado * (1 + taxa_perpetuidade) / (wacc - taxa_perpetuidade)
-    valor_presente_terminal = valor_terminal / (1 + wacc) ** HORIZONTE_PROJECAO_FCD_ANOS
+        valor_terminal = fcf_projetado * (1 + taxa_perpetuidade) / (wacc - taxa_perpetuidade)
+        valor_presente_terminal = valor_terminal / (1 + wacc) ** HORIZONTE_PROJECAO_FCD_ANOS
+    except OverflowError:
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_RESULTADO_NAO_FINITO,
+        }
 
     valor_total = valor_presente_explicito + valor_presente_terminal
 
@@ -559,9 +596,17 @@ def calcular_valor_justo_fcd(
         deducao_nao_controladores = nao_controladores
         valor_total -= nao_controladores
 
+    valor_justo = valor_total / acoes_utilizadas
+    if not numero_finito(valor_justo):
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_RESULTADO_NAO_FINITO,
+        }
+
     return {
         "aplicavel": True,
-        "valor_justo": valor_total / acoes_utilizadas,
+        "valor_justo": valor_justo,
         "motivo_nao_aplicavel": None,
         # Entradas do aviso de valor extremo (ver `modelos.aviso_fcd`).
         "valor_empresa": valor_empresa,

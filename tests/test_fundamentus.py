@@ -49,6 +49,10 @@ class _RespostaFalsa:
         ("1.844.240.000", 1844240000.0),
         ("-", None),
         ("", None),
+        ("NaN", None),
+        ("Infinity", None),
+        ("-Infinity", None),
+        ("inf", None),
     ],
 )
 def test_parse_numero(texto, esperado):

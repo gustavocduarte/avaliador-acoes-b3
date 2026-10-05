@@ -24,7 +24,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from avaliador_b3.config import ANOS_HISTORICO_MINIMO_BAZIN, YIELD_MINIMO_BAZIN
+from avaliador_b3.config import (
+    ANOS_HISTORICO_MINIMO_BAZIN,
+    MOTIVO_BAZIN_DIVIDENDO_NAO_FINITO,
+    MOTIVO_RESULTADO_NAO_FINITO,
+    YIELD_MINIMO_BAZIN,
+)
+from avaliador_b3.numeros import numero_finito
 
 
 def _anos_exigidos(data_referencia: pd.Timestamp) -> set[int]:
@@ -55,6 +61,19 @@ def _tem_historico_relevante(dividendos: pd.DataFrame, data_referencia: pd.Times
     return _anos_exigidos(data_referencia).issubset(
         _anos_com_dividendo(dividendos, data_referencia)
     )
+
+
+def _tem_dividendo_nao_finito(dividendos: pd.DataFrame, data_referencia: pd.Timestamp) -> bool:
+    """Algum dividendo `NaN` ou infinito entre os usados pelo método: os anos
+    exigidos e os últimos 12 meses. Valores fora dessa janela não entram na conta."""
+    if dividendos.empty:
+        return False
+    limite = data_referencia - pd.DateOffset(years=1)
+    usados = dividendos[
+        dividendos["data"].dt.year.isin(_anos_exigidos(data_referencia))
+        | ((dividendos["data"] > limite) & (dividendos["data"] <= data_referencia))
+    ]
+    return not usados["dividendo"].map(numero_finito).all()
 
 
 def _dividendos_ultimos_12_meses(dividendos: pd.DataFrame, data_referencia: pd.Timestamp) -> float:
@@ -119,6 +138,17 @@ def calcular_preco_teto_bazin(
     elif data_referencia.tzinfo is not None:
         data_referencia = data_referencia.tz_localize(None)
 
+    # Um dividendo inválido não é descartado: somar só os válidos subestimaria o
+    # pagamento (ou esconderia um valor real que não conhecemos), então o método
+    # fica de fora, em vez de dar um teto que parece confiável.
+    if _tem_dividendo_nao_finito(dividendos, data_referencia):
+        return {
+            "aplicavel": False,
+            "preco_teto": None,
+            "motivo_nao_aplicavel": MOTIVO_BAZIN_DIVIDENDO_NAO_FINITO,
+            "razao_dividendos_12m_vs_mediana_5a": None,
+        }
+
     if not _tem_historico_relevante(dividendos, data_referencia):
         return {
             "aplicavel": False,
@@ -141,6 +171,13 @@ def calcular_preco_teto_bazin(
         }
 
     preco_teto = dividendo_12_meses / YIELD_MINIMO_BAZIN
+    if not numero_finito(preco_teto):
+        return {
+            "aplicavel": False,
+            "preco_teto": None,
+            "motivo_nao_aplicavel": MOTIVO_RESULTADO_NAO_FINITO,
+            "razao_dividendos_12m_vs_mediana_5a": None,
+        }
     razao_dividendos_12m_vs_mediana_5a = _razao_dividendos_12m_vs_mediana(
         dividendos, data_referencia, dividendo_12_meses
     )

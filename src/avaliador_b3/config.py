@@ -898,6 +898,17 @@ MOTIVO_RODADA_COM_FALHA_DE_FONTE = (
     "{quantidade} ações com falha de fonte (limite: {limite}); por fonte: {por_fonte}."
 )
 MOTIVO_RODADA_LINHAS_FALTANDO = "{linhas} linhas para {universo} ações do universo."
+MOTIVO_RODADA_VALOR_NAO_FINITO = (
+    "{quantidade} ações com valor não finito (NaN ou infinito): {por_acao}."
+)
+# Colunas de valor da linha do screener que a checagem da rodada exige finitas.
+COLUNAS_VALOR_FINITO_SCREENER = (
+    "graham_valor_justo",
+    "bazin_preco_teto",
+    "fcd_valor_justo",
+    "valor_combinado",
+    "desconto_percentual",
+)
 # Resumo impresso por `python -m avaliador_b3.rodar_screener` (uma linha por item).
 TTL_CACHE_RESUMO_RODADA_SEGUNDOS = 24 * 60 * 60  # lê só o cache de preços, sem rede
 CODIGO_SAIDA_RODADA_ACEITA = 0
@@ -954,6 +965,12 @@ MOTIVO_CRESCIMENTO_IPCA_BASE_SEM_CAPEX = (
 )
 MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA = (
     "o fluxo de caixa livre do ano-base foi zero ou negativo"
+)
+# Entrada que veio como NaN ou infinito (dado corrompido, não ausente): o método não se aplica.
+MOTIVO_ENTRADA_NAO_FINITA = "Entrada com valor inválido (NaN ou infinito): {campos}."
+MOTIVO_RESULTADO_NAO_FINITO = "O cálculo não deu um número finito com as entradas disponíveis."
+MOTIVO_BAZIN_DIVIDENDO_NAO_FINITO = (
+    "O histórico de dividendos tem valor inválido (NaN ou infinito) nos anos usados pelo método."
 )
 MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
     "O fluxo de caixa livre do último ano foi zero ou negativo; projetá-lo "
