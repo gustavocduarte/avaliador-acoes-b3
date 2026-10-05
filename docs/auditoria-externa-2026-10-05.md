@@ -3962,3 +3962,42 @@ Esses são os pontos que eu atacaria antes de adicionar novas funcionalidades ao
 
 
 
+
+
+---
+
+# Tratamento (05/10/2026)
+
+Cada item abaixo foi confirmado no código antes de qualquer correção. As correções saíram em commits separados, um por assunto, e a suíte passou de 844 para 1216 testes (todos passando, ruff e mypy limpos).
+
+## Confirmado e corrigido
+
+| Item da auditoria | Resultado | Commit |
+|---|---|---|
+| 3. `NaN` e infinito viram valor justo | Confirmado com reprodução. Graham, Bazin e FCD ficam "não aplicáveis" com o campo inválido no motivo; o combinado, a divergência, a carteira e o valor de mercado não propagam `NaN`; o `_parse_numero` do Fundamentus devolve `None` para "NaN" e "Infinity"; a rodada do screener é rejeitada se uma linha com sucesso trouxer valor não finito nas colunas de valor. Os testes de propriedade acharam um defeito a mais, que a auditoria não citava: Beta ou Selic finitos e gigantes levantavam `OverflowError` no FCD. Decisão no Bazin: dividendo inválido nos anos usados deixa o método de fora, em vez de ser descartado, porque somar só os válidos subestimaria o pagamento. | `9ac32bc` |
+| 4 e 20.1. Cache corrompido e gravação não atômica | Confirmado. JSON truncado levantava `JSONDecodeError` em 4 adapters, e CSV truncado era lido sem erro, com a última linha cortada. Agora o arquivo inválido vira cache ausente e é refeito, e todas as gravações de cache usam arquivo temporário e troca atômica. | `beb52bd` |
+| 20.2. Validação de conteúdo do cache | Corrigido em parte: o leitor valida a estrutura (JSON em formato de objeto, CSV com a linha final completa e com as colunas esperadas de cada cache). A finitude dos valores não é checada na leitura do cache; ela é garantida nos modelos e na checagem da rodada (item 3). | `beb52bd` |
+| 7. Ticker interpolado no JavaScript do TradingView | Confirmado (baixo impacto: o `.upper()` do campo já neutralizava JavaScript, mas não HTML nem campos do JSON). O widget só é montado para ticker no formato da B3 e a configuração é serializada com `json.dumps`. | `59e2156` |
+| 5. Proveniência da Selic e do IPCA | Confirmado. O valor guardado e o arquivo de referência perdiam a fonte de cada valor. Agora cada um preserva a origem da busca original; arquivos antigos, sem as fontes, continuam válidos. | `f11012d` |
+| 6. Ordem entre `screener.csv` e `macro_referencia.json` | Confirmado com reprodução. O arquivo de referência passa a ser preparado antes da troca do CSV, e uma falha de gravação deixa o resultado anterior intacto. | `f11012d` |
+| 23. Alvo do mypy | Confirmado. `python_version = "3.12"`, igual ao `requires-python` e ao ruff. | `1d5ddb0` |
+| 24. `SyntaxWarning` nos testes | Confirmado (4 casos). A correção sugerida pela auditoria (`"R$ 109"`) quebraria os testes, porque o app emite `R\$` (escape do Markdown do Streamlit); o certo é `"R\$"`. | `1d5ddb0` |
+| Ruff e a pasta `docs/` | Acréscimo desta rodada: `ruff format .` reformatava os blocos de código dos Markdown; `docs/` entrou no `extend-exclude`. | `1d5ddb0` |
+| 8. APIs depreciadas do Streamlit | Confirmado no 1.63.0 (os avisos vão para o log, não para o `warnings` do pytest). `use_container_width` virou `width="stretch"`. A auditoria recomenda `st.html` para `components.html`, mas no 1.63.0 a substituição é `st.iframe`: o `st.html` ignora JavaScript por padrão e o widget precisa dele. O `st.iframe` não tem o parâmetro de rolagem, então o `overflow: hidden` foi para o HTML do widget, para manter a aparência. | `854ee29` |
+| 10 e 11. Suíte sem execução completa | Resolvido: a suíte inteira, incluindo os testes de interface, roda no ambiente do projeto (1216 passando). | — |
+
+Os testes pedidos no veredito final foram escritos, exceto o de escrita concorrente (ver "Sem ação"): `NaN` e infinito, JSON e CSV corrompidos, falha ao gravar a referência depois de preparar o screener e ticker malformado.
+
+## Sem ação, e por quê
+
+| Item | Por quê |
+|---|---|
+| 21. Concorrência entre sessões (travas por chave) | A gravação atômica já garante que ninguém lê arquivo pela metade; duas sessões que gravam a mesma chave gravam o mesmo conteúdo. Travas por chave pedem uma biblioteca de lock de arquivo e não se justificam no volume atual. Limite conhecido: no Windows, `os.replace` pode falhar se outro processo estiver com o arquivo aberto naquele instante (a hospedagem é Linux, no Streamlit Community Cloud). Por isso também não há teste de escrita concorrente. |
+| 22. Pacote relocável | O uso é o repositório (GitHub e Streamlit Community Cloud, com `pip install -e .`); um wheel fora dessa estrutura não é um cenário suportado hoje. |
+| 33. Renomear `desconto_percentual` | É coluna do `screener.csv`, lido pelo app, pelo workflow e pelos testes; renomear é uma migração de schema, não uma correção. A tela já mostra "Potencial". Fica para quando houver outra mudança de schema. |
+| 14, 15 e 36. Crescimento por dois pontos, empresas cíclicas | Limitações metodológicas já conhecidas e investigadas em 04/10, ainda não implementadas; seguem na fila metodológica, depois desta rodada. |
+| 16 e 36. Selic como taxa livre de risco | Decisão registrada no relatório de 04/10, coerente com o código; a revisão pede uma investigação própria. |
+| 17, 18, 19 e 36. Valor combinado e cenários do simulador | Escolhas de modelo, documentadas na tela. |
+| 31 e 32. Risco sacado e sensibilidade ao valor terminal | O ajuste de risco sacado é decisão metodológica (a identificação por texto só vira problema com um caso real perdido), e o aviso de valor extremo já existe. |
+| 25. Dependência do Yahoo Finance | Risco operacional externo, já isolado no adapter de preços. |
+| 9, 12, 26 a 30 e 34. Pontos positivos e itens que a auditoria não considera bug | Nada a corrigir. |
