@@ -35,10 +35,6 @@ jobs:
     # A rodada leva de 5 a 15 minutos; o limite evita um job preso por horas.
     timeout-minutes: 45
     env:
-      # O projeto não é um pacote instalável (não há [project] no pyproject.toml): o pytest e o
-      # Streamlit já encontram src/ por conta própria (pythonpath e sys.path.insert), e aqui
-      # basta apontar o Python para src/ para o `python -m avaliador_b3...` achar o pacote.
-      PYTHONPATH: src
       # Garante UTF-8 na saída (acentos do resumo), independentemente do locale do runner.
       PYTHONUTF8: "1"
 
@@ -56,11 +52,15 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
 
-      # 3. Instala só as dependências do app (sem pytest, ruff e mypy).
-      - name: Instala as dependências
-        run: python -m pip install -r requirements.txt
+      # 3. Instala o pacote em modo editável (`pip install -e .`), que também instala as
+      #    dependências do app lidas do requirements.txt (sem pytest, ruff e mypy). O modo
+      #    editável é o único suportado: os caminhos de data/ são relativos à pasta src/.
+      - name: Instala o pacote e as dependências
+        run: python -m pip install -e .
 
       # 4. Chave do cache dos zips da CVM: uma por semana ISO. O app só rebaixa o zip do ano em
       #    preenchimento depois de 7 dias (DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE), então um

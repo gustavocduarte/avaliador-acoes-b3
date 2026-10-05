@@ -1,3 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avaliador-acoes-b3"
+version = "0.1.0"
+description = "Avaliador de ações da B3 por Graham, Bazin e fluxo de caixa descontado (FCD)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+# As dependências ficam só no requirements.txt (o arquivo que o Streamlit Community Cloud
+# instala); o pacote as lê de lá.
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
