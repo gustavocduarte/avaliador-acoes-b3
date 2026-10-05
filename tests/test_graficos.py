@@ -215,7 +215,7 @@ def test_agregar_dividendos_por_ano_sem_historico_devolve_tabela_vazia():
     agregado = graficos.agregar_dividendos_por_ano(dividendos)
 
     assert agregado.empty
-    assert list(agregado.columns) == ["ano", "total"]
+    assert list(agregado.columns) == ["ano", "total", "parcial"]
 
 
 def test_agregar_dividendos_por_ano_com_fuso_horario():
@@ -291,3 +291,43 @@ def test_sem_nenhum_preco_historico_devolve_yield_vazio_sem_erro():
     yield_por_ano = graficos.calcular_dividend_yield_por_ano(dividendos_por_ano, historico_vazio)
 
     assert yield_por_ano.empty
+
+
+def test_agregar_dividendos_por_ano_preenche_com_zero_os_anos_sem_dividendo():
+    # PETR4 pulava de 2014 para 2018: os anos do meio entram com barra zero.
+    dividendos = _dividendos([("2014-05-01", 0.4), ("2018-05-01", 1.2), ("2019-05-01", 2.0)])
+
+    agregado = graficos.agregar_dividendos_por_ano(dividendos)
+
+    assert list(agregado["ano"]) == [2014, 2015, 2016, 2017, 2018, 2019]
+    assert list(agregado["total"]) == pytest.approx([0.4, 0.0, 0.0, 0.0, 1.2, 2.0])
+    assert not agregado["parcial"].any()
+
+
+def test_agregar_dividendos_por_ano_marca_o_ano_corrente_como_parcial():
+    dividendos = _dividendos([("2024-05-01", 1.0), ("2026-03-01", 0.5)])
+
+    agregado = graficos.agregar_dividendos_por_ano(dividendos, ano_corrente=2026)
+
+    assert list(agregado["ano"]) == [2024, 2025, 2026]
+    assert list(agregado["total"]) == pytest.approx([1.0, 0.0, 0.5])
+    assert list(agregado["parcial"]) == [False, False, True]
+
+
+def test_agregar_dividendos_por_ano_estende_ate_o_ano_corrente_sem_dividendo_nele():
+    dividendos = _dividendos([("2024-05-01", 1.0), ("2025-05-01", 1.5)])
+
+    agregado = graficos.agregar_dividendos_por_ano(dividendos, ano_corrente=2026)
+
+    assert list(agregado["ano"]) == [2024, 2025, 2026]
+    assert agregado["total"].iloc[-1] == 0.0
+    assert bool(agregado["parcial"].iloc[-1]) is True
+
+
+def test_agregar_dividendos_por_ano_com_ano_corrente_antigo_nao_corta_a_serie():
+    dividendos = _dividendos([("2025-05-01", 1.0)])
+
+    agregado = graficos.agregar_dividendos_por_ano(dividendos, ano_corrente=2020)
+
+    assert list(agregado["ano"]) == [2025]
+    assert not agregado["parcial"].any()

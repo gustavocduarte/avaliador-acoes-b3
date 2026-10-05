@@ -14,12 +14,14 @@ continuarem rápidos e determinísticos, sem rede de verdade — ver
 `_bloquear_buscas_de_rede_por_ticker`.
 """
 
+import base64
 import json
 import re
 import warnings
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 import streamlit as st
@@ -29,6 +31,8 @@ from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
     LEGENDA_REINVESTIMENTO_CAPEX,
     MOTIVO_RECEITA_SEM_DRE,
+    NOTA_DIVIDENDOS_ANO_PARCIAL,
+    SUBTITULO_APP,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_FIRMA_SEM_COMPONENTES,
@@ -2791,3 +2795,133 @@ def test_pagina_sem_aviso_de_unit_quando_a_leitura_nao_traz(monkeypatch):
     assert not [
         w.value for w in at.warning if "fator de unit" in w.value or "é uma unit" in w.value
     ]
+
+
+# --- Acabamento da tela: subtítulo, nomes dos métodos e gráfico de dividendos ---------------
+
+
+def test_subtitulo_do_app_diz_ibovespa_e_nao_promete_cenarios_nos_cartoes(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption]
+    assert SUBTITULO_APP in legendas
+    assert SUBTITULO_APP == (
+        "Valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
+        "comparado ao preço atual. Estimativas de modelos com premissas simplificadas, para "
+        "estudo — não é recomendação de investimento."
+    )
+    assert "nunca como um número único" not in SUBTITULO_APP
+
+
+def test_metodos_utilizados_aparecem_com_os_nomes_da_tela(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    legendas = [c.value for c in at.caption if c.value.startswith("Métodos utilizados")]
+    assert legendas == ["Métodos utilizados: Graham, FCD"]
+
+
+def test_tabela_do_screener_mostra_os_metodos_com_os_nomes_da_tela(monkeypatch, tmp_path):
+    import avaliador_b3.screener as screener_mod
+    from avaliador_b3.screener import COLUNAS_RESULTADO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "erro": "",
+        "aviso_desconto_extremo": "",
+        "preco_atual": 10.0,
+        "valor_combinado": 12.0,
+        "desconto_percentual": 20.0,
+    }
+    linhas = [
+        base | {"ticker": "TRES3", "metodos_utilizados": "graham,bazin,fcd"},
+        base | {"ticker": "UM3", "metodos_utilizados": "graham", "desconto_percentual": 10.0},
+        base | {"ticker": "NENHUM3", "metodos_utilizados": "", "desconto_percentual": 5.0},
+    ]
+    caminho = tmp_path / "screener.csv"
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    tabela = [df.value for df in at.dataframe if "desconto_percentual" in df.value.columns][0]
+    metodos = dict(zip(tabela["ticker"], tabela["metodos_utilizados"], strict=True))
+    assert metodos == {"TRES3": "Graham, Bazin, FCD", "UM3": "Graham", "NENHUM3": ""}
+
+
+def _valores_plotly(serie):
+    """Valores de uma série do Plotly: o Plotly serializa arrays numéricos como binário em
+    base64 (`{"dtype": ..., "bdata": ...}`), e as listas comuns ficam como estão."""
+    if isinstance(serie, dict):
+        return list(np.frombuffer(base64.b64decode(serie["bdata"]), dtype=serie["dtype"]))
+    return list(serie)
+
+
+def test_grafico_de_dividendos_mostra_o_ano_sem_dividendo_e_o_ano_corrente_parcial(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    ano_atual = pd.Timestamp.now().year
+    # Dividendos em ano_atual - 3 e no ano corrente; os dois anos do meio ficam sem pagamento.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "data": [
+                    pd.Timestamp(year=ano_atual - 3, month=5, day=1),
+                    pd.Timestamp(year=ano_atual, month=2, day=1),
+                ],
+                "dividendo": [1.0, 0.5],
+            }
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    graficos_plotly = [e for e in at.get("plotly_chart") if "Dividendos" in e.proto.spec]
+    assert len(graficos_plotly) == 1
+    figura = json.loads(graficos_plotly[0].proto.spec)
+    barras = next(t for t in figura["data"] if t["name"] == "Dividendos")
+    assert barras["x"] == [
+        str(ano_atual - 3),
+        str(ano_atual - 2),
+        str(ano_atual - 1),
+        f"{ano_atual}*",
+    ]
+    assert _valores_plotly(barras["y"]) == [1.0, 0.0, 0.0, 0.5]
+    nota = NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=ano_atual)
+    assert nota in [c.value for c in at.caption]
+
+
+def test_grafico_de_dividendos_estende_a_serie_ate_o_ano_corrente_mesmo_sem_dividendo_nele(
+    monkeypatch,
+):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_dividendos",
+        lambda *args, **kwargs: pd.DataFrame(
+            {"data": [pd.Timestamp(year=2020, month=5, day=1)], "dividendo": [1.0]}
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # O ano corrente entra na série (sem dividendo) e é marcado como parcial.
+    ano_atual = pd.Timestamp.now().year
+    assert NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=ano_atual) in [c.value for c in at.caption]

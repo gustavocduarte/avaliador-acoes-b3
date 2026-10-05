@@ -1,9 +1,8 @@
-"""Dashboard (Streamlit) do Avaliador de Ações da B3 — ferramenta de
-avaliação de valor justo para ações principais da B3 (bolsa brasileira),
-com projeções apresentadas sempre como cenários (pessimista/base/
-otimista), nunca como um número único. Só chama os adapters/modelos que
-já existem e organiza o resultado na tela; nenhuma lógica de cálculo é
-reimplementada aqui.
+"""Dashboard (Streamlit) do Avaliador de Ações da B3 — valor justo das ações do
+Ibovespa por Graham, Bazin e fluxo de caixa descontado, com o valor combinado
+e o simulador de carteira em três cenários (pessimista/base/otimista). Só chama
+os adapters/modelos que já existem e organiza o resultado na tela; nenhuma lógica
+de cálculo é reimplementada aqui.
 
 Rodar com: streamlit run src/avaliador_b3/app/main.py
 """
@@ -45,17 +44,21 @@ from avaliador_b3.config import (
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    NOMES_METODOS,
+    NOTA_DIVIDENDOS_ANO_PARCIAL,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
+    ROTULO_ANO_PARCIAL,
     ROTULO_POTENCIAL,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
     SERIES_BCB_SGS,
+    SUBTITULO_APP,
     SUBTITULO_POTENCIAL_CARTEIRA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_COMPLEMENTO_SEM_METODO,
@@ -702,6 +705,17 @@ def _fmt_percentual(valor: float | None, casas: int = 1) -> str:
     return _pt_br(f"{valor:,.{casas}f}%")
 
 
+def _nomes_dos_metodos(metodos: list[str]) -> str:
+    """Nomes dos métodos como aparecem na tela ("Graham, Bazin, FCD"), a partir dos
+    identificadores em minúsculas (`resultado_combinado["metodos_utilizados"]`)."""
+    return ", ".join(NOMES_METODOS.get(metodo, metodo) for metodo in metodos)
+
+
+def _nomes_dos_metodos_do_csv(valor: str) -> str:
+    """O mesmo para a célula do CSV do screener, onde os métodos vêm separados por vírgula."""
+    return _nomes_dos_metodos([m for m in valor.split(",") if m])
+
+
 def _fmt_bilhoes(valor: float | None) -> str:
     """Formata um valor monetário — Valor de Mercado/Firma, Dívida Líquida
     ("Saúde financeira"), e os totais da carteira ("Total da carteira") —
@@ -873,11 +887,7 @@ TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
 
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
 st.title("Avaliador de Ações da B3")
-st.caption(
-    "Ferramenta de avaliação de valor justo para ações principais da B3 (bolsa "
-    "brasileira), com projeções apresentadas sempre como cenários "
-    "(pessimista/base/otimista) — nunca como um número único."
-)
+st.caption(SUBTITULO_APP)
 
 
 def _ativar_aba(aba: str) -> None:
@@ -1244,7 +1254,8 @@ with aba_analisar:
                     help=TOOLTIP_POTENCIAL_CARTAO,
                 )
                 st.caption(
-                    "Métodos utilizados: " + ", ".join(resultado_combinado["metodos_utilizados"])
+                    "Métodos utilizados: "
+                    + _nomes_dos_metodos(resultado_combinado["metodos_utilizados"])
                 )
                 divergencia = calcular_divergencia_metodos(
                     resultado_combinado["valores_por_metodo"], preco_atual
@@ -1628,7 +1639,9 @@ with aba_analisar:
             else:
                 # Reaproveita `dividendos` já buscado pro método de Bazin acima —
                 # não busca dado novo.
-                dividendos_por_ano = agregar_dividendos_por_ano(dividendos)
+                dividendos_por_ano = agregar_dividendos_por_ano(
+                    dividendos, ano_corrente=datetime.now().year
+                )
                 if dividendos_por_ano.empty:
                     st.info("Nenhum dividendo pago no histórico disponível.")
                 else:
@@ -1649,6 +1662,15 @@ with aba_analisar:
                         else pd.DataFrame(columns=["data", "Close"]),
                     )
 
+                    # Eixo de categorias: o ano corrente, incompleto, leva asterisco.
+                    rotulos_anos = {
+                        int(linha.ano): (
+                            ROTULO_ANO_PARCIAL.format(ano=int(linha.ano))
+                            if linha.parcial
+                            else str(int(linha.ano))
+                        )
+                        for linha in dividendos_por_ano.itertuples()
+                    }
                     figura_dividendos = go.Figure()
                     # text/hovertemplate pré-formatados com _fmt_bilhoes/
                     # _fmt_percentual (não "%{text:.2f}"/"%{y:.1f}%" do
@@ -1658,7 +1680,7 @@ with aba_analisar:
                     # ponto vs. vírgula resolvido em _fmt_bilhoes/_fmt.
                     figura_dividendos.add_trace(
                         go.Bar(
-                            x=dividendos_por_ano["ano"],
+                            x=dividendos_por_ano["ano"].map(rotulos_anos),
                             y=dividendos_por_ano["total"],
                             name="Dividendos",
                             text=dividendos_por_ano["total"].apply(_fmt_bilhoes),
@@ -1671,7 +1693,7 @@ with aba_analisar:
                     if not dividend_yield_por_ano.empty:
                         figura_dividendos.add_trace(
                             go.Scatter(
-                                x=dividend_yield_por_ano["ano"],
+                                x=dividend_yield_por_ano["ano"].map(rotulos_anos),
                                 y=dividend_yield_por_ano["yield_percentual"],
                                 name="Dividend Yield",
                                 mode="lines+markers+text",
@@ -1712,6 +1734,8 @@ with aba_analisar:
                     figura_dividendos.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
                     figura_dividendos.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
                     st.plotly_chart(figura_dividendos, use_container_width=True)
+                    if dividendos_por_ano["parcial"].any():
+                        st.caption(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=datetime.now().year))
 
                     # Degradação transparente: yield ausente ou parcial não é
                     # erro, mas merece uma linha explicando o motivo — mesmo
@@ -1982,6 +2006,9 @@ with aba_screener:
             colunas_moeda={"preco_atual": "Preço atual", "valor_combinado": "Valor combinado"},
             colunas_percentual={"desconto_percentual": ROTULO_POTENCIAL},
             ajudas={"desconto_percentual": TOOLTIP_POTENCIAL_COLUNA},
+        )
+        tabela_screener_fmt["metodos_utilizados"] = tabela_screener_fmt["metodos_utilizados"].map(
+            _nomes_dos_metodos_do_csv
         )
         st.dataframe(
             tabela_screener_fmt,

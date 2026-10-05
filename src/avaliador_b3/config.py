@@ -1271,6 +1271,20 @@ AVISO_FCD_FECHAMENTO_ALTO = "Não é necessariamente uma oportunidade."
 # Vocabulário do "Potencial" (valor justo ÷ preço − 1) na tela: rótulo da
 # coluna e tooltips do Screener, da comparação setorial e dos cartões de
 # Valor Justo. A coluna `desconto_percentual` do CSV mantém o nome.
+# Subtítulo do app, logo abaixo do título.
+SUBTITULO_APP = (
+    "Valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
+    "comparado ao preço atual. Estimativas de modelos com premissas simplificadas, para "
+    "estudo — não é recomendação de investimento."
+)
+# Nomes dos métodos como aparecem na tela (o CSV do screener guarda "graham,bazin,fcd").
+NOMES_METODOS = {"graham": "Graham", "bazin": "Bazin", "fcd": "FCD"}
+# Gráfico "Histórico de dividendos por ano": o ano corrente, incompleto, leva asterisco.
+ROTULO_ANO_PARCIAL = "{ano}*"
+NOTA_DIVIDENDOS_ANO_PARCIAL = (
+    "* {ano}: ano em andamento, com só os dividendos pagos até agora. Anos sem dividendo "
+    "aparecem com barra zero."
+)
 ROTULO_POTENCIAL = "Potencial"
 TOOLTIP_POTENCIAL_COLUNA = (
     "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "

@@ -105,25 +105,32 @@ def normalizar_base_100(serie: pd.Series) -> pd.Series:
     return serie / primeiro_valor * 100
 
 
-def agregar_dividendos_por_ano(dividendos: pd.DataFrame) -> pd.DataFrame:
+def agregar_dividendos_por_ano(
+    dividendos: pd.DataFrame, ano_corrente: int | None = None
+) -> pd.DataFrame:
     """Soma os dividendos pagos por ano civil (ano da data de pagamento),
-    devolvendo um DataFrame com colunas `ano` (int) e `total` (float),
-    ordenado cronologicamente.
+    devolvendo um DataFrame com colunas `ano` (int), `total` (float) e `parcial`
+    (bool), ordenado cronologicamente.
+
+    A série vai do primeiro ano com dividendo até o último (ou até `ano_corrente`, se
+    informado e maior): anos sem dividendo no meio aparecem com total zero, em vez de
+    sumir. `parcial` marca o ano corrente, que ainda está em andamento.
 
     Uma ação sem nenhum dividendo no histórico devolve uma tabela vazia
     (mesmas colunas, zero linhas) — não é um erro, é um resultado válido
     (mesmo critério já usado no método de Bazin: ver `modelos.bazin`).
     """
     if dividendos.empty:
-        return pd.DataFrame(columns=["ano", "total"])
+        return pd.DataFrame(columns=["ano", "total", "parcial"])
 
-    agregado = (
-        dividendos.assign(ano=dividendos["data"].dt.year)
-        .groupby("ano", as_index=False)["dividendo"]
-        .sum()
-        .rename(columns={"dividendo": "total"})
-    )
-    return agregado.sort_values("ano").reset_index(drop=True)
+    por_ano = dividendos.assign(ano=dividendos["data"].dt.year).groupby("ano")["dividendo"].sum()
+    ultimo_ano = max(int(por_ano.index.max()), ano_corrente or 0)
+    anos = range(int(por_ano.index.min()), ultimo_ano + 1)
+    agregado = por_ano.reindex(anos, fill_value=0.0).rename("total").rename_axis("ano")
+    agregado = agregado.reset_index()
+    agregado["total"] = agregado["total"].astype(float)
+    agregado["parcial"] = agregado["ano"] == ano_corrente
+    return agregado
 
 
 def calcular_dividend_yield_por_ano(
