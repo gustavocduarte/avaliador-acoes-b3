@@ -22,7 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
 from avaliador_b3.carteira import (
     calcular_totais_carteira,
@@ -462,7 +461,7 @@ def _buscar_macro() -> tuple[ResultadoMacro | None, str | None]:
 
 def _widget_avancado_tradingview(ticker: str) -> str | None:
     """HTML do widget "Advanced Chart" do TradingView (embutido via
-    st.components.v1.html), símbolo montado dinamicamente a partir do
+    st.iframe), símbolo montado dinamicamente a partir do
     ticker buscado na tela — ver
     https://br.tradingview.com/widget/advanced-chart/. Só aceita ticker no formato
     da B3 (`PADRAO_TICKER_B3`); qualquer outro texto devolve `None`, sem HTML. A
@@ -485,7 +484,7 @@ def _widget_avancado_tradingview(ticker: str) -> str | None:
         }
     ).replace("<", "\\u003c")
     return f"""
-    <style>html, body {{ height: 100%; margin: 0; }}</style>
+    <style>html, body {{ height: 100%; margin: 0; overflow: hidden; }}</style>
     <div class="tradingview-widget-container" style="height:100%;width:100%">
       <div class="tradingview-widget-container__widget"
         style="height:calc(100% - 32px);width:100%"></div>
@@ -1591,7 +1590,7 @@ with aba_analisar:
                 if figura_preco is None:
                     st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
                 else:
-                    st.plotly_chart(figura_preco, use_container_width=True)
+                    st.plotly_chart(figura_preco, width="stretch")
 
         st.divider()
         st.subheader("Comparando com Petróleo (Brent)")
@@ -1627,7 +1626,7 @@ with aba_analisar:
                 if figura_petroleo is None:
                     st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
                 else:
-                    st.plotly_chart(figura_petroleo, use_container_width=True)
+                    st.plotly_chart(figura_petroleo, width="stretch")
 
         st.divider()
         st.subheader("Gráfico avançado (TradingView)")
@@ -1642,7 +1641,7 @@ with aba_analisar:
         if html_tradingview is None:
             st.info(MENSAGEM_TRADINGVIEW_TICKER_INVALIDO)
         else:
-            components.html(html_tradingview, height=520)
+            st.iframe(html_tradingview.strip(), height=520)
 
         st.divider()
         coluna_dividendos, coluna_comparacao_setorial = st.columns(2)
@@ -1747,7 +1746,7 @@ with aba_analisar:
                     )
                     figura_dividendos.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
                     figura_dividendos.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
-                    st.plotly_chart(figura_dividendos, use_container_width=True)
+                    st.plotly_chart(figura_dividendos, width="stretch")
                     if dividendos_por_ano["parcial"].any():
                         st.caption(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=datetime.now().year))
 
@@ -1845,7 +1844,7 @@ with aba_analisar:
                                 ],
                                 column_config={"ticker": "Ticker", **colunas_pares_fmt},
                                 hide_index=True,
-                                use_container_width=True,
+                                width="stretch",
                             )
 
         st.divider()
@@ -2055,7 +2054,7 @@ with aba_screener:
                 "erro": "Observação",
             },
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
 with aba_carteira:
@@ -2149,7 +2148,7 @@ with aba_carteira:
                     column_order=COLUNAS_TABELA_CARTEIRA,
                     column_config={"ticker": "Ticker", **colunas_tc_fmt},
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             totais_carteira = calcular_totais_carteira(tabela_carteira)

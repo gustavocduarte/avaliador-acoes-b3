@@ -3,6 +3,7 @@ vai como JSON serializado."""
 
 import ast
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -76,6 +77,10 @@ def test_a_configuracao_do_widget_e_um_json_valido_com_as_opcoes_fixas():
     assert configuracao["locale"] == "br"
 
 
+def test_o_html_desliga_a_rolagem_do_iframe():
+    assert "overflow: hidden" in widget("PETR4")
+
+
 def test_o_html_gerado_tem_um_unico_fechamento_de_script():
     assert widget("PETR4").count("</script>") == 1
 
@@ -116,3 +121,15 @@ def test_na_tela_ticker_digitado_valido_mostra_o_widget(monkeypatch):
     assert not at.exception
     assert any('"symbol": "BMFBOVESPA:PETR4"' in (e.proto.srcdoc or "") for e in at.get("iframe"))
     assert MENSAGEM_TRADINGVIEW_TICKER_INVALIDO not in [info.value for info in at.info]
+
+
+def test_a_tela_nao_usa_apis_depreciadas_do_streamlit(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG)
+    app._preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(app.CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert [r.getMessage() for r in caplog.records if "Please replace" in r.getMessage()] == []
+    assert at.get("iframe"), "o widget deveria ter sido renderizado"
