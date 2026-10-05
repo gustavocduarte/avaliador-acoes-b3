@@ -46,9 +46,9 @@ jobs:
       - name: Instala as dependências e o pacote
         run: python -m pip install -r requirements-dev.txt -e .
 
-      # 4. Testes (sem rede, como é a regra do projeto).
+      # 4. Testes (sem rede, como é a regra do projeto), com o relatório de cobertura.
       - name: Roda os testes
-        run: python -m pytest -q
+        run: python -m pytest -q --cov --cov-report=term-missing:skip-covered
 
       # 5. Lint e formatação.
       - name: Confere o lint

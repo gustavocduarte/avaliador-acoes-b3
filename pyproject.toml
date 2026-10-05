@@ -36,3 +36,13 @@ python_version = "3.14"
 mypy_path = "src"
 packages = ["avaliador_b3"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+# Por pasta, e não pelo nome do pacote: o app/main.py é um script que o Streamlit executa (nos
+# testes, pelo AppTest) e o coverage só o registra pelo caminho do arquivo.
+source = ["src/avaliador_b3"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

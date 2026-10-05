@@ -23,6 +23,10 @@ data/processed/*
 data/processed/screener.csv.novo
 data/processed/screener.rejeitado.csv
 
+# Cobertura de testes (pytest-cov)
+.coverage
+htmlcov/
+
 # Python
 __pycache__/
 *.pyc
