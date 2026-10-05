@@ -2730,7 +2730,7 @@ def test_cartao_do_fcd_avisa_quando_o_valor_e_muito_acima_do_preco(monkeypatch):
     assert not at.exception
     avisos = _avisos_de_valor_extremo(at)
     assert len(avisos) == 1
-    assert avisos[0].startswith("Valor muito acima do preço. O FCD de R\$ 109.")
+    assert avisos[0].startswith("Valor muito acima do preço. O FCD de R\\$ 109.")
     assert "Causa provável, nas entradas do modelo." in avisos[0]
     assert avisos[0].endswith("Não é necessariamente uma oportunidade.")
 
@@ -2744,9 +2744,9 @@ def test_cartao_do_fcd_avisa_quando_o_valor_e_negativo(monkeypatch):
     assert not at.exception
     avisos = _avisos_de_valor_extremo(at)
     assert len(avisos) == 1
-    assert avisos[0].startswith("Valor negativo. O FCD de −R\$ ")
+    assert avisos[0].startswith("Valor negativo. O FCD de −R\\$ ")
     assert "não quer dizer que a ação valha menos que zero" in avisos[0]
-    assert "As deduções somam R\$ 50,0 mi" in avisos[0]
+    assert "As deduções somam R\\$ 50,0 mi" in avisos[0]
 
 
 def test_cartao_do_fcd_avisa_quando_o_valor_e_minusculo_frente_ao_preco(monkeypatch):
@@ -2759,7 +2759,7 @@ def test_cartao_do_fcd_avisa_quando_o_valor_e_minusculo_frente_ao_preco(monkeypa
     assert not at.exception
     avisos = _avisos_de_valor_extremo(at)
     assert len(avisos) == 1
-    assert avisos[0].startswith("Valor muito abaixo do preço. O FCD de R\$ 2,0")
+    assert avisos[0].startswith("Valor muito abaixo do preço. O FCD de R\\$ 2,0")
 
 
 def test_cartao_do_fcd_nao_avisa_quando_o_valor_esta_perto_do_preco(monkeypatch):

@@ -27,12 +27,13 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 mypy_path = "src"
 packages = ["avaliador_b3"]
 ignore_missing_imports = true
