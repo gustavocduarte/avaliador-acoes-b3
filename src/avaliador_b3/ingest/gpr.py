@@ -25,7 +25,7 @@ import pandas as pd
 import requests
 
 from avaliador_b3.config import DATA_RAW_DIR, DIAS_VALIDADE_CACHE_GPR_DIARIO, URLS_GPR
-from avaliador_b3.ingest._cache import cache_expirado
+from avaliador_b3.ingest._cache import cache_expirado, gravar_csv_atomico, ler_csv_cache
 
 TIMEOUT_SEGUNDOS = 30
 
@@ -55,6 +55,11 @@ def _limpar_dataframe(df: pd.DataFrame, serie: str) -> pd.DataFrame:
     df = df.rename(columns={coluna_data: "data"})
     df["data"] = pd.to_datetime(df["data"])
     return df.sort_values("data").reset_index(drop=True)
+
+
+def _ler_cache(caminho: Path, serie: str) -> pd.DataFrame | None:
+    colunas = ("data", COLUNA_OBRIGATORIA_POR_SERIE[serie])
+    return ler_csv_cache(caminho, colunas, parse_dates=["data"])
 
 
 def _caminho_cache(serie: str, diretorio_cache: Path) -> Path:
@@ -96,19 +101,22 @@ def obter_gpr(
     )
 
     if usar_cache and not forcar_atualizacao and cache_valido:
-        return pd.read_csv(caminho, parse_dates=["data"])
+        em_cache = _ler_cache(caminho, serie)
+        if em_cache is not None:
+            return em_cache
 
     try:
         resposta = requests.get(URLS_GPR[serie], timeout=TIMEOUT_SEGUNDOS)
         resposta.raise_for_status()
     except requests.RequestException:
-        if caminho.exists():
+        em_cache = _ler_cache(caminho, serie) if caminho.exists() else None
+        if em_cache is not None:
             warnings.warn(
                 f"Falha ao atualizar o GPR ({serie}, cache expirado) — usando "
                 "a versão em cache, possivelmente desatualizada.",
                 stacklevel=2,
             )
-            return pd.read_csv(caminho, parse_dates=["data"])
+            return em_cache
         raise
 
     try:
@@ -123,7 +131,6 @@ def obter_gpr(
     df = _limpar_dataframe(df_bruto, serie)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(caminho, index=False)
+        gravar_csv_atomico(df, caminho)
 
     return df

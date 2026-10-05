@@ -36,6 +36,7 @@ from avaliador_b3.config import (
     TTL_CACHE_DIVIDENDOS_SEGUNDOS,
     TTL_CACHE_PRECOS_SEGUNDOS,
 )
+from avaliador_b3.ingest._cache import gravar_csv_atomico, ler_csv_cache
 
 
 class ErroPrecos(Exception):
@@ -141,8 +142,9 @@ def obter_historico(
     caminho = _caminho_cache(ticker_yahoo, periodo, diretorio_cache, auto_adjust)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
-        em_cache = _sem_fechamento_vazio(pd.read_csv(caminho, parse_dates=["data"]))
-        if not em_cache.empty:
+        bruto = ler_csv_cache(caminho, ("data", "Close"), parse_dates=["data"])
+        em_cache = _sem_fechamento_vazio(bruto) if bruto is not None else None
+        if em_cache is not None and not em_cache.empty:
             return em_cache
 
     if delay_segundos > 0:
@@ -180,8 +182,7 @@ def obter_historico(
     historico["data"] = historico["data"].dt.tz_convert("UTC")
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        historico.to_csv(caminho, index=False)
+        gravar_csv_atomico(historico, caminho)
 
     return historico
 
@@ -240,9 +241,10 @@ def obter_dividendos(
     caminho = _caminho_cache_dividendos(ticker_yahoo, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
-        df_cache = pd.read_csv(caminho)
-        df_cache["data"] = pd.to_datetime(df_cache["data"], utc=True)
-        return df_cache
+        df_cache = ler_csv_cache(caminho, ("data", "dividendo"))
+        if df_cache is not None:
+            df_cache["data"] = pd.to_datetime(df_cache["data"], utc=True)
+            return df_cache
 
     if delay_segundos > 0:
         time.sleep(delay_segundos)
@@ -283,7 +285,6 @@ def obter_dividendos(
         dividendos["data"] = dividendos["data"].dt.tz_convert("UTC")
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        dividendos.to_csv(caminho, index=False)
+        gravar_csv_atomico(dividendos, caminho)
 
     return dividendos

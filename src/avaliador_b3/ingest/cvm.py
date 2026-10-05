@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import re
 import unicodedata
 import warnings
@@ -66,6 +65,7 @@ from avaliador_b3.config import (
     URLS_CVM_ZIP,
     VERSAO_SCHEMA_CVM_FCF,
 )
+from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
 
 TIMEOUT_SEGUNDOS = 60
 # Baixado em pedaços (streaming, nunca o zip inteiro de uma vez em memória)
@@ -609,8 +609,8 @@ def _ler_cache_fcf_com_schema_atual(caminho: Path) -> dict | None:
     `ingest.fundamentus._ler_cache_com_schema_atual`: um cache gravado antes
     de um campo novo seria servido sem ele, e o primeiro código que tentasse
     ler a chave nova quebraria com `KeyError`."""
-    bruto = json.loads(caminho.read_text(encoding="utf-8"))
-    if bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_FCF:
+    bruto = ler_json_cache(caminho)
+    if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_FCF:
         return None
     return bruto.get("resultado")
 
@@ -656,9 +656,8 @@ def obter_fluxo_caixa_livre(
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
-        caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
         envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
-        caminho_resultado.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        gravar_json_atomico(caminho_resultado, envelope)
 
     return resultado
 
@@ -692,9 +691,8 @@ def obter_fluxo_caixa_livre_do_tipo(
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
-        caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
         envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
-        caminho_resultado.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        gravar_json_atomico(caminho_resultado, envelope)
     return resultado
 
 
@@ -879,7 +877,9 @@ def obter_lucro_liquido(
     caminho_resultado = _caminho_cache_resultado(cnpj_normalizado, ano, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
-        return json.loads(caminho_resultado.read_text(encoding="utf-8"))
+        resultado_cache = ler_json_cache(caminho_resultado)
+        if resultado_cache is not None:
+            return resultado_cache
 
     caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
 
@@ -895,7 +895,6 @@ def obter_lucro_liquido(
         raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado no DFP da CVM para {ano}.")
 
     if usar_cache:
-        caminho_resultado.parent.mkdir(parents=True, exist_ok=True)
-        caminho_resultado.write_text(json.dumps(resultado, ensure_ascii=False), encoding="utf-8")
+        gravar_json_atomico(caminho_resultado, resultado)
 
     return resultado

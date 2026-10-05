@@ -52,7 +52,7 @@ from avaliador_b3.config import (
     TAMANHO_PAGINA_API_B3_CATALOGO,
     URL_B3_CATALOGO_EMISSORES,
 )
-from avaliador_b3.ingest._cache import cache_expirado
+from avaliador_b3.ingest._cache import cache_expirado, gravar_csv_atomico, ler_csv_cache
 from avaliador_b3.ingest._paginacao import buscar_registros_paginados, parametros_base64
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 
@@ -111,15 +111,27 @@ def _registro_para_linha(registro: dict) -> dict:
     }
 
 
+COLUNAS_CACHE_CATALOGO = (
+    "codigo_emissor",
+    "codigo_cvm",
+    "cnpj",
+    "nome_empresa",
+    "segmento_setorial",
+)
+COLUNAS_CACHE_CROSSWALK = ("ticker", *COLUNAS_CACHE_CATALOGO)
+
+
 def _caminho_cache_catalogo(diretorio_cache: Path) -> Path:
     return diretorio_cache / "b3" / "catalogo_emissores.csv"
 
 
-def _ler_cache_catalogo(caminho: Path) -> pd.DataFrame:
+def _ler_cache_catalogo(caminho: Path) -> pd.DataFrame | None:
     # Reaplica a normalização de zeros à esquerda (ver _completar_zeros) na
     # leitura: cache gravado sem os zeros continua utilizável, sem baixar
-    # de novo (~36 páginas da API).
-    df = pd.read_csv(caminho, dtype=str)
+    # de novo (~36 páginas da API). Arquivo inválido vira `None` (cache ausente).
+    df = ler_csv_cache(caminho, COLUNAS_CACHE_CATALOGO, dtype=str)
+    if df is None:
+        return None
     df["cnpj"] = df["cnpj"].apply(lambda v: _completar_zeros(v, TAMANHO_CNPJ))
     df["codigo_cvm"] = df["codigo_cvm"].apply(lambda v: _completar_zeros(v, TAMANHO_CODIGO_CVM))
     return df
@@ -160,7 +172,9 @@ def obter_catalogo_emissores(
         and caminho.exists()
         and not cache_expirado(caminho, DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3, hoje)
     ):
-        return _ler_cache_catalogo(caminho)
+        em_cache = _ler_cache_catalogo(caminho)
+        if em_cache is not None:
+            return em_cache
 
     try:
         registros = buscar_registros_paginados(
@@ -169,22 +183,22 @@ def obter_catalogo_emissores(
             delay_segundos=delay_segundos,
         )
     except requests.RequestException:
-        if caminho.exists():
+        em_cache = _ler_cache_catalogo(caminho) if caminho.exists() else None
+        if em_cache is not None:
             warnings.warn(
                 "Falha ao atualizar o catálogo de emissores da B3 (cache "
                 "expirado) — usando a versão em cache, possivelmente "
                 "desatualizada.",
                 stacklevel=2,
             )
-            return _ler_cache_catalogo(caminho)
+            return em_cache
         raise
 
     linhas = [_registro_para_linha(registro) for registro in registros]
     df = pd.DataFrame(linhas).sort_values("codigo_emissor").reset_index(drop=True)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(caminho, index=False)
+        gravar_csv_atomico(df, caminho)
 
     return df
 
@@ -268,7 +282,9 @@ def obter_crosswalk_ibovespa(
     caminho = _caminho_cache_crosswalk(diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho.exists():
-        return pd.read_csv(caminho, dtype=str)
+        em_cache = ler_csv_cache(caminho, COLUNAS_CACHE_CROSSWALK, dtype=str)
+        if em_cache is not None:
+            return em_cache
 
     universo = obter_universo_ibovespa(
         usar_cache=usar_cache,
@@ -285,7 +301,6 @@ def obter_crosswalk_ibovespa(
     df = pd.DataFrame(linhas)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(caminho, index=False)
+        gravar_csv_atomico(df, caminho)
 
     return df

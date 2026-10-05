@@ -25,7 +25,6 @@ schema e TTL — um não substitui o outro, ver docstring de
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +47,7 @@ from avaliador_b3.config import (
     URL_FUNDAMENTUS_DETALHES,
     VERSAO_SCHEMA_FUNDAMENTUS,
 )
+from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
 from avaliador_b3.ingest._retry import get_com_retry
 from avaliador_b3.numeros import numero_finito
 
@@ -212,8 +212,8 @@ def _ler_cache_com_schema_atual(caminho: Path) -> dict | None:
     cacheado sem um campo novo (formato sem envelope de versão): quando
     `CAMPOS_FUNDAMENTUS`/`CAMPOS_FUNDAMENTUS_OPCIONAIS` ganham um campo, o
     primeiro código que lesse a chave nova quebraria com KeyError."""
-    bruto = json.loads(caminho.read_text(encoding="utf-8"))
-    if bruto.get("versao_schema") != VERSAO_SCHEMA_FUNDAMENTUS:
+    bruto = ler_json_cache(caminho)
+    if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_FUNDAMENTUS:
         return None
     return bruto.get("indicadores")
 
@@ -286,8 +286,7 @@ def obter_indicadores(
     indicadores = _montar_indicadores(ticker, rotulos_valores)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
         envelope = {"versao_schema": VERSAO_SCHEMA_FUNDAMENTUS, "indicadores": indicadores}
-        caminho.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        gravar_json_atomico(caminho, envelope)
 
     return indicadores

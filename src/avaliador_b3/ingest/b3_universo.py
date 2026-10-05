@@ -36,7 +36,7 @@ from avaliador_b3.config import (
     TAMANHO_PAGINA_API_B3_UNIVERSO,
     URL_B3_PORTFOLIO_DIA,
 )
-from avaliador_b3.ingest._cache import cache_expirado
+from avaliador_b3.ingest._cache import cache_expirado, gravar_csv_atomico, ler_csv_cache
 from avaliador_b3.ingest._paginacao import buscar_registros_paginados, parametros_base64
 
 CAMPOS_OBRIGATORIOS_REGISTRO = {"cod", "asset", "type", "part"}
@@ -79,6 +79,9 @@ def _registro_para_linha(registro: dict) -> dict:
     }
 
 
+COLUNAS_CACHE_UNIVERSO = ("ticker", "nome", "segmento_listagem", "tipo_bruto", "peso_percentual")
+
+
 def _caminho_cache(diretorio_cache: Path) -> Path:
     return diretorio_cache / "b3" / "universo_ibovespa.csv"
 
@@ -118,7 +121,9 @@ def obter_universo_ibovespa(
         and caminho.exists()
         and not cache_expirado(caminho, DIAS_VALIDADE_CACHE_UNIVERSO_IBOVESPA, hoje)
     ):
-        return pd.read_csv(caminho)
+        em_cache = ler_csv_cache(caminho, COLUNAS_CACHE_UNIVERSO)
+        if em_cache is not None:
+            return em_cache
 
     try:
         registros = buscar_registros_paginados(
@@ -127,20 +132,20 @@ def obter_universo_ibovespa(
             delay_segundos=delay_segundos,
         )
     except requests.RequestException:
-        if caminho.exists():
+        em_cache = ler_csv_cache(caminho, COLUNAS_CACHE_UNIVERSO) if caminho.exists() else None
+        if em_cache is not None:
             warnings.warn(
                 "Falha ao atualizar o universo do Ibovespa (cache expirado) — "
                 "usando a versão em cache, possivelmente desatualizada.",
                 stacklevel=2,
             )
-            return pd.read_csv(caminho)
+            return em_cache
         raise
 
     linhas = [_registro_para_linha(registro) for registro in registros]
     df = pd.DataFrame(linhas).sort_values("ticker").reset_index(drop=True)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(caminho, index=False)
+        gravar_csv_atomico(df, caminho)
 
     return df

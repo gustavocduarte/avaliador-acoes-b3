@@ -15,7 +15,6 @@ por quê; nunca cai para outra data em silêncio.
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from pathlib import Path
 
@@ -53,6 +52,7 @@ from avaliador_b3.config import (
     UNITS_COMPOSICAO,
     VERSAO_SCHEMA_CVM_BALANCO,
 )
+from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
 from avaliador_b3.ingest.cvm import (
     ErroCVM,
     _baixar_zip_ano,
@@ -172,8 +172,8 @@ def _caminho_cache(cnpj_normalizado: str, data_base: str, diretorio_cache: Path)
 
 def _ler_cache(caminho: Path) -> dict | None:
     """Lê o cache só se a versão do schema bater (mesmo mecanismo do FCF)."""
-    bruto = json.loads(caminho.read_text(encoding="utf-8"))
-    if bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_BALANCO:
+    bruto = ler_json_cache(caminho)
+    if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_BALANCO:
         return None
     return bruto.get("resultado")
 
@@ -271,9 +271,8 @@ def obter_balanco_cvm(
         "capital": capital,
     }
     if usar_cache:
-        caminho_cache.parent.mkdir(parents=True, exist_ok=True)
         envelope = {"versao_schema": VERSAO_SCHEMA_CVM_BALANCO, "resultado": resultado}
-        caminho_cache.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        gravar_json_atomico(caminho_cache, envelope)
     return resultado
 
 

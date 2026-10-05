@@ -46,6 +46,12 @@ from avaliador_b3.config import (
     VALIDADE_MACRO_GUARDADO_DIAS,
     VALIDADE_MACRO_REFERENCIA_DIAS,
 )
+from avaliador_b3.ingest._cache import (
+    gravar_csv_atomico,
+    gravar_json_atomico,
+    ler_csv_cache,
+    ler_json_cache,
+)
 from avaliador_b3.ingest._retry import get_com_retry, post_com_retry
 from avaliador_b3.ingest.ibge_sidra import obter_ipca_mensal_sidra
 
@@ -153,7 +159,9 @@ def obter_serie(
     caminho = _caminho_cache(codigo, data_inicial, data_final, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho.exists():
-        return pd.read_csv(caminho, parse_dates=["data"])
+        em_cache = ler_csv_cache(caminho, ("data", "valor"), parse_dates=["data"])
+        if em_cache is not None:
+            return em_cache
 
     url = _montar_url(codigo, data_inicial, data_final)
     resposta = _get_com_retry(url)
@@ -161,8 +169,7 @@ def obter_serie(
     df = _registros_para_dataframe(registros)
 
     if usar_cache:
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(caminho, index=False)
+        gravar_csv_atomico(df, caminho)
 
     return df
 
@@ -280,18 +287,16 @@ def _gravar_macro(
     fonte_selic: str,
     fonte_ipca: str,
 ) -> None:
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.write_text(
-        json.dumps(
-            {
-                "selic_meta": selic_meta,
-                "ipca_12m": ipca_12m,
-                "data_ipca": data_ipca.strftime("%Y-%m-%d"),
-                "data_busca": data_busca.isoformat(),
-                "fonte_selic": fonte_selic,
-                "fonte_ipca": fonte_ipca,
-            }
-        )
+    gravar_json_atomico(
+        caminho,
+        {
+            "selic_meta": selic_meta,
+            "ipca_12m": ipca_12m,
+            "data_ipca": data_ipca.strftime("%Y-%m-%d"),
+            "data_busca": data_busca.isoformat(),
+            "fonte_selic": fonte_selic,
+            "fonte_ipca": fonte_ipca,
+        },
     )
 
 
@@ -336,15 +341,17 @@ def _carregar_ultimo_macro(diretorio_cache: Path) -> dict | None:
 def _ler_macro(caminho: Path) -> dict | None:
     if not caminho.exists():
         return None
+    dados = ler_json_cache(caminho)
+    if dados is None:
+        return None
     try:
-        dados = json.loads(caminho.read_text())
         return {
             "selic_meta": float(dados["selic_meta"]),
             "ipca_12m": float(dados["ipca_12m"]),
             "data_ipca": pd.Timestamp(dados["data_ipca"]),
             "data_busca": pd.Timestamp(dados["data_busca"]),
         }
-    except (json.JSONDecodeError, KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return None
 
 
