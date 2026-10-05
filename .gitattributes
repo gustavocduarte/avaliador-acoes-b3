@@ -1,0 +1,7 @@
+# Fim de linha: texto sempre com LF no repositório e na cópia de trabalho (Windows, Linux e CI iguais).
+* text=auto eol=lf
+
+# Binários: sem conversão de fim de linha.
+*.zip binary
+*.png binary
+*.jpg binary
