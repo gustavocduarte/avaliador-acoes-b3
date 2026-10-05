@@ -1,14 +1,64 @@
 # Avaliador de Ações da B3
 
-Ferramenta de avaliação de valor justo para as ações do Ibovespa (bolsa
-brasileira), com projeções apresentadas como cenários
-(pessimista/base/otimista) — nunca como um número único.
+Dashboard em Python que estima o valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado, com os dados atualizados todo dia útil por um workflow do GitHub Actions.
+
+[![CI](https://github.com/gustavocduarte/avaliador-acoes-b3/actions/workflows/ci.yml/badge.svg)](https://github.com/gustavocduarte/avaliador-acoes-b3/actions/workflows/ci.yml)
+[![Atualiza o screener](https://github.com/gustavocduarte/avaliador-acoes-b3/actions/workflows/atualiza-screener.yml/badge.svg)](https://github.com/gustavocduarte/avaliador-acoes-b3/actions/workflows/atualiza-screener.yml)
 
 **App publicado:** https://gustavocduarte-avaliador-acoes-b3.streamlit.app
 
-**Aviso:** os valores são estimativas de modelos com premissas simplificadas, para estudo. Não é recomendação de investimento.
+**Aviso:** os valores são estimativas de modelos com premissas simplificadas, para estudo. Não é recomendação de investimento. As limitações dos modelos e dos dados estão em [`docs/limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md).
 
-As limitações dos modelos e dos dados estão em [`docs/limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md).
+![Página de uma ação (PETR4): preço atual, valor justo por Graham, Bazin e FCD e valor combinado](docs/img/acao.png)
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    subgraph fontes["Fontes de dados"]
+        direction TB
+        YF["Yahoo Finance"]
+        FU["Fundamentus"]
+        CV["CVM (dados abertos)"]
+        B3["B3"]
+        BC["Banco Central e IBGE"]
+        GP["GPR"]
+    end
+
+    subgraph gha["GitHub Actions (seg a sex, 19:17 de Brasília)"]
+        direction LR
+        ING["Ingestão<br/>cache por validade e por schema,<br/>cadeia de fontes com fallback"]
+        CALC["Cálculo<br/>Graham, Bazin, FCD<br/>e valor combinado"]
+        CHK{"Checagem<br/>da rodada"}
+        ING --> CALC --> CHK
+    end
+
+    CSV[("screener.csv<br/>versionado")]
+    APP["App Streamlit<br/>Community Cloud"]
+    REJ["Rodada rejeitada:<br/>mantém o CSV anterior<br/>e a execução falha"]
+
+    fontes --> ING
+    CHK -- aceita --> CSV
+    CHK -- rejeitada --> REJ
+    CSV --> APP
+    fontes -. "página de uma ação (ao vivo)" .-> APP
+```
+
+## Destaques técnicos
+
+- **Cadeia de fontes com fallback:** a Selic e o IPCA passam pela API do Banco Central, pelo serviço SOAP, pelo IBGE (só o IPCA), pelo último valor guardado e pelo arquivo de referência versionado; a tela informa a fonte efetiva. O ano da demonstração da CVM é detectado por empresa, e a empresa que ainda não entregou o ano mais recente usa o anterior.
+- **Checagem que impede publicar rodada ruim:** a rodada só substitui o `screener.csv` se tiver uma linha por ação, no máximo 5 ações sem preço e no máximo 5 com falha de fonte; senão vira `screener.rejeitado.csv`, o resultado anterior fica e a execução do workflow falha.
+- **Gravação atômica:** o screener e os zips da CVM são gravados num arquivo temporário e trocados no fim, então uma falha no meio nunca corrompe o arquivo anterior.
+- **Cache versionado por schema:** cada cache em disco leva a versão do formato, e uma mudança de formato invalida os arquivos antigos; os zips do ano corrente da CVM expiram em 7 dias e os de anos fechados são permanentes.
+- **Testes sem rede:** mais de 800 testes, com **96% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
+- **Tipagem e CI:** `mypy` e `ruff` em todo o código, e um workflow que roda testes, lint, formatação e tipos a cada push e pull request.
+- **Decisões registradas:** cada mudança de metodologia passa por uma investigação só de leitura, com relatório que separa o confirmado nos dados da hipótese (pasta `docs/`).
+
+## Tecnologias
+
+- **Aplicação:** Python 3.12 ou mais recente (o CI roda na 3.14), Streamlit, pandas, NumPy, Plotly, `yfinance`, `requests`, Beautiful Soup e `xlrd`.
+- **Qualidade:** pytest com pytest-cov, ruff e mypy.
+- **Entrega:** GitHub Actions (CI e atualização agendada) e Streamlit Community Cloud (o app publicado).
 
 ## O que o app faz
 
@@ -23,7 +73,7 @@ Para cada ação, calcula o valor justo por três métodos e um valor combinado:
   desconta pelo WACC (ver a metodologia abaixo).
 - **Combinado** — média simples só dos métodos que se aplicam àquela ação.
 
-O dashboard (Streamlit) tem três abas:
+O dashboard tem três abas:
 
 - **Analisar uma ação** — valor justo pelos três métodos e o combinado contra o
   preço atual, saúde financeira (ROE, margem, dívida, valor de mercado e de
@@ -34,12 +84,15 @@ O dashboard (Streamlit) tem três abas:
   potencial, divergência entre métodos, avisos e a proporção do caixa
   operacional reinvestida. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
-  desde o primeiro acesso) e é atualizado pelo botão "Rodar screener agora".
+  desde o primeiro acesso) e é atualizado pelo workflow agendado (ou pelo
+  botão "Rodar screener agora").
 - **Simulador de carteira** — dado um valor investido por ação, mostra o
   potencial da carteira nos cenários pessimista (menor valor entre os métodos
   aplicáveis), base (valor combinado) e otimista (maior valor), a partir do
   resultado já salvo do screener. É potencial sem prazo: o valor justo é um
   valor de hoje, não uma previsão de retorno anual.
+
+![Simulador de carteira: valor investido por ação e potencial nos cenários pessimista, base e otimista](docs/img/simulador.png)
 
 ## Metodologia do FCD
 
@@ -69,12 +122,19 @@ O dashboard (Streamlit) tem três abas:
   participação dos não controladores, e divide-se pelas ações em circulação
   (capital integralizado menos tesouraria, pela composição do capital da CVM).
   Os ajustes vêm do balanço consolidado da CVM na data-base do Fundamentus;
-  componente indisponível fica de fora, e a tela avisa.
+  componente indisponível fica de fora, e a tela avisa. Nas units, a composição
+  da CVM é convertida pelo peso econômico das ações que formam a unit (tabela de
+  composições em `config.py`), e o fator de unit do Fundamentus segue como a fonte
+  do valor por unit; a tela avisa quando ele não bate com a tabela.
 - **Não aplicável:** bancos, seguradoras e a Itaúsa (a dívida e os depósitos são a própria
   operação, ou a empresa vive de dividendos de participações); capex não identificado; fluxo
   de caixa livre do ano de referência zero ou negativo; empresa sem dados de fluxo de caixa na
   CVM; número de ações indisponível; WACC não positivo. Valor justo zero ou negativo é mostrado
   com aviso, não zerado.
+- **Aviso de valor extremo:** quando o FCD é zero ou negativo, a partir de 3 vezes o preço ou
+  positivo mas até 10% do preço, o cartão do FCD mostra a causa provável nas entradas do modelo
+  (deduções acima do valor da empresa, crescimento no teto ou no piso da faixa, perpetuidade
+  pesada, WACC baixo). É só informativo: não altera o valor.
 
 A justificativa de cada constante está em `src/avaliador_b3/config.py`.
 
@@ -99,7 +159,7 @@ Quando o dado não vem da API REST do Banco Central, a página informa a fonte
 efetiva, e quando vem do valor guardado ou do arquivo de referência, mostra um
 aviso com a data.
 
-## Instalação e execução
+## Instalação, execução e testes
 
 Requer **Python 3.12 ou mais recente**.
 
@@ -118,10 +178,11 @@ Para só rodar o app (é o que o Streamlit Community Cloud instala):
 pip install -r requirements.txt
 ```
 
-Para desenvolver (inclui pytest, ruff e mypy):
+Para desenvolver (inclui pytest, pytest-cov, ruff e mypy; o `-e .` instala o pacote em modo
+editável, o que permite rodar `python -m avaliador_b3.rodar_screener` de qualquer pasta):
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -e .
 ```
 
 Rodar o dashboard, a partir da raiz do repositório:
@@ -130,13 +191,19 @@ Rodar o dashboard, a partir da raiz do repositório:
 streamlit run src/avaliador_b3/app/main.py
 ```
 
-Rodar os testes e as verificações de código:
+Rodar os testes e as verificações de código (as mesmas do CI):
 
 ```bash
 pytest
 ruff check .
 ruff format --check src tests
 python -m mypy
+```
+
+Relatório de cobertura (hoje, 96%):
+
+```bash
+pytest --cov --cov-report=term-missing:skip-covered
 ```
 
 Os testes não acessam a rede e não gravam em `data/`.
@@ -151,20 +218,17 @@ O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions,
 - **Agendamento parado:** em repositório público, o GitHub desliga os agendamentos depois de 60 dias sem atividade no repositório; para reativar, use a aba Actions.
 - **Onde ver as execuções:** na aba **Actions** do repositório (<https://github.com/gustavocduarte/avaliador-acoes-b3/actions>), workflow "Atualiza o screener". Cada execução mostra o resumo da rodada (aceita ou rejeitada, falhas de fonte, fonte da Selic e do IPCA, data dos preços, se houve commit) e, no fim da página, o artifact `screener-<número>` para baixar. Os commits do workflow aparecem no histórico do `master` com o autor `github-actions[bot]`.
 - **Rodar manualmente:** Actions, "Atualiza o screener", "Run workflow". Uma execução manual no `master` também commita, nas mesmas condições.
-- **Pela linha de comando**, a partir da raiz do repositório (é o mesmo procedimento do botão "Rodar screener agora" e grava o `data/processed/screener.csv`):
+- **Pela linha de comando**, a partir da raiz do repositório e com o pacote instalado (`pip install -e .`); é o mesmo procedimento do botão "Rodar screener agora" e grava o `data/processed/screener.csv`:
 
   ```bash
-  # Linux/macOS:
-  PYTHONPATH=src python -m avaliador_b3.rodar_screener
-  # Windows (PowerShell):
-  $env:PYTHONPATH = "src"; python -m avaliador_b3.rodar_screener
+  python -m avaliador_b3.rodar_screener
   ```
 
   Sai com 0 quando a rodada é aceita, 1 quando a checagem a rejeita e 2 quando uma exceção a interrompe.
 
 ## Documentação técnica
 
-A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto:
+A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto. O processo é sempre o mesmo: uma auditoria ou vistoria aponta um problema, o problema é confirmado no código antes de qualquer correção, uma investigação só de leitura compara as alternativas (separando o confirmado nos dados da hipótese) e a decisão é registrada antes de implementar.
 
 - `especificacao.md` — especificação original do projeto.
 - `limitacoes-conhecidas.md` — limitações dos modelos e dos dados, para quem usa o app.
@@ -175,7 +239,11 @@ A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto:
 - Correções: `correcoes-2026-09-22.md`, `correcao-fcd-2026-09-23.md`,
   `correcao-ano-fcd-2026-09-23.md` e `correcao-cnpj-2026-09-25.md`.
 - Investigações: `investigacao-p03-p04-2026-10-02.md` (valor por ação do FCD,
-  não controladores, número de ações e as decisões que resultaram nele).
+  não controladores, número de ações, fator de unit e as decisões que resultaram nele),
+  `investigacao-p10-2026-10-04.md` (crescimento do FCD e prêmio de risco),
+  `investigacao-fluxo-base-2026-10-04.md` (capital de giro e risco sacado) e
+  `investigacao-ciclicas-2026-10-04.md` (normalização do fluxo-base das empresas cíclicas,
+  ainda não implementada).
 
 ## Sobre o uso de IA no desenvolvimento
 
@@ -185,3 +253,7 @@ e de metodologia (o que construir, o que descartar, como tratar cada limitação
 aprovação de cada mudança antes do commit foram minhas. Exemplo de algo descartado: um monitor
 de risco geopolítico via GDELT, removido depois de mostrar falsos positivos recorrentes que os
 filtros não resolviam.
+
+## Licença
+
+Distribuído sob a licença MIT. Veja o arquivo [`LICENSE`](LICENSE).
