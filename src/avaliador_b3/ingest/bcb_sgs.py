@@ -40,6 +40,7 @@ from avaliador_b3.config import (
     PAUSAS_RETRY_FONTE_SECUNDARIA_SEGUNDOS,
     PAUSAS_RETRY_SEGUNDOS,
     SERIES_BCB_SGS,
+    SUFIXO_ORIGEM_FONTE_GUARDADA,
     TIMEOUT_SEGUNDOS_BCB_SGS,
     TIMEOUT_SEGUNDOS_BCB_SOAP,
     URL_BCB_SOAP,
@@ -259,7 +260,7 @@ def obter_serie_com_fallback(
 class ResultadoMacro:
     """Selic meta e IPCA acumulado 12 meses, com a proveniência do dado —
     ver `obter_selic_e_ipca`. `fonte_selic` e `fonte_ipca` dizem de onde veio cada
-    valor (ex.: "BCB (API)", "BCB (SOAP)", "valor guardado de 29/09/2026")."""
+    valor (ex.: "BCB (API)", "BCB (SOAP)", "valor guardado de 29/09/2026 (origem: BCB (SOAP))")."""
 
     selic_meta: float
     ipca_12m: float
@@ -338,6 +339,19 @@ def _carregar_ultimo_macro(diretorio_cache: Path) -> dict | None:
     return _ler_macro(_caminho_ultimo_macro(diretorio_cache))
 
 
+def _fonte_gravada(valor: object) -> str | None:
+    """Fonte registrada na gravação, ou `None` se o arquivo é antigo ou o campo não é texto."""
+    return valor if isinstance(valor, str) and valor else None
+
+
+def _fonte_do_guardado(modelo: str, guardado: dict, chave: str) -> str:
+    """Texto da fonte de um valor guardado: o modelo (com a data da busca) e, se o arquivo
+    registrou, a fonte de onde o valor veio na busca original."""
+    fonte = modelo.format(data=f"{guardado['data_busca']:%d/%m/%Y}")
+    origem = guardado.get(chave)
+    return fonte + SUFIXO_ORIGEM_FONTE_GUARDADA.format(origem=origem) if origem else fonte
+
+
 def _ler_macro(caminho: Path) -> dict | None:
     if not caminho.exists():
         return None
@@ -350,6 +364,8 @@ def _ler_macro(caminho: Path) -> dict | None:
             "ipca_12m": float(dados["ipca_12m"]),
             "data_ipca": pd.Timestamp(dados["data_ipca"]),
             "data_busca": pd.Timestamp(dados["data_busca"]),
+            "fonte_selic": _fonte_gravada(dados.get("fonte_selic")),
+            "fonte_ipca": _fonte_gravada(dados.get("fonte_ipca")),
         }
     except (KeyError, TypeError, ValueError):
         return None
@@ -490,15 +506,14 @@ def obter_selic_e_ipca(diretorio_cache: Path = DATA_RAW_DIR) -> ResultadoMacro:
             if guardado is None:
                 continue
             if (pd.Timestamp(hoje) - guardado["data_busca"]).days <= validade_dias:
-                fonte = modelo_fonte.format(data=f"{guardado['data_busca']:%d/%m/%Y}")
                 return ResultadoMacro(
                     selic_meta=guardado["selic_meta"],
                     ipca_12m=guardado["ipca_12m"],
                     data_ipca=guardado["data_ipca"],
                     usou_valor_guardado=True,
                     data_busca=guardado["data_busca"],
-                    fonte_selic=fonte,
-                    fonte_ipca=fonte,
+                    fonte_selic=_fonte_do_guardado(modelo_fonte, guardado, "fonte_selic"),
+                    fonte_ipca=_fonte_do_guardado(modelo_fonte, guardado, "fonte_ipca"),
                 )
         if isinstance(erro, DadosMacroInsuficientesError):
             raise

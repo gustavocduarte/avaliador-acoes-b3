@@ -1588,3 +1588,40 @@ def test_valor_ausente_nao_conta_como_nao_finito(ambiente_feliz, tmp_path):
 
     assert resultado["bazin_preco_teto"].isna().all()
     assert resultado.attrs["valores_nao_finitos"] == {}
+
+
+# --- Ordem de gravação do CSV e do arquivo de referência ---
+
+
+def test_falha_ao_gravar_a_referencia_nao_troca_o_csv_e_nao_deixa_temporarios(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    antigo = '{"selic_meta": 0.99, "marca": "ANTIGO"}'
+    (tmp_path / "macro_referencia.json").write_text(antigo, encoding="utf-8")
+
+    def falha(macro, caminho):
+        caminho.write_text("parcial", encoding="utf-8")
+        raise OSError("disco cheio (simulado)")
+
+    monkeypatch.setattr(screener, "salvar_macro_referencia", falha)
+
+    with pytest.raises(OSError, match="disco cheio"):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert (tmp_path / "macro_referencia.json").read_text(encoding="utf-8") == antigo
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == [
+        "macro_referencia.json",
+        "screener.csv",
+    ]
+
+
+def test_rodada_aceita_troca_o_csv_e_a_referencia_sem_deixar_temporarios(ambiente_feliz, tmp_path):
+    _rodar_com_oficial_antigo(tmp_path)
+
+    arquivos = sorted(p.name for p in tmp_path.iterdir() if p.is_file())
+    assert arquivos == ["macro_referencia.json", "screener.csv"]
+    assert (
+        json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))["fonte_selic"]
+        == "BCB (SOAP)"
+    )

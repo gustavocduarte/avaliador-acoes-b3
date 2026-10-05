@@ -1499,6 +1499,9 @@ FONTE_IBGE = "IBGE (SIDRA)"
 FONTE_BCB_API = "BCB (API)"
 FONTE_BCB_SOAP = "BCB (SOAP)"
 FONTE_VALOR_GUARDADO = "valor guardado de {data}"
+# Acrescentado à fonte de um valor guardado ou do arquivo de referência, com a fonte de
+# onde ele veio na busca original; arquivos antigos, sem essa informação, ficam sem o sufixo.
+SUFIXO_ORIGEM_FONTE_GUARDADA = " (origem: {origem})"
 
 # Textos da tela sobre a origem da Selic e do IPCA quando não vêm da API REST do Banco Central.
 FRASE_FONTE_MACRO = {

@@ -782,7 +782,10 @@ def test_tudo_falha_e_o_arquivo_de_referencia_e_usado_com_a_data(monkeypatch, tm
     assert resultado.usou_valor_guardado is True
     assert resultado.selic_meta == pytest.approx(0.1425)
     assert resultado.ipca_12m == pytest.approx(0.05)
-    assert resultado.fonte_selic == f"arquivo de referência de {data_esperada}"
+    assert resultado.fonte_selic == f"arquivo de referência de {data_esperada} (origem: BCB (SOAP))"
+    assert (
+        resultado.fonte_ipca == f"arquivo de referência de {data_esperada} (origem: IBGE (SIDRA))"
+    )
 
 
 def test_arquivo_de_referencia_vencido_e_ignorado(monkeypatch, tmp_path):
@@ -936,3 +939,63 @@ def test_post_com_retry_502_depois_sucesso_usa_o_valor_novo(monkeypatch):
 
     assert resposta.status_code == 200
     assert pausas == [2]
+
+
+def _semear_ultimo_macro_com_fontes(diretorio_cache, fonte_selic, fonte_ipca) -> None:
+    caminho = diretorio_cache / "bcb" / "ultimo_macro.json"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "selic_meta": 0.1375,
+                "ipca_12m": 0.045,
+                "data_ipca": "2026-08-01",
+                "data_busca": (datetime.now() - timedelta(days=5)).isoformat(),
+                "fonte_selic": fonte_selic,
+                "fonte_ipca": fonte_ipca,
+            }
+        )
+    )
+
+
+def test_valor_guardado_preserva_a_fonte_de_cada_valor(monkeypatch, tmp_path):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_ultimo_macro_com_fontes(tmp_path, "BCB (API)", "IBGE (SIDRA)")
+    data = (datetime.now() - timedelta(days=5)).strftime("%d/%m/%Y")
+
+    with pytest.warns(UserWarning):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.fonte_selic == f"valor guardado de {data} (origem: BCB (API))"
+    assert resultado.fonte_ipca == f"valor guardado de {data} (origem: IBGE (SIDRA))"
+
+
+@pytest.mark.parametrize("invalida", [None, "", 3, ["BCB (API)"]])
+def test_valor_guardado_com_fonte_ausente_ou_invalida_fica_sem_origem(
+    monkeypatch, tmp_path, invalida
+):
+    _todas_as_fontes_vivas_falham(monkeypatch)
+    _semear_ultimo_macro_com_fontes(tmp_path, invalida, invalida)
+    data = (datetime.now() - timedelta(days=5)).strftime("%d/%m/%Y")
+
+    with pytest.warns(UserWarning):
+        resultado = bcb_sgs.obter_selic_e_ipca(diretorio_cache=tmp_path)
+
+    assert resultado.fonte_selic == resultado.fonte_ipca == f"valor guardado de {data}"
+
+
+def test_fonte_gravada_na_busca_ao_vivo_volta_na_leitura_do_valor_guardado(tmp_path):
+    bcb_sgs._salvar_ultimo_macro(
+        tmp_path,
+        0.1,
+        0.04,
+        pd.Timestamp("2026-08-01"),
+        datetime(2026, 10, 3),
+        fonte_selic="BCB (SOAP)",
+        fonte_ipca="IBGE (SIDRA)",
+    )
+
+    guardado = bcb_sgs._carregar_ultimo_macro(tmp_path)
+
+    assert guardado is not None
+    assert (guardado["fonte_selic"], guardado["fonte_ipca"]) == ("BCB (SOAP)", "IBGE (SIDRA)")

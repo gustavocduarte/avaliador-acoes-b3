@@ -784,8 +784,21 @@ def rodar_screener(
         os.replace(caminho_novo, caminho_rejeitado)
         raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado, resultado)
 
-    os.replace(caminho_novo, caminho_saida)
+    # O arquivo de referência é preparado antes de trocar o CSV: se a gravação falhar, o
+    # resultado anterior fica como estava.
     macro = resultado.attrs.get("macro")
-    if macro is not None and not macro.usou_valor_guardado:
-        salvar_macro_referencia(macro, caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA))
+    caminho_macro = caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA)
+    caminho_macro_novo = caminho_macro.with_name(caminho_macro.name + ".novo")
+    grava_macro = macro is not None and not macro.usou_valor_guardado
+    try:
+        if grava_macro:
+            salvar_macro_referencia(macro, caminho_macro_novo)
+    except BaseException:
+        caminho_novo.unlink(missing_ok=True)
+        caminho_macro_novo.unlink(missing_ok=True)
+        raise
+
+    os.replace(caminho_novo, caminho_saida)
+    if grava_macro:
+        os.replace(caminho_macro_novo, caminho_macro)
     return resultado
