@@ -41,6 +41,12 @@ DIAS_VALIDADE_CACHE_GPR_DIARIO = 7
 # vem com delay de ~15 min do próprio Yahoo, então cachear por muito tempo
 # só atrasaria mais o preço exibido sem necessidade.
 SUFIXO_TICKER_B3 = ".SA"
+# Formato de ticker da B3: quatro caracteres (o nome da empresa, que pode ter dígito,
+# como em B3SA3) e o número da classe, de um ou dois dígitos (PETR4, BPAC11).
+PADRAO_TICKER_B3 = r"[A-Z][A-Z0-9]{3}[0-9]{1,2}"
+MENSAGEM_TRADINGVIEW_TICKER_INVALIDO = (
+    "Gráfico avançado indisponível: o ticker não está no formato de ticker da B3 (ex.: PETR4)."
+)
 TTL_CACHE_PRECOS_SEGUNDOS = 5 * 60
 
 # Delay entre requisições reais ao yfinance (não aplicado em cache hit) —

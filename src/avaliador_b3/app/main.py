@@ -7,6 +7,8 @@ de cálculo é reimplementada aqui.
 Rodar com: streamlit run src/avaliador_b3/app/main.py
 """
 
+import json
+import re
 import sys
 import warnings
 from datetime import datetime, timedelta
@@ -44,8 +46,10 @@ from avaliador_b3.config import (
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
     NOMES_METODOS,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
+    PADRAO_TICKER_B3,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
@@ -456,14 +460,30 @@ def _buscar_macro() -> tuple[ResultadoMacro | None, str | None]:
         return None, str(erro)
 
 
-def _widget_avancado_tradingview(ticker: str) -> str:
+def _widget_avancado_tradingview(ticker: str) -> str | None:
     """HTML do widget "Advanced Chart" do TradingView (embutido via
     st.components.v1.html), símbolo montado dinamicamente a partir do
     ticker buscado na tela — ver
-    https://br.tradingview.com/widget/advanced-chart/. Puramente
-    HTML/JS estático interpolado, sem lógica Python nossa por trás; se o
-    JavaScript não carregar (rede/ambiente restrito), o widget só fica em
+    https://br.tradingview.com/widget/advanced-chart/. Só aceita ticker no formato
+    da B3 (`PADRAO_TICKER_B3`); qualquer outro texto devolve `None`, sem HTML. A
+    configuração vai como JSON serializado (`json.dumps`), nunca por interpolação.
+    Se o JavaScript não carregar (rede/ambiente restrito), o widget só fica em
     branco, sem quebrar o resto da página."""
+    if not re.fullmatch(PADRAO_TICKER_B3, ticker):
+        return None
+    configuracao = json.dumps(
+        {
+            "autosize": True,
+            "symbol": f"BMFBOVESPA:{ticker}",
+            "interval": "D",
+            "timezone": "America/Sao_Paulo",
+            "theme": "dark",
+            "style": "1",
+            "locale": "br",
+            "allow_symbol_change": True,
+            "support_host": "https://www.tradingview.com",
+        }
+    ).replace("<", "\\u003c")
     return f"""
     <style>html, body {{ height: 100%; margin: 0; }}</style>
     <div class="tradingview-widget-container" style="height:100%;width:100%">
@@ -472,17 +492,7 @@ def _widget_avancado_tradingview(ticker: str) -> str:
       <script type="text/javascript"
         src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"
         async>
-      {{
-        "autosize": true,
-        "symbol": "BMFBOVESPA:{ticker}",
-        "interval": "D",
-        "timezone": "America/Sao_Paulo",
-        "theme": "dark",
-        "style": "1",
-        "locale": "br",
-        "allow_symbol_change": true,
-        "support_host": "https://www.tradingview.com"
-      }}
+      {configuracao}
       </script>
     </div>
     """
@@ -1628,7 +1638,11 @@ with aba_analisar:
             "com JavaScript bloqueado/restrito, o gráfico ao vivo pode não "
             "carregar."
         )
-        components.html(_widget_avancado_tradingview(ticker), height=520)
+        html_tradingview = _widget_avancado_tradingview(ticker)
+        if html_tradingview is None:
+            st.info(MENSAGEM_TRADINGVIEW_TICKER_INVALIDO)
+        else:
+            components.html(html_tradingview, height=520)
 
         st.divider()
         coluna_dividendos, coluna_comparacao_setorial = st.columns(2)
