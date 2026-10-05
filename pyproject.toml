@@ -10,7 +10,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 mypy_path = "src"
 packages = ["avaliador_b3"]
 ignore_missing_imports = true
