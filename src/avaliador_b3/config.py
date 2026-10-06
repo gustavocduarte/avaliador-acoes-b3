@@ -895,6 +895,22 @@ FONTE_CVM = "CVM"
 FONTE_YAHOO = "Yahoo"
 FONTE_BCB = "Banco Central"
 TEXTO_SCREENER_CONCLUIDO = "Screener concluído — resultado salvo em disco."
+# O botão "Rodar screener agora" só aparece com este opt-in, lido da variável de ambiente ou
+# do secret de mesmo nome (`.streamlit/secrets.toml`, que não é versionado), negado por padrão:
+# no app publicado qualquer visitante poderia disparar ~228 requisições reais e a gravação.
+VARIAVEL_PERMITIR_RODAR_SCREENER = "AVALIADOR_B3_PERMITIR_RODAR_SCREENER"
+VALORES_PERMITIR_RODAR_SCREENER = frozenset({"1", "true", "yes", "sim", "on"})
+TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW = (
+    "O screener é atualizado automaticamente pelo workflow nos dias úteis. "
+    "Última atualização: {data}. O dado é salvo, não ao vivo."
+)
+TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA = (
+    "O screener é atualizado automaticamente pelo workflow nos dias úteis. "
+    "O dado é salvo, não ao vivo."
+)
+TEXTO_SCREENER_AINDA_NAO_GERADO = (
+    "O resultado do screener ainda não está disponível; o workflow o atualiza nos dias úteis."
+)
 TEXTO_SCREENER_CONCLUIDO_COM_FALHAS = (
     "Screener concluído com falhas de fonte em: {acoes}. Nessas ações, algum "
     "método pode ter ficado de fora."

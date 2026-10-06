@@ -323,6 +323,12 @@ def _salvar_ultimo_macro(
     )
 
 
+def carregar_macro_referencia() -> dict | None:
+    """Selic, IPCA, fontes e data da busca do arquivo de referência versionado (gravado a
+    cada rodada aceita do screener); `None` se não existir ou estiver inválido."""
+    return _ler_macro(_caminho_macro_referencia())
+
+
 def salvar_macro_referencia(resultado: ResultadoMacro, caminho: Path) -> None:
     """Grava no arquivo de referência (versionado com o screener.csv) a Selic, o IPCA, as
     fontes e a data da busca de um resultado obtido ao vivo."""

@@ -8,6 +8,7 @@ Rodar com: streamlit run src/avaliador_b3/app/main.py
 """
 
 import json
+import os
 import re
 import sys
 import warnings
@@ -22,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from avaliador_b3.carteira import (
     calcular_totais_carteira,
@@ -73,6 +75,9 @@ from avaliador_b3.config import (
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
+    TEXTO_SCREENER_AINDA_NAO_GERADO,
+    TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW,
+    TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
@@ -86,6 +91,8 @@ from avaliador_b3.config import (
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
     TOOLTIP_VALOR_FIRMA,
+    VALORES_PERMITIR_RODAR_SCREENER,
+    VARIAVEL_PERMITIR_RODAR_SCREENER,
     YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
@@ -105,6 +112,7 @@ from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
 from avaliador_b3.ingest.bcb_sgs import (
     ResultadoMacro,
+    carregar_macro_referencia,
     obter_selic_e_ipca,
     obter_serie_com_fallback,
 )
@@ -881,8 +889,40 @@ def _carregar_screener_ou_avisar(caminho: Path, instrucao: str) -> pd.DataFrame 
     uma vez; o aviso já é mostrado aqui dentro quando não há nada salvo."""
     tabela = _carregar_screener_salvo(caminho)
     if tabela is None:
-        _aviso_screener_vazio(instrucao)
+        if _rodar_screener_permitido():
+            _aviso_screener_vazio(instrucao)
+        else:
+            st.info(TEXTO_SCREENER_AINDA_NAO_GERADO)
     return tabela
+
+
+def _opt_in_ligado(valor: object) -> bool:
+    """Valor de variável de ambiente ou de secret que liga o opt-in (`True`, "1", "true",
+    "yes", "sim" ou "on", sem diferenciar maiúsculas)."""
+    if isinstance(valor, bool):
+        return valor
+    return str(valor).strip().lower() in VALORES_PERMITIR_RODAR_SCREENER
+
+
+def _rodar_screener_permitido() -> bool:
+    """O botão "Rodar screener agora" só existe quando quem opera o servidor liga
+    `VARIAVEL_PERMITIR_RODAR_SCREENER` (variável de ambiente ou secret); sem isso, como no
+    app publicado, o screener só é atualizado pelo workflow."""
+    if _opt_in_ligado(os.environ.get(VARIAVEL_PERMITIR_RODAR_SCREENER)):
+        return True
+    try:
+        return _opt_in_ligado(st.secrets.get(VARIAVEL_PERMITIR_RODAR_SCREENER))
+    except StreamlitSecretNotFoundError:
+        return False
+
+
+def _texto_screener_atualizado_pelo_workflow() -> str:
+    """Aviso do app publicado, com a data da última rodada ao vivo aceita (a do arquivo de
+    referência, gravado a cada rodada); o horário do arquivo no disco seria o do deploy."""
+    macro = carregar_macro_referencia()
+    if macro is None:
+        return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA
+    return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW.format(data=_fmt_data(macro["data_busca"]))
 
 
 ABA_ANALISAR = "Analisar uma ação"
@@ -1921,7 +1961,13 @@ with aba_screener:
             "da faixa normal."
         )
 
-    if st.button("Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)):
+    rodar_screener_permitido = _rodar_screener_permitido()
+    if not rodar_screener_permitido:
+        st.info(_texto_screener_atualizado_pelo_workflow())
+
+    if rodar_screener_permitido and st.button(
+        "Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)
+    ):
         st.warning(
             "Isso faz ~228 requisições reais (preço, dividendos e Beta de cada "
             "uma das ~76 ações, com delay entre chamadas) — leva de 5 a 15 "
@@ -2000,11 +2046,12 @@ with aba_screener:
     )
 
     if tabela_screener is not None:
-        atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
-        st.caption(
-            f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
-            "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
-        )
+        if rodar_screener_permitido:
+            atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
+            st.caption(
+                f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
+                "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
+            )
 
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:

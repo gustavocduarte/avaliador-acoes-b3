@@ -38,6 +38,7 @@ from avaliador_b3.config import (
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TICKER_PETROLEO_BRENT,
+    VARIAVEL_PERMITIR_RODAR_SCREENER,
     YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.ingest.bcb_sgs import ResultadoMacro
@@ -98,6 +99,13 @@ def _limpar_cache_streamlit():
     st.cache_data.clear()
     yield
     st.cache_data.clear()
+
+
+@pytest.fixture(autouse=True)
+def _rodar_screener_liberado(monkeypatch):
+    """Os testes desta tela rodam como na execução local: o botão "Rodar screener agora"
+    só existe com o opt-in ligado (ver tests/test_app_screener_opt_in.py)."""
+    monkeypatch.setenv(VARIAVEL_PERMITIR_RODAR_SCREENER, "1")
 
 
 @pytest.fixture(autouse=True)
