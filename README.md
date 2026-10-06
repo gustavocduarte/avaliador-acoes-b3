@@ -84,8 +84,9 @@ O dashboard tem três abas:
   potencial, divergência entre métodos, avisos e a proporção do caixa
   operacional reinvestida. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
-  desde o primeiro acesso) e é atualizado pelo workflow agendado (ou pelo
-  botão "Rodar screener agora").
+  desde o primeiro acesso) e é atualizado pelo workflow agendado. O botão
+  "Rodar screener agora" só aparece na execução local, com o opt-in descrito em
+  "Instalação, execução e testes".
 - **Simulador de carteira** — dado um valor investido por ação, mostra o
   potencial da carteira nos cenários pessimista (menor valor entre os métodos
   aplicáveis), base (valor combinado) e otimista (maior valor), a partir do
@@ -191,6 +192,33 @@ Rodar o dashboard, a partir da raiz do repositório:
 streamlit run src/avaliador_b3/app/main.py
 ```
 
+O botão "Rodar screener agora" (aba Screener) **não aparece por padrão**: no app publicado,
+qualquer visitante poderia disparar uma rodada de ~228 requisições, então o screener só é
+atualizado pelo workflow. Para habilitá-lo na sua máquina, ligue a variável de ambiente
+`AVALIADOR_B3_PERMITIR_RODAR_SCREENER` (valores aceitos: `1`, `true`, `yes`, `sim` ou `on`)
+antes de iniciar o app:
+
+```powershell
+# Windows (PowerShell), na sessão em que vai rodar o app:
+$env:AVALIADOR_B3_PERMITIR_RODAR_SCREENER = "1"
+streamlit run src/avaliador_b3/app/main.py
+```
+
+```bash
+# Linux/macOS:
+AVALIADOR_B3_PERMITIR_RODAR_SCREENER=1 streamlit run src/avaliador_b3/app/main.py
+```
+
+Alternativa, sem repetir a variável a cada sessão: crie o arquivo `.streamlit/secrets.toml`
+(já ignorado pelo Git) com a mesma chave.
+
+```toml
+AVALIADOR_B3_PERMITIR_RODAR_SCREENER = true
+```
+
+Sem o opt-in, a aba mostra que o workflow atualiza o screener nos dias úteis, com a data da
+última atualização.
+
 Rodar os testes e as verificações de código (as mesmas do CI):
 
 ```bash
@@ -218,7 +246,7 @@ O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions,
 - **Agendamento parado:** em repositório público, o GitHub desliga os agendamentos depois de 60 dias sem atividade no repositório; para reativar, use a aba Actions.
 - **Onde ver as execuções:** na aba **Actions** do repositório (<https://github.com/gustavocduarte/avaliador-acoes-b3/actions>), workflow "Atualiza o screener". Cada execução mostra o resumo da rodada (aceita ou rejeitada, falhas de fonte, fonte da Selic e do IPCA, data dos preços, se houve commit) e, no fim da página, o artifact `screener-<número>` para baixar. Os commits do workflow aparecem no histórico do `master` com o autor `github-actions[bot]`.
 - **Rodar manualmente:** Actions, "Atualiza o screener", "Run workflow". Uma execução manual no `master` também commita, nas mesmas condições.
-- **Pela linha de comando**, a partir da raiz do repositório e com o pacote instalado (`pip install -e .`); é o mesmo procedimento do botão "Rodar screener agora" e grava o `data/processed/screener.csv`:
+- **Pela linha de comando**, a partir da raiz do repositório e com o pacote instalado (`pip install -e .`); é o mesmo procedimento do botão "Rodar screener agora" (que só existe com o opt-in acima) e grava o `data/processed/screener.csv`:
 
   ```bash
   python -m avaliador_b3.rodar_screener

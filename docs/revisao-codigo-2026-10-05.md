@@ -254,3 +254,30 @@ Isso não reabre o bug principal da auditoria externa, porque os modelos agora t
 Por isso `os.replace()` é adequado para o ambiente de produção em Linux, mas não garante o mesmo comportamento no Windows. Isso não significa que o projeto esteja errado, apenas que, nesse ponto, o desenvolvimento em Windows é diferente da produção em Linux.
 
 **Classificação:** risco operacional de portabilidade.
+
+
+---
+
+# Tratamento (06/10/2026)
+
+Cada achado foi confirmado por reprodução (sem rede e sem gravar em `data/`) antes de qualquer correção. Os testes passaram de 1216 para 1302, todos passando, com ruff e mypy limpos. Os commits seguem a ordem das etapas.
+
+## Confirmado e corrigido
+
+| Achado | Resultado | Commit |
+|---|---|---|
+| 1. Gravação do cache com duas escritas simultâneas | Confirmado, e pior que o relato: com 20 threads, houve erro em todas as rodadas de teste e, em 29 de 30, o arquivo final ficou ilegível, porque os escritores abriam o mesmo temporário e o `os.replace` publicava o conteúdo misturado. Cada gravação passa a usar um temporário de nome único no diretório do destino e é tratada como tentativa: se falhar (inclusive `PermissionError` no Windows), registra no log, limpa o temporário e não derruba a consulta. O arquivo de referência da rodada usa o modo estrito e continua levantando o erro. Testes com 12 escritores e um leitor, que exigem arquivo final sempre válido e completo (JSON e CSV). | `0859584` |
+| 2. `screener.csv` e `macro_referencia.json` sem publicação conjunta | Confirmado (falha forçada no segundo `os.replace`). O macro passa a ser publicado primeiro e o CSV por último; uma falha no meio deixa o CSV anterior intacto e a referência só mais nova. Testes para a falha em cada um dos dois `os.replace`. | `a40097e` |
+| 3. `macro_referencia.json.novo` abandonado | Confirmado. Os temporários da rodada são apagados em qualquer falha. | `a40097e` |
+| 4. Rodadas simultâneas disputando os arquivos temporários | Confirmado (a segunda rodada falhou em `os.replace`). Temporários com nome único por rodada; o `screener.rejeitado.csv` mantém o nome fixo (o workflow o publica) e é trocado de forma atômica. O app publicado deixa de poder disparar rodadas (item abaixo). | `a40097e`, `5e4133c` |
+| App publicado com o botão "Rodar screener agora" | Achado desta rodada: qualquer visitante podia disparar uma rodada. O botão só aparece com o opt-in explícito (`AVALIADOR_B3_PERMITIR_RODAR_SCREENER`, variável de ambiente ou secret), negado por padrão, sem detecção por `localhost`. Sem o opt-in, a aba mostra que o workflow atualiza o screener nos dias úteis, com a data da última atualização. | `5e4133c` |
+| 5. CSV só com cabeçalho aceito | Confirmado. Só o cache de dividendos aceita vazio (parâmetro `permite_vazio`); nos demais, o arquivo vira cache ausente. Agravante encontrado na reprodução: um universo vazio fazia a rodada ser aceita com zero linhas e trocar o `screener.csv` por um arquivo só com o cabeçalho; a rodada passa a ser rejeitada se não tiver linhas ou se o universo do Ibovespa vier com menos de 60 ações (`MINIMO_ACOES_UNIVERSO_SCREENER`), com o motivo no resumo. | `3d52763`, `a40097e` |
+| 6. `NaN` e `Infinity` no JSON | Confirmado (hoje nenhum cache grava esses valores: 409 arquivos varridos). A leitura os recusa, a gravação nunca os escreve, e `VL_CONTA` e a composição do capital da CVM com `NaN` ou infinito deixam a conta (ou o balanço) indisponível antes de entrar nos cálculos. | `3d52763` |
+
+## Sem ação adicional
+
+| Achado | Por quê |
+|---|---|
+| 7. `os.replace` no Windows e no Linux | Diferença de plataforma sem correção possível no código. A produção é Linux; no Windows, a gravação de cache passa a ser tentativa (não derruba a consulta) e a publicação da rodada levanta o erro, sem deixar temporários. |
+| Travas contra duas rodadas locais simultâneas | Com temporários próprios, cada rodada publica o seu resultado e a última a terminar vence, sem arquivo misturado. Uma trava entre processos pediria uma biblioteca de lock de arquivo, e o workflow já tem `concurrency` próprio. |
+| Falha entre as duas trocas da publicação | Se o `os.replace` do CSV falhar depois do macro, o CSV anterior fica e a referência fica mais nova; não há transação entre dois arquivos. A referência é só fallback, com validade de 90 dias. |

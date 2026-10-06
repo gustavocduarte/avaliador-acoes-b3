@@ -3984,15 +3984,16 @@ Cada item abaixo foi confirmado no código antes de qualquer correção. As corr
 | 24. `SyntaxWarning` nos testes | Confirmado (4 casos). A correção sugerida pela auditoria (`"R$ 109"`) quebraria os testes, porque o app emite `R\$` (escape do Markdown do Streamlit); o certo é `"R\$"`. | `1d5ddb0` |
 | Ruff e a pasta `docs/` | Acréscimo desta rodada: `ruff format .` reformatava os blocos de código dos Markdown; `docs/` entrou no `extend-exclude`. | `1d5ddb0` |
 | 8. APIs depreciadas do Streamlit | Confirmado no 1.63.0 (os avisos vão para o log, não para o `warnings` do pytest). `use_container_width` virou `width="stretch"`. A auditoria recomenda `st.html` para `components.html`, mas no 1.63.0 a substituição é `st.iframe`: o `st.html` ignora JavaScript por padrão e o widget precisa dele. O `st.iframe` não tem o parâmetro de rolagem, então o `overflow: hidden` foi para o HTML do widget, para manter a aparência. | `854ee29` |
+| 21. Concorrência entre sessões (gravação do cache) | Reaberto pela revisão de código de 05/10: o temporário de nome fixo era disputado por todos os escritores. Cada gravação passa a usar um temporário de nome único e é tratada como tentativa; teste com várias threads. | `0859584` |
 | 10 e 11. Suíte sem execução completa | Resolvido: a suíte inteira, incluindo os testes de interface, roda no ambiente do projeto (1216 passando). | — |
 
-Os testes pedidos no veredito final foram escritos, exceto o de escrita concorrente (ver "Sem ação"): `NaN` e infinito, JSON e CSV corrompidos, falha ao gravar a referência depois de preparar o screener e ticker malformado.
+Os testes pedidos no veredito final foram escritos: `NaN` e infinito, JSON e CSV corrompidos, falha ao gravar a referência depois de preparar o screener e ticker malformado. O de escrita concorrente veio depois, com a correção do temporário compartilhado (`0859584`).
 
 ## Sem ação, e por quê
 
 | Item | Por quê |
 |---|---|
-| 21. Concorrência entre sessões (travas por chave) | A gravação atômica já garante que ninguém lê arquivo pela metade; duas sessões que gravam a mesma chave gravam o mesmo conteúdo. Travas por chave pedem uma biblioteca de lock de arquivo e não se justificam no volume atual. Limite conhecido: no Windows, `os.replace` pode falhar se outro processo estiver com o arquivo aberto naquele instante (a hospedagem é Linux, no Streamlit Community Cloud). Por isso também não há teste de escrita concorrente. |
+| 21. Concorrência entre sessões (travas por chave) | A gravação atômica impede leitura de arquivo pela metade, mas não protegia contra dois escritores no mesmo cache: todos usavam o mesmo temporário, e a revisão de código de 05/10 reproduziu erros e até arquivo final misturado (corrigido, ver acima). Com o temporário de nome único, travas por chave continuam sem ação: duas sessões que gravam a mesma chave gravam o mesmo conteúdo, e o pior caso é uma gravação perdida, que a consulta seguinte refaz. No Windows, `os.replace` pode falhar com o arquivo aberto por outro processo; a gravação agora é uma tentativa e não derruba a consulta. |
 | 22. Pacote relocável | O uso é o repositório (GitHub e Streamlit Community Cloud, com `pip install -e .`); um wheel fora dessa estrutura não é um cenário suportado hoje. |
 | 33. Renomear `desconto_percentual` | É coluna do `screener.csv`, lido pelo app, pelo workflow e pelos testes; renomear é uma migração de schema, não uma correção. A tela já mostra "Potencial". Fica para quando houver outra mudança de schema. |
 | 14, 15 e 36. Crescimento por dois pontos, empresas cíclicas | Limitações metodológicas já conhecidas e investigadas em 04/10, ainda não implementadas; seguem na fila metodológica, depois desta rodada. |
