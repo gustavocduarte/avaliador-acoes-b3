@@ -66,6 +66,7 @@ from avaliador_b3.config import (
     VERSAO_SCHEMA_CVM_FCF,
 )
 from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
+from avaliador_b3.numeros import converter_finito
 
 TIMEOUT_SEGUNDOS = 60
 # Baixado em pedaços (streaming, nunca o zip inteiro de uma vez em memória)
@@ -285,7 +286,11 @@ def _valor_conta(linha: dict, classe_erro: type[Exception] = ContaLucroNaoEncont
     escala = linha["ESCALA_MOEDA"]
     if escala not in FATOR_ESCALA_MOEDA_CVM:
         raise classe_erro(f"Escala monetária desconhecida: {escala!r}.")
-    return float(linha["VL_CONTA"]) * FATOR_ESCALA_MOEDA_CVM[escala]
+    try:
+        valor = converter_finito(linha["VL_CONTA"], f"VL_CONTA da conta {linha.get('CD_CONTA')}")
+    except ValueError as erro:
+        raise classe_erro(str(erro)) from erro
+    return valor * FATOR_ESCALA_MOEDA_CVM[escala]
 
 
 def _linhas_por_periodo(
@@ -391,11 +396,19 @@ def _cfo_cfi_do_periodo(linhas_periodo: list[dict]) -> tuple[float, float]:
     return cfo, cfi
 
 
+def _valor_cru_da_conta(linha: dict) -> float:
+    """VL_CONTA como número, sem escala; `ContaFluxoCaixaNaoEncontrada` se não for finito."""
+    try:
+        return converter_finito(linha["VL_CONTA"], f"VL_CONTA da conta {linha['CD_CONTA']}")
+    except ValueError as erro:
+        raise ContaFluxoCaixaNaoEncontrada(str(erro)) from erro
+
+
 def _fluxo_zerado(linhas: list[dict]) -> bool:
     """True se 6.01 e 6.02 do período ÚLTIMO são ambos zero ou ausentes —
     demonstração publicada sem valores, que não serve de base pro FCF."""
     valores = {
-        linha["CD_CONTA"]: float(linha["VL_CONTA"])
+        linha["CD_CONTA"]: _valor_cru_da_conta(linha)
         for linha in linhas
         if linha["ORDEM_EXERC"] == "ÚLTIMO"
         and linha["CD_CONTA"] in (CODIGO_CFO_CVM, CODIGO_CFI_CVM)

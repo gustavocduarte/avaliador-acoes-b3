@@ -24,6 +24,15 @@ def nao_finito(valor: object) -> bool:
     return valor is not None and not numero_finito(valor)
 
 
+def converter_finito(valor: str | float, descricao: str = "valor") -> float:
+    """Converte para `float` recusando `NaN` e infinito (que o `float` aceita para "NaN",
+    "Infinity" e similares); `ValueError` com a `descricao` se não for um número finito."""
+    numero = float(valor)
+    if not math.isfinite(numero):
+        raise ValueError(f"{descricao} não finito: {valor!r}")
+    return numero
+
+
 def campos_nao_finitos(valores: dict[str, object]) -> list[str]:
     """Nomes dos campos presentes cujo valor não é número finito."""
     return [nome for nome, valor in valores.items() if nao_finito(valor)]

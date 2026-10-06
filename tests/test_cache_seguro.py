@@ -285,7 +285,7 @@ def test_ler_csv_cache_aceita_arquivo_so_com_cabecalho(tmp_path):
     caminho = tmp_path / "cache.csv"
     caminho.write_text("data,dividendo\n", encoding="utf-8")
 
-    df = _cache.ler_csv_cache(caminho, ("data", "dividendo"))
+    df = _cache.ler_csv_cache(caminho, ("data", "dividendo"), permite_vazio=True)
 
     assert df is not None and df.empty
 
@@ -466,3 +466,107 @@ def test_historico_gravado_e_relido_do_cache_sem_rebuscar(tmp_path, monkeypatch)
     _cache.gravar_csv_atomico(df, caminho)
 
     assert list(chamar()["Close"]) == [10.0, 11.0]
+
+
+# --- Vazio legítimo só em dividendos; JSON sem NaN e sem Infinity ---
+
+CABECALHOS_SO_CABECALHO = {
+    "_historico": "data,Close,Volume\n",
+    "_gpr": "data,GPR\n",
+    "_universo": "ticker,nome,segmento_listagem,tipo_bruto,peso_percentual\n",
+    "_catalogo": "codigo_emissor,codigo_cvm,cnpj,nome_empresa,segmento_setorial\n",
+    "_crosswalk": "ticker,codigo_emissor,cnpj,codigo_cvm,nome_empresa,segmento_setorial\n",
+    "_serie_bcb": "data,valor\n",
+}
+CONSTANTES_NAO_FINITAS = ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}', '{"a": [1, NaN]}']
+
+
+def test_ler_csv_cache_recusa_so_o_cabecalho_por_padrao(tmp_path):
+    caminho = tmp_path / "cache.csv"
+    caminho.write_text("data,dividendo\n", encoding="utf-8")
+
+    assert _cache.ler_csv_cache(caminho, ("data", "dividendo")) is None
+
+
+@pytest.mark.parametrize("montar", [_historico, _gpr, _universo, _catalogo, _crosswalk, _serie_bcb])
+def test_cache_so_com_o_cabecalho_e_tratado_como_ausente(tmp_path, monkeypatch, montar):
+    caminho, chamar = montar(tmp_path, monkeypatch)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(CABECALHOS_SO_CABECALHO[montar.__name__], encoding="utf-8")
+
+    _deve_rebuscar(chamar)
+
+
+@pytest.mark.parametrize("conteudo", CONSTANTES_NAO_FINITAS)
+def test_ler_json_cache_recusa_nan_e_infinito(tmp_path, conteudo):
+    caminho = tmp_path / "cache.json"
+    caminho.write_text(conteudo, encoding="utf-8")
+
+    assert _cache.ler_json_cache(caminho) is None
+
+
+@pytest.mark.parametrize("montar", [_fundamentus, _fcf, _lucro, _balanco])
+@pytest.mark.parametrize("conteudo", CONSTANTES_NAO_FINITAS)
+def test_cache_json_com_nan_ou_infinito_e_tratado_como_ausente(
+    tmp_path, monkeypatch, montar, conteudo
+):
+    caminho, chamar = montar(tmp_path, monkeypatch)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(conteudo, encoding="utf-8")
+
+    _deve_rebuscar(chamar)
+
+
+@pytest.mark.parametrize("valor", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("formato", ["direto", "aninhado"])
+def test_gravar_json_nao_grava_nan_nem_infinito(tmp_path, caplog, valor, formato):
+    caminho = tmp_path / "cache.json"
+    dados = {"v": valor} if formato == "direto" else {"lista": [1.0, {"x": valor}]}
+
+    assert _cache.gravar_json_atomico(caminho, dados) is False
+
+    assert list(tmp_path.iterdir()) == []
+    assert "Cache JSON não gravado" in caplog.text
+
+
+def test_gravar_json_nao_grava_nan_e_preserva_o_arquivo_anterior(tmp_path):
+    caminho = tmp_path / "cache.json"
+    caminho.write_text('{"ok": 1}', encoding="utf-8")
+
+    _cache.gravar_json_atomico(caminho, {"v": float("nan")})
+
+    assert caminho.read_text(encoding="utf-8") == '{"ok": 1}'
+
+
+def test_gravar_json_estrito_levanta_para_nan(tmp_path):
+    with pytest.raises(ValueError):
+        _cache.gravar_json_atomico(tmp_path / "r.json", {"v": float("nan")}, estrito=True)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_arquivo_de_referencia_com_nan_levanta(tmp_path):
+    macro = bcb_sgs.ResultadoMacro(
+        selic_meta=float("nan"),
+        ipca_12m=0.04,
+        data_ipca=pd.Timestamp("2026-08-01"),
+        usou_valor_guardado=False,
+        data_busca=pd.Timestamp("2026-10-03"),
+    )
+
+    with pytest.raises(ValueError):
+        bcb_sgs.salvar_macro_referencia(macro, tmp_path / "macro_referencia.json")
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_macro_guardado_com_nan_e_tratado_como_ausente(tmp_path):
+    caminho = bcb_sgs._caminho_ultimo_macro(tmp_path)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        '{"selic_meta": NaN, "ipca_12m": 0.04, "data_ipca": "2026-08-01", '
+        '"data_busca": "2026-10-03T10:00:00"}',
+        encoding="utf-8",
+    )
+
+    assert bcb_sgs._carregar_ultimo_macro(tmp_path) is None

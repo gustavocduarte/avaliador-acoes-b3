@@ -241,7 +241,7 @@ def obter_dividendos(
     caminho = _caminho_cache_dividendos(ticker_yahoo, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and _cache_valido(caminho, ttl_segundos):
-        df_cache = ler_csv_cache(caminho, ("data", "dividendo"))
+        df_cache = ler_csv_cache(caminho, ("data", "dividendo"), permite_vazio=True)
         if df_cache is not None:
             df_cache["data"] = pd.to_datetime(df_cache["data"], utc=True)
             return df_cache

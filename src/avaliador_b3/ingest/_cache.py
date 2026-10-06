@@ -55,18 +55,32 @@ def gravar_texto_atomico(caminho: Path, texto: str, *, estrito: bool = False) ->
 
 
 def gravar_json_atomico(caminho: Path, dados: object, *, estrito: bool = False) -> bool:
-    return gravar_texto_atomico(caminho, json.dumps(dados, ensure_ascii=False), estrito=estrito)
+    """Grava `dados` como JSON, que nunca leva `NaN` nem infinito: com um desses valores
+    nada é gravado (devolve `False`; com `estrito=True`, levanta `ValueError`)."""
+    try:
+        texto = json.dumps(dados, ensure_ascii=False, allow_nan=False)
+    except ValueError as erro:
+        if estrito:
+            raise
+        _log.warning("Cache JSON não gravado (%s): %s", erro, caminho)
+        return False
+    return gravar_texto_atomico(caminho, texto, estrito=estrito)
 
 
 def gravar_csv_atomico(df: pd.DataFrame, caminho: Path) -> bool:
     return gravar_texto_atomico(caminho, df.to_csv(index=False))
 
 
+def _recusar_constante(constante: str) -> float:
+    raise ValueError(f"constante {constante} não é JSON válido")
+
+
 def ler_json_cache(caminho: Path) -> dict | None:
     """Objeto JSON do cache, ou `None` (cache ausente) se o arquivo estiver
-    truncado, ilegível ou não for um objeto."""
+    truncado, ilegível, não for um objeto ou trouxer `NaN`/`Infinity` (que o `json` do
+    Python aceita como extensão)."""
     try:
-        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        dados = json.loads(caminho.read_text(encoding="utf-8"), parse_constant=_recusar_constante)
     except (OSError, ValueError):
         _log.warning("Cache JSON ilegível, será refeito: %s", caminho)
         return None
@@ -77,11 +91,17 @@ def ler_json_cache(caminho: Path) -> dict | None:
 
 
 def ler_csv_cache(
-    caminho: Path, colunas_esperadas: Iterable[str], **opcoes_leitura
+    caminho: Path,
+    colunas_esperadas: Iterable[str],
+    *,
+    permite_vazio: bool = False,
+    **opcoes_leitura,
 ) -> pd.DataFrame | None:
     """DataFrame do cache CSV, ou `None` (cache ausente) se o arquivo estiver
-    vazio, sem a quebra de linha final (última linha cortada), ilegível ou sem
-    alguma das colunas esperadas."""
+    vazio, sem a quebra de linha final (última linha cortada), ilegível, sem
+    alguma das colunas esperadas ou só com o cabeçalho. Só os caches em que "nenhum
+    registro" é um resultado válido (ex.: dividendos de quem não paga) passam
+    `permite_vazio=True`."""
     try:
         conteudo = caminho.read_bytes()
         if not conteudo.endswith(b"\n"):
@@ -90,6 +110,8 @@ def ler_csv_cache(
         faltando = set(colunas_esperadas) - set(df.columns)
         if faltando:
             raise ValueError(f"colunas faltando: {sorted(faltando)}")
+        if df.empty and not permite_vazio:
+            raise ValueError("arquivo só com o cabeçalho")
     except (OSError, ValueError) as erro:
         _log.warning("Cache CSV inválido, será refeito (%s): %s", erro, caminho)
         return None

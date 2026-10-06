@@ -1556,3 +1556,24 @@ def test_fallback_devolve_o_risco_sacado_dos_dois_anos(tmp_path, monkeypatch):
 
     assert resultado["risco_sacado_atual"]["valor"] == pytest.approx(-500.0)
     assert resultado["risco_sacado_ha_n_anos"]["valor"] == pytest.approx(-40.0)
+
+
+@pytest.mark.parametrize("valor", ["NaN", "nan", "Infinity", "-Infinity", "inf"])
+def test_valor_conta_recusa_nan_e_infinito_com_a_classe_de_erro_pedida(valor):
+    linha = _linha("6.01", "Caixa Líquido Atividades Operacionais", valor)
+
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="não finito"):
+        cvm._valor_conta(linha, cvm.ContaFluxoCaixaNaoEncontrada)
+    with pytest.raises(cvm.ContaLucroNaoEncontrada, match="não finito"):
+        cvm._valor_conta(linha)
+
+
+@pytest.mark.parametrize("valor", ["NaN", "Infinity"])
+def test_fluxo_zerado_recusa_valor_nao_finito(valor):
+    linhas = [
+        _linha("6.01", "Caixa Líquido Atividades Operacionais", valor),
+        _linha("6.02", "Caixa Líquido Atividades de Investimento", "-300"),
+    ]
+
+    with pytest.raises(cvm.ContaFluxoCaixaNaoEncontrada, match="não finito"):
+        cvm._fluxo_zerado(linhas)

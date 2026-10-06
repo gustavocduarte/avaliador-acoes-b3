@@ -43,6 +43,7 @@ from avaliador_b3.config import (
     MOTIVO_BALANCO_DATA_FORA_DO_TRIMESTRE,
     MOTIVO_BALANCO_SEM_DATA_BASE,
     MOTIVO_BALANCO_SEM_DEMONSTRACAO,
+    MOTIVO_BALANCO_VALOR_INVALIDO,
     PREFIXOS_CONTAS_DIVIDA_FUNDAMENTUS,
     PREFIXOS_CONTAS_PASSIVO,
     TERMO_NAO_CONTROLADORES,
@@ -61,6 +62,7 @@ from avaliador_b3.ingest.cvm import (
     _normalizar_descricao,
     _sem_ancestral_marcado,
 )
+from avaliador_b3.numeros import converter_finito
 
 
 class MembroDoZipAusente(ErroCVM):
@@ -94,7 +96,8 @@ def _mais_recente(linhas: list[dict]) -> list[dict]:
 
 
 def _valor(linha: dict) -> float:
-    return float(linha["VL_CONTA"]) * FATOR_ESCALA_MOEDA_CVM[linha["ESCALA_MOEDA"]]
+    valor = converter_finito(linha["VL_CONTA"], f"VL_CONTA da conta {linha['CD_CONTA']}")
+    return valor * FATOR_ESCALA_MOEDA_CVM[linha["ESCALA_MOEDA"]]
 
 
 def _contas_do_balanco(linhas: list[dict], data_base: str) -> dict:
@@ -155,7 +158,7 @@ def _capital(linhas: list[dict], data_base: str) -> dict | None:
     linha = do_dia[0]
 
     def n(campo: str) -> float:
-        return float(linha[campo] or 0)
+        return converter_finito(linha[campo] or 0, campo)
 
     return {
         "ordinarias": n("QT_ACAO_ORDIN_CAP_INTEGR"),
@@ -247,6 +250,8 @@ def obter_balanco_cvm(
         capital = _capital(linhas_capital, data_base)
     except MembroDoZipAusente:
         capital = None
+    except ValueError as erro:
+        return _indisponivel(MOTIVO_BALANCO_VALOR_INVALIDO.format(detalhe=erro), data_base)
     if not linhas_bpp:
         # Sem balanço consolidado, mas a composição do capital ainda serve ao número
         # de ações; este resultado parcial não vai para o cache.
@@ -259,7 +264,10 @@ def obter_balanco_cvm(
             "capital": capital,
         }
 
-    contas = _contas_do_balanco(linhas_bpp, data_base)
+    try:
+        contas = _contas_do_balanco(linhas_bpp, data_base)
+    except ValueError as erro:
+        return _indisponivel(MOTIVO_BALANCO_VALOR_INVALIDO.format(detalhe=erro), data_base)
 
     resultado = {
         "disponivel": True,

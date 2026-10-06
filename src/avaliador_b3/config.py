@@ -577,6 +577,9 @@ MOTIVO_BALANCO_ARQUIVO_NAO_PUBLICADO = (
 MOTIVO_BALANCO_SEM_DEMONSTRACAO = (
     "A empresa não tem balanço consolidado de {data} no {documento} da CVM."
 )
+MOTIVO_BALANCO_VALOR_INVALIDO = (
+    "O balanço da CVM traz um valor inválido (NaN ou infinito): {detalhe}."
+)
 MOTIVO_BALANCO_NAO_LIDO = "o balanço da CVM não foi lido para essa empresa."
 MOTIVO_ACOES_EM_CIRCULACAO_INDISPONIVEL = "número de ações da CVM indisponível."
 # Valor de firma da página: mesma ponte do FCD (valor de mercado + dívida líquida + não

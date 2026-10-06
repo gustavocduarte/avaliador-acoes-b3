@@ -604,3 +604,38 @@ def test_leitura_unica_sem_ticker_mantem_a_conversao_fisica_e_avisa_nada(tmp_pat
 
     assert r["acoes_em_circulacao"] is None
     assert r["aviso_unit"] is None
+
+
+@pytest.mark.parametrize("valor", ["NaN", "Infinity", "-Infinity"])
+def test_conta_do_balanco_com_valor_nao_finito_deixa_o_balanco_indisponivel(
+    tmp_path, baixados, valor
+):
+    linhas = [_linha_bpp("2.03", "Patrimônio Líquido Consolidado", valor)]
+    baixados["zips"][("itr", 2026)] = _zip(
+        tmp_path, "itr", 2026, linhas, [_linha_capital(900, 100, 50)]
+    )
+
+    r = balanco_cvm.obter_balanco_cvm(CNPJ, "2026-06-30", diretorio_cache=tmp_path)
+
+    assert r["disponivel"] is False
+    assert "valor inválido" in r["motivo"]
+    assert "2.03" in r["motivo"]
+    assert not list(tmp_path.rglob("*.json"))
+
+
+def test_composicao_do_capital_com_valor_nao_finito_deixa_o_balanco_indisponivel(
+    tmp_path, baixados
+):
+    baixados["zips"][("itr", 2026)] = _zip(
+        tmp_path,
+        "itr",
+        2026,
+        BALANCO_BASE,
+        [f"{CNPJ};2026-06-30;1;EMPRESA;NaN;100;100;0;0;50"],
+    )
+
+    r = balanco_cvm.obter_balanco_cvm(CNPJ, "2026-06-30", diretorio_cache=tmp_path)
+
+    assert r["disponivel"] is False
+    assert "QT_ACAO_ORDIN_CAP_INTEGR" in r["motivo"]
+    assert not list(tmp_path.rglob("*.json"))
