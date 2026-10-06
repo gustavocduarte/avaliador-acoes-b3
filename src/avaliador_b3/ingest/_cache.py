@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import os
+import uuid
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -24,25 +25,41 @@ def cache_expirado(caminho: Path, dias_validade: int, hoje: datetime) -> bool:
     return idade.days >= dias_validade
 
 
-def gravar_texto_atomico(caminho: Path, texto: str) -> None:
-    """Grava em `<arquivo>.tmp` e troca pelo definitivo: uma queda no meio da
-    gravação nunca deixa o cache pela metade."""
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    temporario = caminho.with_name(caminho.name + ".tmp")
+def gravar_texto_atomico(caminho: Path, texto: str, *, estrito: bool = False) -> bool:
+    """Grava num temporário de nome único (no mesmo diretório) e troca pelo definitivo:
+    uma queda no meio da gravação nunca deixa o cache pela metade, e escritores
+    simultâneos não dividem o temporário.
+
+    A gravação é uma tentativa: se falhar (disco cheio, `PermissionError` do
+    `os.replace` no Windows com o arquivo aberto por outro processo), registra no log,
+    limpa o temporário e devolve `False`, sem derrubar a consulta que já tem o dado. Com
+    `estrito=True` (arquivos que são resultado, não cache) o erro é levantado."""
+    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
         temporario.write_text(texto, encoding="utf-8", newline="")
         os.replace(temporario, caminho)
+    except OSError as erro:
+        _log.warning("Não foi possível gravar o cache %s: %s", caminho, erro)
+        try:
+            temporario.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if estrito:
+            raise
+        return False
     except BaseException:
         temporario.unlink(missing_ok=True)
         raise
+    return True
 
 
-def gravar_json_atomico(caminho: Path, dados: object) -> None:
-    gravar_texto_atomico(caminho, json.dumps(dados, ensure_ascii=False))
+def gravar_json_atomico(caminho: Path, dados: object, *, estrito: bool = False) -> bool:
+    return gravar_texto_atomico(caminho, json.dumps(dados, ensure_ascii=False), estrito=estrito)
 
 
-def gravar_csv_atomico(df: pd.DataFrame, caminho: Path) -> None:
-    gravar_texto_atomico(caminho, df.to_csv(index=False))
+def gravar_csv_atomico(df: pd.DataFrame, caminho: Path) -> bool:
+    return gravar_texto_atomico(caminho, df.to_csv(index=False))
 
 
 def ler_json_cache(caminho: Path) -> dict | None:

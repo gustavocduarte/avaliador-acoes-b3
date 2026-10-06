@@ -1,7 +1,10 @@
 """Leitura segura (arquivo corrompido vira cache ausente) e gravação atômica dos
 caches em disco. Nenhum teste acessa a rede nem grava fora de `tmp_path`."""
 
+import io
+import json
 import os
+import threading
 
 import pandas as pd
 import pytest
@@ -65,20 +68,160 @@ def test_gravar_texto_atomico_cria_pastas_e_nao_deixa_temporario(tmp_path):
     assert list(caminho.parent.iterdir()) == [caminho]
 
 
-def test_falha_na_troca_preserva_o_arquivo_anterior_e_remove_o_temporario(tmp_path, monkeypatch):
+def test_falha_na_troca_nao_levanta_preserva_o_anterior_e_limpa_o_temporario(
+    tmp_path, monkeypatch, caplog
+):
     caminho = tmp_path / "cache.csv"
     caminho.write_text("antigo\n", encoding="utf-8")
 
     def troca_falha(origem, destino):
-        raise OSError("disco cheio")
+        raise PermissionError("arquivo em uso")
 
     monkeypatch.setattr(os, "replace", troca_falha)
 
-    with pytest.raises(OSError):
-        _cache.gravar_texto_atomico(caminho, "novo\n")
+    assert _cache.gravar_texto_atomico(caminho, "novo\n") is False
 
     assert caminho.read_text(encoding="utf-8") == "antigo\n"
     assert list(tmp_path.iterdir()) == [caminho]
+    assert "Não foi possível gravar o cache" in caplog.text
+
+
+def test_modo_estrito_levanta_o_erro_e_limpa_o_temporario(tmp_path, monkeypatch):
+    caminho = tmp_path / "resultado.json"
+
+    def troca_falha(origem, destino):
+        raise PermissionError("arquivo em uso")
+
+    monkeypatch.setattr(os, "replace", troca_falha)
+
+    with pytest.raises(PermissionError):
+        _cache.gravar_json_atomico(caminho, {"a": 1}, estrito=True)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cada_gravacao_usa_um_temporario_de_nome_proprio(tmp_path, monkeypatch):
+    origens = []
+    troca_real = os.replace
+
+    def troca_que_anota(origem, destino):
+        origens.append(origem.name)
+        return troca_real(origem, destino)
+
+    monkeypatch.setattr(os, "replace", troca_que_anota)
+    caminho = tmp_path / "cache.json"
+
+    _cache.gravar_texto_atomico(caminho, "um")
+    _cache.gravar_texto_atomico(caminho, "dois")
+
+    assert len(set(origens)) == 2
+    assert all(nome.startswith("cache.json.") and nome.endswith(".tmp") for nome in origens)
+
+
+def _gravar_simultaneamente(tmp_path, escreve, le_valido, extensao):
+    """Vários escritores no mesmo cache, enquanto um leitor lê o tempo todo: nenhuma
+    exceção, nenhuma leitura de arquivo pela metade e arquivo final válido e completo."""
+    caminho = tmp_path / f"cache.{extensao}"
+    escritores, repeticoes = 12, 15
+    barreira = threading.Barrier(escritores + 1)
+    excecoes, leituras_invalidas, gravacoes_ok = [], [], []
+    parar = threading.Event()
+
+    def escritor(i):
+        barreira.wait()
+        for k in range(repeticoes):
+            try:
+                gravacoes_ok.append(escreve(caminho, i, k))
+            except BaseException as erro:
+                excecoes.append(erro)
+
+    def leitor():
+        barreira.wait()
+        while not parar.is_set():
+            try:
+                conteudo = caminho.read_bytes()
+            except OSError:
+                continue
+            if not le_valido(conteudo):
+                leituras_invalidas.append(conteudo[:60])
+
+    threads = [threading.Thread(target=escritor, args=(i,)) for i in range(escritores)]
+    thread_leitor = threading.Thread(target=leitor)
+    for t in (*threads, thread_leitor):
+        t.start()
+    for t in threads:
+        t.join()
+    parar.set()
+    thread_leitor.join()
+
+    assert excecoes == []
+    assert leituras_invalidas == []
+    assert any(gravacoes_ok), "nenhuma gravação concluiu"
+    assert le_valido(caminho.read_bytes())
+    assert list(tmp_path.iterdir()) == [caminho]
+
+
+def test_escritores_simultaneos_de_json_deixam_o_arquivo_valido_e_completo(tmp_path):
+    def valido(conteudo):
+        dados = json.loads(conteudo.decode("utf-8"))
+        return dados["dados"] == [dados["escritor"]] * 3000
+
+    def escreve(caminho, i, k):
+        return _cache.gravar_json_atomico(caminho, {"escritor": i, "k": k, "dados": [i] * 3000})
+
+    _gravar_simultaneamente(tmp_path, escreve, valido, "json")
+
+
+def test_escritores_simultaneos_de_csv_deixam_o_arquivo_valido_e_completo(tmp_path):
+    def valido(conteudo):
+        df = pd.read_csv(io.BytesIO(conteudo))
+        return (
+            conteudo.endswith(b"\n")
+            and len(df) == 500
+            and df["escritor"].nunique() == 1
+            and df["linha"].tolist() == list(range(500))
+        )
+
+    def escreve(caminho, i, k):
+        df = pd.DataFrame({"escritor": [i] * 500, "linha": range(500)})
+        return _cache.gravar_csv_atomico(df, caminho)
+
+    _gravar_simultaneamente(tmp_path, escreve, valido, "csv")
+
+
+def test_gravacao_que_falha_nao_derruba_a_consulta_do_adapter(tmp_path, monkeypatch):
+    class Resposta:
+        text = '[{"data": "01/01/2026", "valor": "1.5"}]'
+
+    monkeypatch.setattr(bcb_sgs, "_get_com_retry", lambda url: Resposta())
+
+    def troca_falha(origem, destino):
+        raise PermissionError("arquivo em uso")
+
+    monkeypatch.setattr(os, "replace", troca_falha)
+
+    df = bcb_sgs.obter_serie(432, "01/01/2026", "01/10/2026", diretorio_cache=tmp_path)
+
+    assert list(df["valor"]) == [1.5]
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+def test_arquivo_de_referencia_da_rodada_levanta_se_a_gravacao_falhar(tmp_path, monkeypatch):
+    macro = bcb_sgs.ResultadoMacro(
+        selic_meta=0.1,
+        ipca_12m=0.04,
+        data_ipca=pd.Timestamp("2026-08-01"),
+        usou_valor_guardado=False,
+        data_busca=pd.Timestamp("2026-10-03"),
+    )
+
+    def troca_falha(origem, destino):
+        raise PermissionError("arquivo em uso")
+
+    monkeypatch.setattr(os, "replace", troca_falha)
+
+    with pytest.raises(PermissionError):
+        bcb_sgs.salvar_macro_referencia(macro, tmp_path / "macro_referencia.json")
 
 
 def test_falha_ao_serializar_nao_toca_no_arquivo_anterior(tmp_path):

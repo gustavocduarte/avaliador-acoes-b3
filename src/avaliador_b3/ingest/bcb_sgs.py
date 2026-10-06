@@ -287,6 +287,7 @@ def _gravar_macro(
     data_busca: datetime,
     fonte_selic: str,
     fonte_ipca: str,
+    estrito: bool = False,
 ) -> None:
     gravar_json_atomico(
         caminho,
@@ -298,6 +299,7 @@ def _gravar_macro(
             "fonte_selic": fonte_selic,
             "fonte_ipca": fonte_ipca,
         },
+        estrito=estrito,
     )
 
 
@@ -332,6 +334,7 @@ def salvar_macro_referencia(resultado: ResultadoMacro, caminho: Path) -> None:
         resultado.data_busca.to_pydatetime(),
         resultado.fonte_selic,
         resultado.fonte_ipca,
+        estrito=True,
     )
 
 
