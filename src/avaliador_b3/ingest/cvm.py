@@ -210,6 +210,31 @@ def _baixar_zip_ano(
     return caminho
 
 
+def _versao_da_linha(linha: dict) -> int:
+    try:
+        return int(linha.get("VERSAO") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def so_a_maior_versao(linhas: list[dict]) -> list[dict]:
+    """Por empresa e data de referência (`CNPJ_CIA` e `DT_REFER`), só as linhas da maior
+    `VERSAO`: a CVM reapresenta demonstrações, e misturar versões usaria valores de uma e de
+    outra (ou somaria linhas das duas). Ponto único de filtro, aplicado a toda leitura de
+    demonstração (DFC, DRE, balanço e composição do capital)."""
+    maior: dict[tuple[str, str], int] = {}
+    chaves = []
+    for linha in linhas:
+        chave = (_normalizar_cnpj(linha["CNPJ_CIA"]), linha.get("DT_REFER") or "")
+        chaves.append(chave)
+        maior[chave] = max(maior.get(chave, 0), _versao_da_linha(linha))
+    return [
+        linha
+        for linha, chave in zip(linhas, chaves, strict=True)
+        if _versao_da_linha(linha) == maior[chave]
+    ]
+
+
 def _linhas_do_membro(
     caminho_zip: Path,
     nome_membro: str,
@@ -222,7 +247,8 @@ def _linhas_do_membro(
     cobre todas as companhias abertas do Brasil) em memória. Compartilhada
     entre `_linhas_da_empresa` (DRE) e `_linhas_da_empresa_dfc` (DFC), que
     só diferem no padrão do nome do membro e na exceção a levantar se ele
-    não existir no zip."""
+    não existir no zip. Só a maior `VERSAO` de cada empresa e data é devolvida (ver
+    `so_a_maior_versao`)."""
     with zipfile.ZipFile(caminho_zip) as arquivo_zip:
         if nome_membro not in arquivo_zip.namelist():
             raise classe_erro(
@@ -232,9 +258,13 @@ def _linhas_do_membro(
         with arquivo_zip.open(nome_membro) as bruto:
             texto = io.TextIOWrapper(bruto, encoding=CODIFICACAO_CVM, newline="")
             leitor = csv.DictReader(texto, delimiter=";")
-            return [
-                linha for linha in leitor if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
-            ]
+            return so_a_maior_versao(
+                [
+                    linha
+                    for linha in leitor
+                    if _normalizar_cnpj(linha["CNPJ_CIA"]) == cnpj_normalizado
+                ]
+            )
 
 
 def _linhas_da_empresa(caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str) -> list[dict]:
@@ -517,18 +547,10 @@ def _extrair_juros_pagos_6_01(linhas_periodo: list[dict]) -> dict:
     return {"valor": -sum(linha["valor"] for linha in usadas) if usadas else 0.0, "linhas": usadas}
 
 
-def _versao_das_linhas(linhas: list[dict]) -> int | None:
-    versoes = [int(linha["VERSAO"]) for linha in linhas if linha.get("VERSAO")]
-    return max(versoes) if versoes else None
-
-
-def _receita_do_ano(
-    caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str, versao_dfc: int | None
-) -> dict:
-    """Receita líquida (conta 3.01, período ÚLTIMO) da DRE do mesmo `tipo` ("con"/"ind") e
-    da mesma versão da DFC usada no fluxo do ano (a mais recente, se a versão não existir na
-    DRE). Devolve `valor` (ou `None`), `versao` e `motivo` (quando `valor` é `None`); receita
-    ausente nunca derruba a leitura do fluxo."""
+def _receita_do_ano(caminho_zip: Path, ano: int, tipo: str, cnpj_normalizado: str) -> dict:
+    """Receita líquida (conta 3.01, período ÚLTIMO) da DRE do mesmo `tipo` ("con"/"ind"), na
+    versão mais recente da DRE. Devolve `valor` (ou `None`), `versao` e `motivo` (quando
+    `valor` é `None`); receita ausente nunca derruba a leitura do fluxo."""
     try:
         linhas = _linhas_do_membro(
             caminho_zip,
@@ -549,16 +571,12 @@ def _receita_do_ano(
     if not candidatas:
         return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_CONTA}
 
-    def versao(linha: dict) -> int:
-        return int(linha.get("VERSAO") or 0)
-
-    da_versao_do_fluxo = [linha for linha in candidatas if versao(linha) == versao_dfc]
-    linha = max(da_versao_do_fluxo or candidatas, key=versao)
+    linha = candidatas[0]
     try:
         valor = _valor_conta(linha, ContaFluxoCaixaNaoEncontrada)
     except ContaFluxoCaixaNaoEncontrada:
         return {"valor": None, "versao": None, "motivo": MOTIVO_RECEITA_SEM_CONTA}
-    return {"valor": valor, "versao": versao(linha), "motivo": None}
+    return {"valor": valor, "versao": _versao_da_linha(linha), "motivo": None}
 
 
 def _extrair_risco_sacado(linhas_periodo: list[dict]) -> dict:
@@ -665,7 +683,7 @@ def obter_fluxo_caixa_livre(
     if escolhida is None:
         raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado na DFC da CVM para {ano}.")
     metodo, tipo, linhas = escolhida
-    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado, _versao_das_linhas(linhas))
+    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado)
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
@@ -700,7 +718,7 @@ def obter_fluxo_caixa_livre_do_tipo(
     linhas = _linhas_da_empresa_dfc(caminho_zip, ano, metodo, tipo, cnpj_normalizado)
     if not linhas or _fluxo_zerado(linhas):
         return None
-    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado, _versao_das_linhas(linhas))
+    receita = _receita_do_ano(caminho_zip, ano, tipo, cnpj_normalizado)
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:

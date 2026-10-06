@@ -1283,14 +1283,16 @@ def test_receita_usa_a_dre_do_mesmo_tipo_da_dfc_escolhida(tmp_path, monkeypatch)
     assert resultado["receita_atual"]["valor"] == pytest.approx(4000.0 * 1000)
 
 
-def test_receita_usa_a_versao_da_dre_igual_a_da_dfc(tmp_path, monkeypatch):
+def test_receita_usa_a_versao_mais_recente_da_dre_mesmo_com_a_dfc_em_versao_anterior(
+    tmp_path, monkeypatch
+):
     dfc = {("MI", "con"): (1, [("6.01", "600"), ("6.02", "-150")])}
     dre = {"con": [(1, "ÚLTIMO", "3.01", "1000"), (2, "ÚLTIMO", "3.01", "1200")]}
 
     resultado = _receita_com_zip(tmp_path, monkeypatch, dfc, dre)
 
-    assert resultado["receita_atual"]["versao"] == 1
-    assert resultado["receita_atual"]["valor"] == pytest.approx(1000.0 * 1000)
+    assert resultado["receita_atual"]["versao"] == 2
+    assert resultado["receita_atual"]["valor"] == pytest.approx(1200.0 * 1000)
 
 
 def test_receita_sem_a_versao_da_dfc_usa_a_mais_recente_da_dre(tmp_path, monkeypatch):

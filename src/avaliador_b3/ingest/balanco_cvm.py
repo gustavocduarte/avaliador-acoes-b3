@@ -87,14 +87,6 @@ def _texto_documento(documento: str, data_base: date) -> str:
     return f"{documento.upper()} de {data_base:%d/%m/%Y}"
 
 
-def _mais_recente(linhas: list[dict]) -> list[dict]:
-    """Só as linhas da versão mais recente do documento."""
-    if not linhas:
-        return []
-    versao = max(int(linha["VERSAO"]) for linha in linhas)
-    return [linha for linha in linhas if int(linha["VERSAO"]) == versao]
-
-
 def _valor(linha: dict) -> float:
     valor = converter_finito(linha["VL_CONTA"], f"VL_CONTA da conta {linha['CD_CONTA']}")
     return valor * FATOR_ESCALA_MOEDA_CVM[linha["ESCALA_MOEDA"]]
@@ -152,7 +144,7 @@ def _contas_do_balanco(linhas: list[dict], data_base: str) -> dict:
 def _capital(linhas: list[dict], data_base: str) -> dict | None:
     """Composição do capital na data-base (versão mais recente), nas unidades do
     arquivo (a escala é tratada em `calcular_acoes_em_circulacao`)."""
-    do_dia = _mais_recente([linha for linha in linhas if linha["DT_REFER"] == data_base])
+    do_dia = [linha for linha in linhas if linha["DT_REFER"] == data_base]
     if not do_dia:
         return None
     linha = do_dia[0]
@@ -238,7 +230,7 @@ def obter_balanco_cvm(
         )
     except MembroDoZipAusente as erro:
         return _indisponivel(str(erro), data_base)
-    linhas_bpp = _mais_recente([linha for linha in linhas_bpp if linha["DT_REFER"] == data_base])
+    linhas_bpp = [linha for linha in linhas_bpp if linha["DT_REFER"] == data_base]
     try:
         linhas_capital = _linhas_do_membro(
             caminho_zip,
