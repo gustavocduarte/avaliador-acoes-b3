@@ -904,6 +904,15 @@ MOTIVO_RODADA_COM_FALHA_DE_FONTE = (
     "{quantidade} ações com falha de fonte (limite: {limite}); por fonte: {por_fonte}."
 )
 MOTIVO_RODADA_LINHAS_FALTANDO = "{linhas} linhas para {universo} ações do universo."
+MOTIVO_RODADA_SEM_LINHAS = "A rodada não gerou nenhuma linha."
+MOTIVO_RODADA_UNIVERSO_PEQUENO = (
+    "O universo do Ibovespa veio com {quantidade} ações (mínimo: {minimo})."
+)
+# Universo do Ibovespa obtido pelo screener: abaixo disso a lista está incompleta (cache ou
+# API com problema) e a rodada trocaria o resultado por uma tabela quase vazia. A carteira
+# teórica tem hoje 76 ações e variou entre cerca de 60 e 90 nos últimos anos; 60 deixa
+# folga para uma recomposição e ainda pega uma lista truncada.
+MINIMO_ACOES_UNIVERSO_SCREENER = 60
 MOTIVO_RODADA_VALOR_NAO_FINITO = (
     "{quantidade} ações com valor não finito (NaN ou infinito): {por_acao}."
 )

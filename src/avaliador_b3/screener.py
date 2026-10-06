@@ -36,7 +36,9 @@ requisição real.
 from __future__ import annotations
 
 import csv
+import logging
 import os
+import uuid
 import warnings
 from pathlib import Path
 
@@ -62,9 +64,12 @@ from avaliador_b3.config import (
     LIMITE_ACOES_COM_FALHA_SCREENER,
     LIMITE_ACOES_SEM_PRECO_SCREENER,
     MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
+    MINIMO_ACOES_UNIVERSO_SCREENER,
     MOTIVO_RODADA_COM_FALHA_DE_FONTE,
     MOTIVO_RODADA_LINHAS_FALTANDO,
+    MOTIVO_RODADA_SEM_LINHAS,
     MOTIVO_RODADA_SEM_PRECO,
+    MOTIVO_RODADA_UNIVERSO_PEQUENO,
     MOTIVO_RODADA_VALOR_NAO_FINITO,
     NOME_ARQUIVO_MACRO_REFERENCIA,
     PERIODO_BETA,
@@ -109,6 +114,8 @@ from avaliador_b3.modelos.fcd import (
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 from avaliador_b3.numeros import campos_nao_finitos
+
+_log = logging.getLogger(__name__)
 
 CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
 
@@ -552,6 +559,15 @@ def _calcular_linha_ticker(
     }
 
 
+def _apagar_temporarios(*caminhos: Path) -> None:
+    """Remove os temporários da rodada; falha de remoção não esconde o erro original."""
+    for caminho in caminhos:
+        try:
+            caminho.unlink(missing_ok=True)
+        except OSError as erro:
+            _log.warning("Não foi possível apagar o temporário %s: %s", caminho, erro)
+
+
 def _colunas_nao_finitas(linha: dict) -> list[str]:
     """Colunas de valor de uma linha com sucesso que trazem NaN ou infinito. Ausente
     (`None`) é válido: o método não se aplicou."""
@@ -716,10 +732,12 @@ def rodar_screener(
     """Roda o screener (ver `_executar_rodada`) sem tocar no resultado
     anterior até a rodada passar numa checagem mínima.
 
-    A rodada é gravada em `<caminho_saida>.novo`. No fim, se houver uma linha
-    por ação do universo, no máximo `LIMITE_ACOES_SEM_PRECO_SCREENER` ações
-    sem preço e no máximo `LIMITE_ACOES_COM_FALHA_SCREENER` ações com falha
-    de fonte (ver `FalhasDeFonte`), o arquivo novo substitui `caminho_saida`.
+    A rodada é gravada num temporário `<caminho_saida>.<id>.novo`, de nome próprio. No fim,
+    se houver uma linha por ação do universo (e ao menos uma), no máximo
+    `LIMITE_ACOES_SEM_PRECO_SCREENER` ações sem preço, no máximo
+    `LIMITE_ACOES_COM_FALHA_SCREENER` ações com falha de fonte (ver `FalhasDeFonte`) e,
+    quando o universo vem do Ibovespa, ao menos `MINIMO_ACOES_UNIVERSO_SCREENER` ações,
+    o arquivo novo substitui `caminho_saida`.
     Se não passar, vira `<nome>.rejeitado.csv` (sobrescrito a cada rejeição),
     `caminho_saida` fica como estava e `RodadaScreenerRejeitada` é levantada.
     Uma exceção no meio da rodada apaga o arquivo novo, que seria parcial.
@@ -727,23 +745,57 @@ def rodar_screener(
     O DataFrame devolvido (e o da rodada rejeitada, em `RodadaScreenerRejeitada.resultado`)
     traz em `attrs["falhas_de_fonte"]` as ações com falha de fonte da rodada
     ({ticker: [fontes]}) e em `attrs["macro"]` a Selic e o IPCA usados."""
+    universo_automatico = tickers is None
     if tickers is None:
         universo = obter_universo_ibovespa(diretorio_cache=diretorio_cache)
         tickers = list(universo["ticker"])
 
     falhas_de_fonte = FalhasDeFonte()
-    caminho_novo = caminho_saida.with_name(caminho_saida.name + ".novo")
+    # Temporários de nome próprio da rodada: duas rodadas simultâneas não disputam o mesmo.
+    identificador = f"{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    caminho_novo = caminho_saida.with_name(f"{caminho_saida.name}.{identificador}.novo")
+    caminho_macro = caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA)
+    caminho_macro_novo = caminho_macro.with_name(f"{caminho_macro.name}.{identificador}.novo")
     caminho_rejeitado = caminho_saida.with_name(caminho_saida.stem + ".rejeitado.csv")
 
     try:
-        resultado = _executar_rodada(
-            tickers, ano_mais_recente_fcd, diretorio_cache, caminho_novo, falhas_de_fonte
+        return _publicar_rodada(
+            tickers=tickers,
+            universo_automatico=universo_automatico,
+            ano_mais_recente_fcd=ano_mais_recente_fcd,
+            diretorio_cache=diretorio_cache,
+            caminhos=(caminho_novo, caminho_saida, caminho_rejeitado, caminho_macro_novo),
+            caminho_macro=caminho_macro,
+            falhas_de_fonte=falhas_de_fonte,
         )
-    except BaseException:
-        caminho_novo.unlink(missing_ok=True)
-        raise
+    finally:
+        _apagar_temporarios(caminho_novo, caminho_macro_novo)
+
+
+def _publicar_rodada(
+    tickers: list[str],
+    universo_automatico: bool,
+    ano_mais_recente_fcd: int | None,
+    diretorio_cache: Path,
+    caminhos: tuple[Path, Path, Path, Path],
+    caminho_macro: Path,
+    falhas_de_fonte: FalhasDeFonte,
+) -> pd.DataFrame:
+    """Roda a rodada em `caminho_novo`, checa e publica (ou rejeita); ver `rodar_screener`."""
+    caminho_novo, caminho_saida, caminho_rejeitado, caminho_macro_novo = caminhos
+    resultado = _executar_rodada(
+        tickers, ano_mais_recente_fcd, diretorio_cache, caminho_novo, falhas_de_fonte
+    )
 
     motivos = []
+    if resultado.empty:
+        motivos.append(MOTIVO_RODADA_SEM_LINHAS)
+    if universo_automatico and len(tickers) < MINIMO_ACOES_UNIVERSO_SCREENER:
+        motivos.append(
+            MOTIVO_RODADA_UNIVERSO_PEQUENO.format(
+                quantidade=len(tickers), minimo=MINIMO_ACOES_UNIVERSO_SCREENER
+            )
+        )
     if len(resultado) != len(tickers):
         motivos.append(
             MOTIVO_RODADA_LINHAS_FALTANDO.format(linhas=len(resultado), universo=len(tickers))
@@ -784,21 +836,12 @@ def rodar_screener(
         os.replace(caminho_novo, caminho_rejeitado)
         raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado, resultado)
 
-    # O arquivo de referência é preparado antes de trocar o CSV: se a gravação falhar, o
-    # resultado anterior fica como estava.
+    # Publica o arquivo de referência (a Selic e o IPCA) primeiro e o CSV por último: se a
+    # publicação falhar no meio, o CSV anterior fica intacto e a referência, só mais nova.
+    # Os temporários que sobrarem são apagados por `rodar_screener`.
     macro = resultado.attrs.get("macro")
-    caminho_macro = caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA)
-    caminho_macro_novo = caminho_macro.with_name(caminho_macro.name + ".novo")
-    grava_macro = macro is not None and not macro.usou_valor_guardado
-    try:
-        if grava_macro:
-            salvar_macro_referencia(macro, caminho_macro_novo)
-    except BaseException:
-        caminho_novo.unlink(missing_ok=True)
-        caminho_macro_novo.unlink(missing_ok=True)
-        raise
-
-    os.replace(caminho_novo, caminho_saida)
-    if grava_macro:
+    if macro is not None and not macro.usou_valor_guardado:
+        salvar_macro_referencia(macro, caminho_macro_novo)
         os.replace(caminho_macro_novo, caminho_macro)
+    os.replace(caminho_novo, caminho_saida)
     return resultado

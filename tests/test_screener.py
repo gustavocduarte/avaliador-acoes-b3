@@ -1,15 +1,22 @@
 import dataclasses
 import json
+import os
+import threading
 import warnings
+from pathlib import Path
 
 import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3 import screener
-from avaliador_b3.config import MENSAGEM_PRECO_INDISPONIVEL_SCREENER
+from avaliador_b3 import rodar_screener, screener
+from avaliador_b3.config import (
+    CODIGO_SAIDA_RODADA_REJEITADA,
+    MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
+    MOTIVO_RODADA_SEM_LINHAS,
+)
 from avaliador_b3.ingest import bcb_sgs
-from avaliador_b3.ingest.precos import TickerInvalido
+from avaliador_b3.ingest.precos import FalhaFontePreco, TickerInvalido
 
 # Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
 # execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não é uma
@@ -944,7 +951,9 @@ def _rodar_com_oficial_antigo(tmp_path, tickers=("AAAA4", "BBBB4")):
     oficial = tmp_path / "screener.csv"
     oficial.write_text(CONTEUDO_ANTIGO, encoding="utf-8")
     resultado = screener.rodar_screener(
-        tickers=list(tickers), diretorio_cache=tmp_path, caminho_saida=oficial
+        tickers=None if tickers is None else list(tickers),
+        diretorio_cache=tmp_path,
+        caminho_saida=oficial,
     )
     return oficial, resultado
 
@@ -971,7 +980,7 @@ def test_rodada_boa_substitui_o_oficial_sem_deixar_arquivo_novo(ambiente_feliz, 
     oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
 
     assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
-    assert not (tmp_path / "screener.csv.novo").exists()
+    assert list(tmp_path.glob("*.novo")) == []
     assert not (tmp_path / "screener.rejeitado.csv").exists()
     assert resultado.attrs["falhas_de_fonte"] == {}
 
@@ -988,7 +997,7 @@ def test_rodada_com_mais_acoes_sem_preco_que_o_limite_e_rejeitada(
     assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
     assert excecao.value.caminho_rejeitado == tmp_path / "screener.rejeitado.csv"
     assert list(pd.read_csv(excecao.value.caminho_rejeitado)["ticker"]) == ["AAAA4", "BBBB4"]
-    assert not (tmp_path / "screener.csv.novo").exists()
+    assert list(tmp_path.glob("*.novo")) == []
 
 
 def test_rodada_rejeitada_leva_o_resultado_com_a_macro_e_as_falhas(
@@ -1079,7 +1088,7 @@ def test_excecao_no_meio_da_rodada_apaga_o_arquivo_novo_e_preserva_o_oficial(
         _rodar_com_oficial_antigo(tmp_path)
 
     assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
-    assert not (tmp_path / "screener.csv.novo").exists()
+    assert list(tmp_path.glob("*.novo")) == []
     assert not (tmp_path / "screener.rejeitado.csv").exists()
 
 
@@ -1625,3 +1634,201 @@ def test_rodada_aceita_troca_o_csv_e_a_referencia_sem_deixar_temporarios(ambient
         json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))["fonte_selic"]
         == "BCB (SOAP)"
     )
+
+
+# --- Publicação da rodada: ordem, temporários e universo mínimo ---
+
+
+def _arquivos(pasta):
+    return sorted(p.name for p in pasta.iterdir() if p.is_file())
+
+
+def _semear_referencia_antiga(tmp_path):
+    antigo = '{"selic_meta": 0.99, "marca": "ANTIGO"}'
+    (tmp_path / "macro_referencia.json").write_text(antigo, encoding="utf-8")
+    return antigo
+
+
+def _falhar_troca_para(monkeypatch, nome_do_destino):
+    troca_real = os.replace
+
+    def troca(origem, destino):
+        if Path(destino).name == nome_do_destino:
+            raise PermissionError("arquivo em uso (simulado)")
+        return troca_real(origem, destino)
+
+    monkeypatch.setattr(os, "replace", troca)
+
+
+def test_falha_na_troca_do_macro_nao_toca_no_csv_e_limpa_os_temporarios(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    antigo = _semear_referencia_antiga(tmp_path)
+    _falhar_troca_para(monkeypatch, "macro_referencia.json")
+
+    with pytest.raises(PermissionError):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert (tmp_path / "macro_referencia.json").read_text(encoding="utf-8") == antigo
+    assert _arquivos(tmp_path) == ["macro_referencia.json", "screener.csv"]
+
+
+def test_falha_na_troca_do_csv_deixa_o_csv_anterior_e_a_referencia_nova_sem_temporarios(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _semear_referencia_antiga(tmp_path)
+    _falhar_troca_para(monkeypatch, "screener.csv")
+
+    with pytest.raises(PermissionError):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    publicada = json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))
+    assert publicada["fonte_selic"] == "BCB (SOAP)"
+    assert _arquivos(tmp_path) == ["macro_referencia.json", "screener.csv"]
+
+
+def test_falha_ao_gravar_o_rejeitado_limpa_o_temporario(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+    _falhar_troca_para(monkeypatch, "screener.rejeitado.csv")
+
+    with pytest.raises(PermissionError):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert _arquivos(tmp_path) == ["screener.csv"]
+
+
+def test_cada_rodada_usa_temporarios_de_nome_proprio(ambiente_feliz, tmp_path, monkeypatch):
+    origens = []
+    troca_real = os.replace
+
+    def troca_que_anota(origem, destino):
+        origens.append(Path(origem).name)
+        return troca_real(origem, destino)
+
+    monkeypatch.setattr(os, "replace", troca_que_anota)
+
+    _rodar_com_oficial_antigo(tmp_path)
+    _rodar_com_oficial_antigo(tmp_path)
+
+    temporarios_do_csv = [n for n in origens if n.startswith("screener.csv.") and ".novo" in n]
+    temporarios_do_macro = [
+        n for n in origens if n.startswith("macro_referencia.json.") and n.endswith(".novo")
+    ]
+    assert len(set(temporarios_do_csv)) == len(set(temporarios_do_macro)) == 2
+
+
+def test_rodada_parada_no_meio_nao_atrapalha_outra_que_termina_antes(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    oficial = tmp_path / "screener.csv"
+    oficial.write_text(CONTEUDO_ANTIGO, encoding="utf-8")
+    original = screener.obter_historico
+    chegou, liberar = threading.Event(), threading.Event()
+
+    def historico(ticker, periodo, diretorio_cache=None):
+        if (
+            threading.current_thread().name == "A"
+            and ticker == "BBBB4"
+            and periodo == screener.PERIODO_HISTORICO_COMPORTAMENTO
+        ):
+            chegou.set()
+            liberar.wait(30)
+        return original(ticker, periodo, diretorio_cache)
+
+    monkeypatch.setattr(screener, "obter_historico", historico)
+    resultados = {}
+
+    def roda(nome):
+        try:
+            resultados[nome] = screener.rodar_screener(
+                tickers=["AAAA4", "BBBB4"], diretorio_cache=tmp_path, caminho_saida=oficial
+            )
+        except BaseException as erro:
+            resultados[nome] = erro
+
+    a = threading.Thread(target=roda, args=("A",), name="A")
+    a.start()
+    assert chegou.wait(30)
+    b = threading.Thread(target=roda, args=("B",), name="B")
+    b.start()
+    b.join(60)
+    liberar.set()
+    a.join(60)
+
+    assert isinstance(resultados["A"], pd.DataFrame)
+    assert isinstance(resultados["B"], pd.DataFrame)
+    publicado = pd.read_csv(oficial)
+    assert list(publicado["ticker"]) == ["AAAA4", "BBBB4"]
+    assert publicado["sucesso"].all()
+    assert _arquivos(tmp_path) == ["macro_referencia.json", "screener.csv"]
+
+
+def test_universo_vazio_rejeita_a_rodada_e_preserva_o_resultado_anterior(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener, "obter_universo_ibovespa", lambda **kw: pd.DataFrame(columns=["ticker"])
+    )
+
+    with pytest.raises(screener.RodadaScreenerRejeitada) as excecao:
+        _rodar_com_oficial_antigo(tmp_path, tickers=None)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+    assert MOTIVO_RODADA_SEM_LINHAS in excecao.value.motivo
+    assert "0 ações (mínimo: 60)" in excecao.value.motivo
+    assert not (tmp_path / "macro_referencia.json").exists()
+    assert _arquivos(tmp_path) == ["screener.csv", "screener.rejeitado.csv"]
+
+
+def test_universo_abaixo_do_minimo_rejeita_a_rodada(ambiente_feliz, tmp_path):
+    with pytest.raises(screener.RodadaScreenerRejeitada, match=r"2 ações \(mínimo: 60\)"):
+        _rodar_com_oficial_antigo(tmp_path, tickers=None)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+
+
+def test_universo_no_minimo_e_aceito(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "MINIMO_ACOES_UNIVERSO_SCREENER", 2)
+
+    oficial, _ = _rodar_com_oficial_antigo(tmp_path, tickers=None)
+
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+
+
+def test_o_minimo_do_universo_nao_vale_para_lista_de_tickers_informada(ambiente_feliz, tmp_path):
+    oficial, _ = _rodar_com_oficial_antigo(tmp_path, tickers=("AAAA4",))
+
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4"]
+
+
+def test_o_resumo_da_linha_de_comando_mostra_o_motivo_do_universo_pequeno(
+    ambiente_feliz, tmp_path, monkeypatch, capsys
+):
+    rodada = screener.rodar_screener
+    monkeypatch.setattr(
+        screener,
+        "rodar_screener",
+        lambda: rodada(diretorio_cache=tmp_path, caminho_saida=tmp_path / "screener.csv"),
+    )
+
+    def sem_historico(ticker, **kwargs):
+        raise FalhaFontePreco("sem cache")
+
+    monkeypatch.setattr(rodar_screener, "obter_historico", sem_historico)
+
+    codigo = rodar_screener.main([])
+
+    saida = capsys.readouterr().out
+    assert codigo == CODIGO_SAIDA_RODADA_REJEITADA
+    assert "2 ações (mínimo: 60)" in saida
+
+
+def test_lista_de_tickers_vazia_rejeita_a_rodada_por_nao_ter_linhas(ambiente_feliz, tmp_path):
+    with pytest.raises(screener.RodadaScreenerRejeitada) as excecao:
+        _rodar_com_oficial_antigo(tmp_path, tickers=())
+
+    assert excecao.value.motivo == MOTIVO_RODADA_SEM_LINHAS
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
