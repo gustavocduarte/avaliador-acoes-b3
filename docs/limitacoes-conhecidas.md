@@ -122,6 +122,8 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tem FCD acima de 3 vezes o preço 
   - *Na tela:* quando o número de ações do Fundamentus não bate com o da CVM por mais de 2%, a página avisa. Em 04/10/2026, isso acontece com a EGIE3 (+24,0%, 1.416,38 milhões contra 1.142,30 milhões) e a ISAE4 (+6,7%).
 - **Preços, dividendos e Beta vêm do Yahoo Finance**, que pode atrasar ou falhar. O preço usado é o do último fechamento disponível (02/10/2026 no Screener de 04/10/2026).
   - *Na tela:* sem preço válido, a página mostra "Preço atual indisponível" e não calcula o potencial.
+- **Fechamento zero ou negativo é descartado como dado inválido, em todos os tickers.** A regra vale para ações, Ibovespa e petróleo. Um preço negativo de futuro, como o do WTI em abril de 2020, seria descartado, mas a correlação usa o Brent, que não fechou negativo.
+  - *Efeito:* a linha some do histórico e dos gráficos; o Beta e a volatilidade são calculados com as linhas válidas.
 - **Selic e IPCA seguem uma cadeia de fontes:**
   1. a API do Banco Central;
   2. o serviço SOAP do Banco Central;
@@ -134,11 +136,11 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tem FCD acima de 3 vezes o preço 
 
 ## Screener e Simulador de carteira
 
-- **O Screener mostra dados salvos, não ao vivo.** No app publicado, o resultado só muda quando uma nova rodada é feita e publicada pelo workflow (o botão "Rodar screener agora" só aparece na execução local, com opt-in), então os preços podem estar defasados.
+- **O Screener mostra dados salvos, não ao vivo.** No app publicado, o resultado só muda quando uma nova rodada é feita e publicada pelo workflow (o botão "Rodar screener agora" só aparece com o opt-in `AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), então os preços podem estar defasados.
   - *Na tela:* a aba mostra a data da última atualização.
 - **A "Última atualização" do app publicado pode ficar mais antiga que a da rodada.** Essa data vem do arquivo de referência (`macro_referencia.json`), que só é regravado quando a Selic e o IPCA são buscados ao vivo. Se todas as fontes falharem numa rodada que mesmo assim foi aceita (a Selic e o IPCA vêm do valor guardado ou do próprio arquivo de referência), o arquivo não é regravado, o `screener.csv` é publicado com os preços novos e a data mostrada continua a da última busca ao vivo.
   - *Na tela:* não há sinal de que a data está atrás; o commit do workflow no `master` e o resumo da execução na aba Actions mostram a data real da rodada.
-- **A rodada é protegida por uma checagem.** Se faltarem linhas, ou mais de 5 ações ficarem sem preço, ou mais de 5 tiverem falha de fonte, a rodada é rejeitada, o resultado anterior é mantido e o motivo é mostrado. Isso evita dados quebrados, mas deixa o Screener desatualizado em vez de errado, e até 5 ações com falha ainda passam.
+- **A rodada é protegida por uma checagem.** Se a rodada vier sem linhas ou com linhas faltando, se o universo do Ibovespa tiver menos de 60 ações, se mais de 5 ações ficarem sem preço, se mais de 5 tiverem falha de fonte ou se algum valor não for finito, a rodada é rejeitada, o resultado anterior é mantido e o motivo é mostrado. Isso evita dados quebrados, mas deixa o Screener desatualizado em vez de errado, e até 5 ações com falha ainda passam.
 - **Ações sem nenhum método aplicável** ficam sem valor justo: em 04/10/2026, CSNA3 e NATU3. Aparecem no Screener com o motivo, e o Simulador as marca como sem cenário.
 - **O Simulador mostra potencial, não previsão.** Cada cenário compara o valor justo com o preço: o pessimista é o menor valor entre os métodos aplicáveis, o base é o valor combinado e o otimista é o maior. Não há prazo, dividendos, custos nem impostos. O pessimista pode ser o preço teto do Bazin, que não é uma estimativa de valor. Um valor justo zero ou negativo conta como perda total (−100%), e o preço usado é o da última rodada do Screener.
   - *Na tela:* o bloco "Como funciona este cálculo?" explica isso, e os cenários limitados a −100% são sinalizados.

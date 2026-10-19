@@ -47,10 +47,10 @@ flowchart LR
 ## Destaques técnicos
 
 - **Cadeia de fontes com fallback:** a Selic e o IPCA passam pela API do Banco Central, pelo serviço SOAP, pelo IBGE (só o IPCA), pelo último valor guardado e pelo arquivo de referência versionado; a tela informa a fonte efetiva. O ano da demonstração da CVM é detectado por empresa, e a empresa que ainda não entregou o ano mais recente usa o anterior.
-- **Checagem que impede publicar rodada ruim:** a rodada só substitui o `screener.csv` se tiver uma linha por ação, no máximo 5 ações sem preço e no máximo 5 com falha de fonte; senão vira `screener.rejeitado.csv`, o resultado anterior fica e a execução do workflow falha.
-- **Gravação atômica:** o screener e os zips da CVM são gravados num arquivo temporário e trocados no fim, então uma falha no meio nunca corrompe o arquivo anterior.
+- **Checagem que impede publicar rodada ruim:** a rodada só substitui o `screener.csv` se tiver ao menos uma linha, uma linha por ação, no máximo 5 ações sem preço, no máximo 5 com falha de fonte, nenhum valor não finito (`NaN` ou infinito) e, quando o universo vem do Ibovespa, ao menos 60 ações; senão vira `screener.rejeitado.csv`, o resultado anterior fica e a execução do workflow falha.
+- **Gravação atômica:** o screener, os caches em disco e os zips da CVM são gravados num arquivo temporário de nome único por escritor e trocados no fim, então uma falha no meio, ou duas gravações simultâneas, nunca corrompem o arquivo anterior. O screener é publicado na ordem referência macro (`macro_referencia.json`) e depois CSV: se a publicação falhar no meio, o CSV anterior fica intacto.
 - **Cache versionado por schema:** cada cache em disco leva a versão do formato, e uma mudança de formato invalida os arquivos antigos; os zips da CVM expiram em 7 dias (ano em preenchimento) ou 30 dias (anos fechados), e os resultados derivados deles (fluxo de caixa, lucro e balanço) são refeitos quando o zip de origem muda ou vence.
-- **Testes sem rede:** mais de 800 testes, com **96% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
+- **Testes sem rede:** mais de 1.300 testes, com **97% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
 - **Tipagem e CI:** `mypy` e `ruff` em todo o código, e um workflow que roda testes, lint, formatação e tipos a cada push e pull request.
 - **Decisões registradas:** cada mudança de metodologia passa por uma investigação só de leitura, com relatório que separa o confirmado nos dados da hipótese (pasta `docs/`).
 
@@ -85,8 +85,8 @@ O dashboard tem três abas:
   operacional reinvestida. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
   desde o primeiro acesso) e é atualizado pelo workflow agendado. O botão
-  "Rodar screener agora" só aparece na execução local, com o opt-in descrito em
-  "Instalação, execução e testes".
+  "Rodar screener agora" só aparece com o opt-in explícito
+  (`AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), descrito em "Instalação, execução e testes".
 - **Simulador de carteira** — dado um valor investido por ação, mostra o
   potencial da carteira nos cenários pessimista (menor valor entre os métodos
   aplicáveis), base (valor combinado) e otimista (maior valor), a partir do
@@ -228,7 +228,7 @@ ruff format --check src tests
 python -m mypy
 ```
 
-Relatório de cobertura (hoje, 96%):
+Relatório de cobertura (hoje, 97%):
 
 ```bash
 pytest --cov --cov-report=term-missing:skip-covered

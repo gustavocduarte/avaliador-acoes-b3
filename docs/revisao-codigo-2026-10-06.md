@@ -244,3 +244,28 @@ if retornos["retorno_a"].std() == 0:
 - O README cita "mais de 800 testes" e "96% de cobertura", enquanto o registro do tratamento já fala em 1.302 testes, e a suíte atual é bem maior.
 
 Não quebra o sistema, mas vale corrigir num projeto de portfólio.
+
+---
+
+# Tratamento (19/10/2026)
+
+Cada achado foi confirmado no código antes de qualquer correção. A suíte passou de 1317 testes (antes da D2) para 1372, todos passando, com ruff e mypy limpos.
+
+## Os 7 achados
+
+| # | Achado | Confirmado | Correção | Commit |
+|---|---|---|---|---|
+| 1 | Versões da CVM misturadas no fluxo de caixa | Reproduzido com DFC sintética. Nos dados reais (Parte A), efeito nulo: zero empresas com versão dupla. | Mantém só a maior `VERSAO` por empresa e data, antes de qualquer extração. | `b7b1267` |
+| 2 | Caches da CVM de anos fechados nunca expiram | Confirmado no código. Nos dados reais (Parte A), o zip de 2024 foi regenerado pela CVM sem mudança nos dados usados. | Zips de anos fechados valem 30 dias (o ano em preenchimento segue com 7). Os caches de fluxo de caixa, lucro e balanço guardam o tamanho e a data do zip de origem e são refeitos quando ele muda ou vence. Schemas do FCF (6) e do balanço (2); o lucro ganha envelope versionado. | `8a7aaa9` |
+| 3 | Envelope de cache com conteúdo que não é objeto | Reproduzido (`[]` aceito como resultado). | Conteúdo que não é `dict` vale como cache ausente e é refeito, com log, no Fundamentus, no fluxo de caixa, no lucro e no balanço. | `a3aaf2d` |
+| 4 | Divisão por zero em `calcular_acoes_em_circulacao` | Reproduzido, inclusive com integralizado zero e tesouraria positiva. | Sem ações em circulação, o número fica indisponível com motivo explícito, e o app usa o do Fundamentus. | `a3aaf2d` |
+| 5 | Beta e volatilidade com retornos infinitos | Confirmado: um fechamento zero no meio da série deixava o Beta e a volatilidade em `NaN`. | Retornos infinitos viram `NaN` antes do `dropna`. | `a3aaf2d` |
+| 6 | `RuntimeWarning` na correlação | Confirmado: 2 avisos em `test_serie_sem_variacao_fica_nao_aplicavel`. | A série sem variação é detectada antes do `.corr()`. Os avisos da suíte passaram de 13 para 11, e nenhum vem mais da correlação. | `a3aaf2d` |
+| 7 | README desatualizado | Confirmado (800 testes, 96%, botão "só na execução local"). | Números, gravação atômica, regras da checagem da rodada e opt-in do botão atualizados. | Este commit |
+
+O commit `cc7fedf` (Etapa 0) registrou a revisão neste documento. As correções saíram em um commit por assunto, na ordem da tabela.
+
+## Acréscimos além da revisão
+
+- **Zip ausente sem validade permanente.** Sem o zip no disco, o cache derivado vale o mesmo prazo (30 dias para ano fechado, 7 para o ano corrente), contado pela data do zip guardada no próprio cache. Sem essa data, o cache não vale (`8a7aaa9`).
+- **Fechamento não positivo descartado na origem.** `ingest/precos.py` descarta fechamento zero ou negativo junto com o vazio, o que protege todos os consumidores do histórico, inclusive os gráficos. A troca de ±inf por `NaN` em `comportamento.py` e `correlacao.py` continua como defesa (`a3aaf2d`). A regra vale também para o petróleo: um preço negativo de futuro, como o do WTI em abril de 2020, seria descartado.
