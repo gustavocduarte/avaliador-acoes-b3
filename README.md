@@ -52,7 +52,7 @@ flowchart LR
 - **Cache versionado por schema:** cada cache em disco leva a versão do formato, e uma mudança de formato invalida os arquivos antigos; os zips da CVM expiram em 7 dias (ano em preenchimento) ou 30 dias (anos fechados), e os resultados derivados deles (fluxo de caixa, lucro e balanço) são refeitos quando o zip de origem muda ou vence.
 - **Testes sem rede:** mais de 1.300 testes, com **97% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
 - **Tipagem e CI:** `mypy` e `ruff` em todo o código, e um workflow que roda testes, lint, formatação e tipos a cada push e pull request.
-- **Decisões registradas:** cada mudança de metodologia passa por uma investigação só de leitura, com relatório que separa o confirmado nos dados da hipótese (pasta `docs/`).
+- **Decisões registradas:** cada mudança de metodologia passa por uma investigação só de leitura, com relatório que separa o confirmado nos dados da hipótese, e as decisões ficam em [`docs/decisoes-de-metodologia.md`](docs/decisoes-de-metodologia.md).
 
 ## Tecnologias
 
@@ -62,7 +62,7 @@ flowchart LR
 
 ## O que o app faz
 
-Para cada ação, calcula o valor justo por três métodos e um valor combinado:
+O escopo é só o das ações do Ibovespa (as principais da B3): fundos imobiliários e small caps ficam de fora. Para cada ação, calcula o valor justo por três métodos e um valor combinado:
 
 - **Graham** — raiz quadrada de `22,5 × LPA × VPA`; só se aplica com LPA e VPA
   positivos.
@@ -256,27 +256,28 @@ O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions,
 
 ## Documentação técnica
 
-A pasta `docs/` guarda a especificação e os relatórios técnicos do projeto. O processo é sempre o mesmo: uma auditoria ou vistoria aponta um problema, o problema é confirmado no código antes de qualquer correção, uma investigação só de leitura compara as alternativas (separando o confirmado nos dados da hipótese) e a decisão é registrada antes de implementar.
+A pasta `docs/` tem três documentos. O processo é sempre o mesmo: um achado (de uma auditoria, vistoria ou revisão) aponta um problema, o problema é confirmado no código antes de qualquer correção, a correção sai com teste e o resultado é registrado. Quando a questão é de metodologia, uma investigação só de leitura compara as alternativas, separando o confirmado nos dados da hipótese, e a decisão é registrada antes de implementar.
 
-- `especificacao.md` — especificação original do projeto.
-- `limitacoes-conhecidas.md` — limitações dos modelos e dos dados, para quem usa o app.
-- Auditorias e vistorias: `auditoria-2026-09-18.md`,
-  `vistoria-pre-publicacao-2026-09-20.md`, `bateria-testes-2026-09-21.md`,
-  `auditoria-tecnica-2026-09-27.md`, `vistoria-2026-09-28.md` e
-  `vistoria-2026-09-28-b.md`.
-- Correções: `correcoes-2026-09-22.md`, `correcao-fcd-2026-09-23.md`,
-  `correcao-ano-fcd-2026-09-23.md` e `correcao-cnpj-2026-09-25.md`.
-- Investigações: `investigacao-p03-p04-2026-10-02.md` (valor por ação do FCD,
-  não controladores, número de ações, fator de unit e as decisões que resultaram nele),
-  `investigacao-p10-2026-10-04.md` (crescimento do FCD e prêmio de risco),
-  `investigacao-fluxo-base-2026-10-04.md` (capital de giro e risco sacado) e
-  `investigacao-ciclicas-2026-10-04.md` (normalização do fluxo-base das empresas cíclicas,
-  ainda não implementada).
+- [`limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md): as limitações dos modelos e dos dados, para quem usa o app.
+- [`decisoes-de-metodologia.md`](docs/decisoes-de-metodologia.md): o problema, as alternativas, a decisão, o porquê e os commits de cada mudança no modelo (valor do acionista e bancos, fluxo de caixa, número de ações, crescimento, prêmio de risco, risco sacado, empresas cíclicas), mais o que ficou decidido e ainda não foi implementado.
+- [`historico-de-revisoes.md`](docs/historico-de-revisoes.md): as auditorias, vistorias, baterias de testes, correções e revisões de código de 18/09 a 06/10/2026, com a gravidade dos achados, como foram resolvidos e os commits.
+
+Os relatórios originais foram consolidados nesses dois últimos documentos e continuam no histórico do Git; cada um traz o comando para recuperá-los.
+
+## Próximos passos
+
+O que ficou para depois:
+
+- **Normalização das cíclicas.** Decidida (critério, método e janela estão em `docs/decisoes-de-metodologia.md`), mas aguardando a série histórica de 2010 a 2025 por empresa. Hoje é uma limitação documentada.
+- **Banco de dados (Supabase)** para o histórico das rodadas do screener e para a série histórica que a normalização das cíclicas precisa. Hoje o resultado é só o `screener.csv` mais recente.
+- **Divisão do `app/main.py` em módulos.** É o maior arquivo do projeto.
+- **Pesos do WACC a valor de mercado**, junto com o passivo de arrendamento nos pesos (hoje os pesos são contábeis).
+- **Backtest do modelo** (comparar o valor justo calculado no passado com o preço que veio depois) está fora do escopo: exige dado fundamentalista histórico, que é difícil de obter de graça.
 
 ## Sobre o uso de IA no desenvolvimento
 
 Desenvolvido com o Claude Code como ferramenta de implementação, com revisão crítica de cada
-etapa numa sessão separada do Claude e auditorias registradas em `docs/`. As decisões de escopo
+etapa numa sessão separada do Claude e auditorias registradas em `docs/historico-de-revisoes.md`. As decisões de escopo
 e de metodologia (o que construir, o que descartar, como tratar cada limitação do modelo) e a
 aprovação de cada mudança antes do commit foram minhas. Exemplo de algo descartado: um monitor
 de risco geopolítico via GDELT, removido depois de mostrar falsos positivos recorrentes que os
