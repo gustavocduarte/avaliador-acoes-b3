@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -214,9 +215,12 @@ def test_obter_lucro_liquido_levanta_cnpj_nao_encontrado(tmp_path, monkeypatch):
 def test_obter_lucro_liquido_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_path, monkeypatch):
     chamadas = {"contador": 0}
 
-    def baixar_falso(*args, **kwargs):
+    def baixar_falso(ano, diretorio_cache, *args, **kwargs):
         chamadas["contador"] += 1
-        return ZIP_AMOSTRA
+        destino = cvm._caminho_zip_ano(ano, diretorio_cache)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ZIP_AMOSTRA, destino)
+        return destino
 
     monkeypatch.setattr(cvm, "_baixar_zip_ano", baixar_falso)
 
@@ -347,21 +351,6 @@ def test_baixar_zip_ano_em_preenchimento_dentro_do_prazo_usa_cache(tmp_path, mon
     resultado = cvm._baixar_zip_ano(2026, tmp_path, forcar_atualizacao=False, hoje=hoje)
 
     assert resultado.read_bytes() == b"conteudo em cache"
-
-
-def test_baixar_zip_ano_fechado_nunca_expira_independente_da_idade(tmp_path, monkeypatch):
-    hoje = datetime(2027, 1, 1)
-    caminho = tmp_path / "cvm" / "dfp_cia_aberta_2020.zip"
-    _gravar_zip_com_idade(caminho, b"conteudo antigo de ano fechado", timedelta(days=1000), hoje)
-
-    def get_falso(*args, **kwargs):
-        raise AssertionError("ano fechado não deveria bater na rede, não importa a idade")
-
-    monkeypatch.setattr(cvm.requests, "get", get_falso)
-
-    resultado = cvm._baixar_zip_ano(2020, tmp_path, forcar_atualizacao=False, hoje=hoje)
-
-    assert resultado.read_bytes() == b"conteudo antigo de ano fechado"
 
 
 def test_baixar_zip_ano_prazo_vencido_download_falha_usa_cache_existente_com_aviso(
@@ -679,9 +668,12 @@ def test_obter_fluxo_caixa_livre_ignora_cache_com_versao_diferente(tmp_path, mon
 def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_path, monkeypatch):
     chamadas = {"contador": 0}
 
-    def baixar_falso(*args, **kwargs):
+    def baixar_falso(ano, diretorio_cache, *args, **kwargs):
         chamadas["contador"] += 1
-        return ZIP_AMOSTRA
+        destino = cvm._caminho_zip_ano(ano, diretorio_cache)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ZIP_AMOSTRA, destino)
+        return destino
 
     monkeypatch.setattr(cvm, "_baixar_zip_ano", baixar_falso)
 

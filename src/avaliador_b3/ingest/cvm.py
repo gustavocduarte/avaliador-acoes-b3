@@ -45,6 +45,7 @@ from avaliador_b3.config import (
     CONTA_RECEITA_LIQUIDA_CVM,
     DATA_RAW_DIR,
     DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE,
+    DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO,
     FATOR_ESCALA_MOEDA_CVM,
     MOTIVO_RECEITA_NAO_LIDA,
     MOTIVO_RECEITA_SEM_CONTA,
@@ -64,6 +65,7 @@ from avaliador_b3.config import (
     TERMOS_RISCO_SACADO_EXCLUIDOS,
     URLS_CVM_ZIP,
     VERSAO_SCHEMA_CVM_FCF,
+    VERSAO_SCHEMA_CVM_LUCRO,
 )
 from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
 from avaliador_b3.numeros import converter_finito
@@ -141,15 +143,74 @@ def _caminho_cache_resultado(cnpj_normalizado: str, ano: int, diretorio_cache: P
 
 
 def _cache_zip_expirado(caminho: Path, ano: int, hoje: datetime) -> bool:
-    """Só o zip do(s) ano(s) ainda em preenchimento (`ano >= hoje.year -
-    1`) tem prazo de validade — ver `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_
-    CORRENTE` em config.py pra o porquê. Anos fechados (`ano < hoje.year
-    - 1`) nunca expiram: a CVM não reabre exercícios encerrados, o
-    arquivo não muda mais."""
-    if ano < hoje.year - 1:
+    """O zip do(s) ano(s) ainda em preenchimento (`ano >= hoje.year - 1`) vale
+    `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE` dias e o de anos fechados,
+    `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO` — ver os dois em config.py pra o porquê."""
+    return _prazo_vencido(caminho.stat().st_mtime, ano, hoje)
+
+
+def _prazo_vencido(modificado_em: float, ano: int, hoje: datetime) -> bool:
+    validade = (
+        DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO
+        if ano < hoje.year - 1
+        else DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE
+    )
+    return (hoje - datetime.fromtimestamp(modificado_em)).days >= validade
+
+
+def origem_do_zip(caminho_zip: Path) -> dict | None:
+    """Identificação do zip de onde um resultado derivado saiu (tamanho e data de
+    modificação em segundos), guardada no cache derivado; `None` se o zip não existe."""
+    try:
+        estado = caminho_zip.stat()
+    except OSError:
+        return None
+    return {"tamanho": estado.st_size, "modificado_em": int(estado.st_mtime)}
+
+
+def zip_de_origem_vigente(
+    caminho_zip: Path, ano: int, origem_gravada: object, hoje: datetime | None = None
+) -> bool:
+    """O cache derivado de um zip só vale enquanto o zip for o mesmo (tamanho e data
+    iguais aos gravados) e dentro do prazo; zip trocado ou vencido manda refazer a leitura
+    (e `_baixar_zip_ano` renova o vencido). Sem o zip no disco, vale o mesmo prazo sobre a data
+    do zip guardada no cache (o zip pode ter sido apagado de propósito); sem `origem_gravada`
+    válida, não vale."""
+    hoje = hoje or datetime.now()
+    if not caminho_zip.exists():
+        if not isinstance(origem_gravada, dict) or not isinstance(
+            origem_gravada.get("modificado_em"), int | float
+        ):
+            return False
+        return not _prazo_vencido(origem_gravada["modificado_em"], ano, hoje)
+    if origem_gravada != origem_do_zip(caminho_zip):
         return False
-    idade = hoje - datetime.fromtimestamp(caminho.stat().st_mtime)
-    return idade.days >= DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE
+    return not _cache_zip_expirado(caminho_zip, ano, hoje)
+
+
+def ler_cache_derivado_cvm(
+    caminho: Path, versao_schema: int, caminho_zip: Path, ano: int, hoje: datetime | None = None
+) -> dict | None:
+    """Resultado do cache derivado (`fcf_*`, `lucro_*`, `balanco_*`), ou `None` (cache ausente)
+    se o arquivo for ilegível, de outro schema ou o zip de origem tiver mudado ou vencido."""
+    bruto = ler_json_cache(caminho)
+    if bruto is None or bruto.get("versao_schema") != versao_schema:
+        return None
+    if not zip_de_origem_vigente(caminho_zip, ano, bruto.get("zip_origem"), hoje):
+        return None
+    return bruto.get("resultado")
+
+
+def gravar_cache_derivado_cvm(
+    caminho: Path, versao_schema: int, caminho_zip: Path, resultado: dict
+) -> None:
+    """Grava o resultado derivado com o schema e a identificação do zip de origem."""
+    envelope = {
+        "versao_schema": versao_schema,
+        "zip_origem": origem_do_zip(caminho_zip),
+        "resultado": resultado,
+    }
+    gravar_json_atomico(caminho, envelope)
 
 
 def _baixar_zip_ano(
@@ -163,11 +224,10 @@ def _baixar_zip_ano(
     DFP (ITR com `documento="itr"`), ou devolve o caminho do já cacheado. Um único zip serve para
     qualquer número de empresas consultadas naquele ano.
 
-    Cache é permanente pra anos fechados, mas expira pro ano ainda em
-    preenchimento depois de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE`
-    dias — ver `_cache_zip_expirado` e o comentário em config.py (sem isso, um
-    zip baixado cedo na janela jan-mar ficaria incompleto pra sempre
-    localmente).
+    O cache expira depois de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE` dias pro ano ainda em
+    preenchimento e de `DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO` pros anos fechados — ver
+    `_cache_zip_expirado` e o comentário em config.py (sem isso, um zip baixado cedo na janela
+    jan-mar ficaria incompleto pra sempre localmente, e uma reapresentação da CVM não chegaria).
 
     Se o prazo venceu mas o download de atualização falha (CVM fora do
     ar, timeout, erro de rede) e já existe um zip em cache pra esse ano,
@@ -632,18 +692,13 @@ def _montar_resultado_fcf(
     }
 
 
-def _ler_cache_fcf_com_schema_atual(caminho: Path) -> dict | None:
-    """Lê o cache do FCF só se a versão de schema gravada bater com
-    `VERSAO_SCHEMA_CVM_FCF` atual — devolve `None` (tratado como cache
-    miss por `obter_fluxo_caixa_livre`, força busca nova) se a versão não
-    bater ou o arquivo estiver sem envelope de versão. Mesmo padrão de
-    `ingest.fundamentus._ler_cache_com_schema_atual`: um cache gravado antes
-    de um campo novo seria servido sem ele, e o primeiro código que tentasse
-    ler a chave nova quebraria com `KeyError`."""
-    bruto = ler_json_cache(caminho)
-    if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_FCF:
-        return None
-    return bruto.get("resultado")
+def _ler_cache_fcf(caminho: Path, caminho_zip: Path, ano: int) -> dict | None:
+    """Lê o cache do FCF só se a versão de schema bater com `VERSAO_SCHEMA_CVM_FCF` e o zip de
+    origem for o mesmo e estiver no prazo (ver `ler_cache_derivado_cvm`); `None` força a leitura
+    do zip. Mesmo padrão de `ingest.fundamentus._ler_cache_com_schema_atual`: um cache gravado
+    antes de um campo novo seria servido sem ele, e o primeiro código que tentasse ler a chave
+    nova quebraria com `KeyError`."""
+    return ler_cache_derivado_cvm(caminho, VERSAO_SCHEMA_CVM_FCF, caminho_zip, ano)
 
 
 def obter_fluxo_caixa_livre(
@@ -671,11 +726,13 @@ def obter_fluxo_caixa_livre(
     caminho_resultado = diretorio_cache / "cvm" / f"fcf_{cnpj_normalizado}_{ano}.json"
 
     if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
-        resultado_cache = _ler_cache_fcf_com_schema_atual(caminho_resultado)
+        resultado_cache = _ler_cache_fcf(
+            caminho_resultado, _caminho_zip_ano(ano, diretorio_cache), ano
+        )
         if resultado_cache is not None:
             return resultado_cache
-        # Schema mudou desde que esse arquivo foi gravado — ignora o
-        # cache e cai pro fetch novo abaixo, como se fosse cache miss.
+        # Schema mudou, o zip de origem mudou ou venceu — ignora o cache
+        # e cai pro fetch novo abaixo, como se fosse cache miss.
 
     caminho_zip = _baixar_zip_ano(ano, diretorio_cache, forcar_atualizacao)
 
@@ -687,8 +744,7 @@ def obter_fluxo_caixa_livre(
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
-        envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
-        gravar_json_atomico(caminho_resultado, envelope)
+        gravar_cache_derivado_cvm(caminho_resultado, VERSAO_SCHEMA_CVM_FCF, caminho_zip, resultado)
 
     return resultado
 
@@ -710,7 +766,9 @@ def obter_fluxo_caixa_livre_do_tipo(
         diretorio_cache / "cvm" / f"fcf_{cnpj_normalizado}_{ano}_{metodo}_{tipo}.json"
     )
     if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
-        resultado_cache = _ler_cache_fcf_com_schema_atual(caminho_resultado)
+        resultado_cache = _ler_cache_fcf(
+            caminho_resultado, _caminho_zip_ano(ano, diretorio_cache), ano
+        )
         if resultado_cache is not None:
             return resultado_cache
 
@@ -722,8 +780,7 @@ def obter_fluxo_caixa_livre_do_tipo(
     resultado = _montar_resultado_fcf(ano, tipo, metodo, linhas, receita)
 
     if usar_cache:
-        envelope = {"versao_schema": VERSAO_SCHEMA_CVM_FCF, "resultado": resultado}
-        gravar_json_atomico(caminho_resultado, envelope)
+        gravar_cache_derivado_cvm(caminho_resultado, VERSAO_SCHEMA_CVM_FCF, caminho_zip, resultado)
     return resultado
 
 
@@ -908,7 +965,12 @@ def obter_lucro_liquido(
     caminho_resultado = _caminho_cache_resultado(cnpj_normalizado, ano, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho_resultado.exists():
-        resultado_cache = ler_json_cache(caminho_resultado)
+        resultado_cache = ler_cache_derivado_cvm(
+            caminho_resultado,
+            VERSAO_SCHEMA_CVM_LUCRO,
+            _caminho_zip_ano(ano, diretorio_cache),
+            ano,
+        )
         if resultado_cache is not None:
             return resultado_cache
 
@@ -926,6 +988,8 @@ def obter_lucro_liquido(
         raise CnpjNaoEncontrado(f"CNPJ {cnpj!r} não encontrado no DFP da CVM para {ano}.")
 
     if usar_cache:
-        gravar_json_atomico(caminho_resultado, resultado)
+        gravar_cache_derivado_cvm(
+            caminho_resultado, VERSAO_SCHEMA_CVM_LUCRO, caminho_zip, resultado
+        )
 
     return resultado

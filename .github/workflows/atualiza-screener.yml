@@ -63,8 +63,10 @@ jobs:
         run: python -m pip install -e .
 
       # 4. Chave do cache dos zips da CVM: uma por semana ISO. O app só rebaixa o zip do ano em
-      #    preenchimento depois de 7 dias (DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE), então um
-      #    cache novo por semana acompanha essa validade e limita o espaço usado.
+      #    preenchimento depois de 7 dias (DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE) e o de anos
+      #    fechados depois de 30 (DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO), então um cache novo
+      #    por semana acompanha essa validade e limita o espaço usado. O conjunto de zips não
+      #    muda (~67 MB); a cada 30 dias, os de anos fechados são baixados de novo (segundos).
       - name: Calcula a chave do cache da CVM
         id: semana
         run: echo "chave=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
@@ -80,9 +82,9 @@ jobs:
           key: cvm-zips-${{ steps.semana.outputs.chave }}
           restore-keys: cvm-zips-
 
-      # 6. Lista os zips restaurados com a data de modificação. O app decide rebaixar o zip do ano
-      #    corrente pela data de modificação do arquivo (cvm.py, _cache_zip_expirado): se a
-      #    restauração não preservasse as datas originais, esse zip nunca seria atualizado.
+      # 6. Lista os zips restaurados com a data de modificação. O app decide rebaixar um zip pela
+      #    data de modificação do arquivo (cvm.py, _cache_zip_expirado): se a restauração não
+      #    preservasse as datas originais, nenhum zip seria atualizado.
       #    Compare, na primeira e na segunda execução, as datas com as da execução anterior.
       - name: Lista os zips da CVM restaurados
         run: |

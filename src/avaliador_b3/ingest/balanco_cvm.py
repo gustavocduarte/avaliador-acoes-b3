@@ -53,14 +53,16 @@ from avaliador_b3.config import (
     UNITS_COMPOSICAO,
     VERSAO_SCHEMA_CVM_BALANCO,
 )
-from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
 from avaliador_b3.ingest.cvm import (
     ErroCVM,
     _baixar_zip_ano,
+    _caminho_zip_ano,
     _linhas_do_membro,
     _normalizar_cnpj,
     _normalizar_descricao,
     _sem_ancestral_marcado,
+    gravar_cache_derivado_cvm,
+    ler_cache_derivado_cvm,
 )
 from avaliador_b3.numeros import converter_finito
 
@@ -165,12 +167,10 @@ def _caminho_cache(cnpj_normalizado: str, data_base: str, diretorio_cache: Path)
     return diretorio_cache / "cvm" / f"balanco_{cnpj_normalizado}_{data_base}.json"
 
 
-def _ler_cache(caminho: Path) -> dict | None:
-    """Lê o cache só se a versão do schema bater (mesmo mecanismo do FCF)."""
-    bruto = ler_json_cache(caminho)
-    if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_CVM_BALANCO:
-        return None
-    return bruto.get("resultado")
+def _ler_cache(caminho: Path, caminho_zip: Path, ano: int) -> dict | None:
+    """Lê o cache só se a versão do schema bater e o zip de origem for o mesmo e estiver no
+    prazo (mesmo mecanismo do FCF)."""
+    return ler_cache_derivado_cvm(caminho, VERSAO_SCHEMA_CVM_BALANCO, caminho_zip, ano)
 
 
 def _membro(documento: str, demonstracao: str, ano: int) -> str:
@@ -206,7 +206,7 @@ def obter_balanco_cvm(
     caminho_cache = _caminho_cache(cnpj_normalizado, data_base, diretorio_cache)
 
     if usar_cache and not forcar_atualizacao and caminho_cache.exists():
-        em_cache = _ler_cache(caminho_cache)
+        em_cache = _ler_cache(caminho_cache, _caminho_zip_ano(ano, diretorio_cache, documento), ano)
         if em_cache is not None:
             return em_cache
 
@@ -271,8 +271,7 @@ def obter_balanco_cvm(
         "capital": capital,
     }
     if usar_cache:
-        envelope = {"versao_schema": VERSAO_SCHEMA_CVM_BALANCO, "resultado": resultado}
-        gravar_json_atomico(caminho_cache, envelope)
+        gravar_cache_derivado_cvm(caminho_cache, VERSAO_SCHEMA_CVM_BALANCO, caminho_zip, resultado)
     return resultado
 
 

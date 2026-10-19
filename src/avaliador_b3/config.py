@@ -302,20 +302,22 @@ URLS_CVM_ZIP = {"dfp": URL_CVM_DFP_ZIP, "itr": URL_CVM_ITR_ZIP}
 FATOR_ESCALA_MOEDA_CVM = {"MIL": 1000.0, "UNIDADE": 1.0}
 CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 
-# O zip anual da CVM é cacheado com prazo de validade só pro(s) ano(s) ainda
-# em preenchimento: anos fechados não mudam mais, mas a CVM atualiza o zip do
-# ano corrente conforme as empresas entregam a DFP (inclusive fora do prazo).
-# Sem prazo, um zip baixado cedo (ex: na janela jan-mar, ainda incompleto)
+# O zip anual da CVM é cacheado com prazo de validade. A CVM atualiza o zip do
+# ano corrente conforme as empresas entregam a DFP (inclusive fora do prazo):
+# sem prazo, um zip baixado cedo (ex: na janela jan-mar, ainda incompleto)
 # ficaria preso localmente e as empresas que entregassem depois nunca
 # apareceriam. Ver docs/correcao-ano-fcd-2026-09-23.md.
 #
-# Prazo de validade de 7 dias (escolha redonda, não uma medição — a DFP não
-# muda hora a hora, então checar 1x/semana já evita ficar preso por meses,
-# sem bater na rede a cada busca) que só vale pro(s) ano(s) ainda em
-# preenchimento (`ano >= ano corrente - 1` em ingest.cvm._cache_zip_
-# expirado); anos fechados continuam com cache permanente, sem custo de
-# rede repetido à toa.
+# Prazo de 7 dias para o(s) ano(s) ainda em preenchimento (`ano >= ano corrente - 1`
+# em ingest.cvm._cache_zip_expirado; escolha redonda, não uma medição: a DFP não muda
+# hora a hora, então checar 1x/semana evita ficar preso por meses sem bater na rede a
+# cada busca).
 DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE = 7
+# Anos fechados também expiram, em 30 dias: a CVM reapresenta demonstrações e regenera os
+# arquivos (em 04/10/2026 regenerou os zips de 2022 a 2025 e o ITR de 2026), então o zip
+# "fechado" pode mudar. Um download mensal de ~13 MB por ano usado é um custo baixo perto do
+# risco de manter congelada uma demonstração reapresentada.
+DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_FECHADO = 30
 
 # Códigos de conta da DFC (Demonstração de Fluxo de Caixa) usados pro Fluxo
 # de Caixa Livre (FCF) do FCD — ver a justificativa completa (por que
@@ -331,8 +333,11 @@ CODIGO_CFI_CVM = "6.02"  # Caixa Líquido Atividades de Investimento
 # abaixo, na seção do Fundamentus): sem a versão, um cache gravado antes de
 # um campo novo (como `cfo_atual`/`cfi_atual`) seria servido sem a chave e
 # quebraria com KeyError pra qualquer CNPJ/ano já cacheado. Cada mudança de
-# schema incrementa a versão.
-VERSAO_SCHEMA_CVM_FCF = 5
+# schema incrementa a versão. A 6 acrescenta `zip_origem` (tamanho e data do zip de onde o
+# resultado saiu): o cache só vale enquanto o zip for o mesmo e estiver dentro do prazo.
+VERSAO_SCHEMA_CVM_FCF = 6
+# Cache do lucro líquido (`lucro_<cnpj>_<ano>.json`): envelope com versão e `zip_origem`.
+VERSAO_SCHEMA_CVM_LUCRO = 1
 
 # Receita líquida da DRE (conta 3.01), lida junto com a DFC de cada ano na mesma demonstração
 # (tipo e versão): o crescimento do fluxo do FCD é limitado pelo da receita no mesmo período.
@@ -471,7 +476,7 @@ TERMOS_ARRENDAMENTO = ("arrendamento", "leasing", "alugue", "locacao", "locacoes
 # não controladores, os pesos do WACC (patrimônio total), o passivo de
 # arrendamento fora da dívida do Fundamentus e o número de ações em circulação.
 # 31/03, 30/06 e 30/09 vêm do ITR; 31/12 vem do DFP.
-VERSAO_SCHEMA_CVM_BALANCO = 1
+VERSAO_SCHEMA_CVM_BALANCO = 2  # 2: acrescenta `zip_origem` (ver VERSAO_SCHEMA_CVM_FCF)
 CODIGO_PATRIMONIO_LIQUIDO_CVM = "2.03"
 TERMO_NAO_CONTROLADORES = "nao controlador"
 # A dívida do Fundamentus é 2.01.04 + 2.02.01; arrendamento nessas contas já está nela.
