@@ -101,7 +101,7 @@ def test_alinhamento_funciona_com_fusos_e_resolucoes_diferentes():
 
 
 def test_mesma_serie_em_calendarios_diferentes_tem_correlacao_um():
-    # P05 (docs/auditoria-tecnica-2026-09-27.md): calcular retorno em cada
+    # Calcular retorno em cada
     # calendário próprio e só depois alinhar pelas datas em comum compara
     # variações de períodos diferentes sempre que os dois calendários não batem
     # dia a dia — o mesmo movimento em calendário diferente tem que dar 1,0.

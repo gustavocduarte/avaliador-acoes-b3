@@ -305,7 +305,7 @@ def test_baixar_zip_ano_propaga_erro_quando_fora_do_ar(tmp_path, monkeypatch):
 
 
 # --- Prazo de validade do cache do zip pro ano em preenchimento — ver
-# docs/correcao-ano-fcd-2026-09-23.md e o comentário
+# docs/decisoes-de-metodologia.md (seção 1.3) e o comentário
 # de DIAS_VALIDADE_CACHE_ZIP_CVM_ANO_CORRENTE em config.py.
 
 
@@ -685,7 +685,7 @@ def test_obter_fluxo_caixa_livre_usa_cache_e_nao_chama_baixar_zip_de_novo(tmp_pa
 
 
 # --- Detecção automática do ano de referência -------------------------------
-# Ver docs/correcao-ano-fcd-2026-09-23.md: o ano é detectado em dois níveis,
+# Ver docs/decisoes-de-metodologia.md (seção 1.2): o ano é detectado em dois níveis,
 # sem constante fixa. Os testes
 # abaixo mockam `_baixar_zip_ano`/`obter_fluxo_caixa_livre` diretamente (não
 # `requests.get`) porque testam a ORQUESTRAÇÃO da detecção, não o download

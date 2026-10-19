@@ -1,5 +1,5 @@
 # Dependências do app (é o que o Streamlit Community Cloud instala).
-# Requer Python 3.12 ou mais recente (numpy 2.5 exige 3.12+; ver docs/especificacao.md).
+# Requer Python 3.12 ou mais recente (numpy 2.5 exige 3.12+; ver o README).
 # Para rodar os testes e o lint, use requirements-dev.txt.
 
 pandas==3.0.5

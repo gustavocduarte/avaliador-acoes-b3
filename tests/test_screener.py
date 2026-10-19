@@ -808,7 +808,7 @@ def test_rodar_screener_avisa_globalmente_quando_deteccao_do_ano_falha(
 
 
 def test_rodar_screener_avisa_globalmente_quando_bcb_falha(ambiente_feliz, tmp_path, monkeypatch):
-    # P07 (docs/auditoria-tecnica-2026-09-27.md): a falha do BCB não pode ser
+    # A falha do BCB não pode ser
     # silenciosa (sem warnings.warn, selic_meta = ipca_12m = None sumiria com o
     # FCD sem explicação) — mesmo padrão de aviso global da detecção do ano da
     # CVM.

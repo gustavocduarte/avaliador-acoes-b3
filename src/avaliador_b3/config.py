@@ -306,7 +306,7 @@ CONTA_LUCRO_POR_ACAO_CVM = "3.99"
 # ano corrente conforme as empresas entregam a DFP (inclusive fora do prazo):
 # sem prazo, um zip baixado cedo (ex: na janela jan-mar, ainda incompleto)
 # ficaria preso localmente e as empresas que entregassem depois nunca
-# apareceriam. Ver docs/correcao-ano-fcd-2026-09-23.md.
+# apareceriam. Ver docs/decisoes-de-metodologia.md, seções 1.2 e 1.3.
 #
 # Prazo de 7 dias para o(s) ano(s) ainda em preenchimento (`ano >= ano corrente - 1`
 # em ingest.cvm._cache_zip_expirado; escolha redonda, não uma medição: a DFP não muda
@@ -718,7 +718,7 @@ DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3 = 30
 # sempre tem 14 dígitos e CD_CVM sempre tem 6 (em todos os registros dos zips
 # da CVM lidos pelo projeto). Isso só restaura dígitos que existiam, sem
 # colidir com outra empresa. Aplicado em três camadas (ver
-# docs/correcao-cnpj-2026-09-25.md): na origem
+# docs/historico-de-revisoes.md, 25/09): na origem
 # (crosswalk_cnpj._registro_para_linha), na leitura do cache
 # (crosswalk_cnpj.obter_catalogo_emissores, pra caches já gravados) e como
 # camada defensiva em cvm._normalizar_cnpj.
@@ -797,7 +797,7 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 # chegar num valor justo por ação comparável a Graham/Bazin.
 #
 # Investigação em 2026-09-25 (limitação registrada em
-# docs/correcao-cnpj-2026-09-25.md, seção 7 — FCD sistematicamente muito
+# docs/decisoes-de-metodologia.md, seção 1.4 — FCD sistematicamente muito
 # abaixo de Graham/Bazin em empresas de investimento pesado): pra todas as
 # 70 ações com FCD aplicável no Ibovespa, calculada a proporção reinvestida
 # do caixa operacional (na época, -CFI/CFO; hoje o capex ÷ caixa operacional do FCD de
@@ -1025,7 +1025,7 @@ MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
 # O ano de referência do FCD não é uma constante fixa: um valor fixo (ex.:
 # 2024) defasaria o FCD de TODAS as empresas por um exercício inteiro, sem
 # nenhum aviso na tela, assim que a CVM publicasse o exercício seguinte — ver
-# docs/correcao-ano-fcd-2026-09-23.md.
+# docs/decisoes-de-metodologia.md, seção 1.2.
 #
 # A detecção é automática, em dois níveis, sem constante fixa aqui (cada
 # busca resolve o ano em tempo de execução):

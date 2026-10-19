@@ -1101,7 +1101,7 @@ def test_fcd_mostra_rotulo_de_fallback_quando_empresa_nao_esta_no_ano_mais_recen
 
 # --- Proporção reinvestida no cartão do FCD (contexto: FCD sistematicamente
 # baixo em empresas de investimento pesado, ver
-# docs/correcao-cnpj-2026-09-25.md, seção 7) ------------------------------
+# docs/decisoes-de-metodologia.md, seção 1.4) ------------------------------
 
 
 def _preparar_fcd_com_cfo_cfi(
@@ -2443,7 +2443,7 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
 
 
 def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
-    # P07 (docs/auditoria-tecnica-2026-09-27.md): _buscar_macro (Selic/
+    # _buscar_macro (Selic/
     # IPCA do BCB) falhando dentro de rodar_screener não pode ser silencioso —
     # sem aviso, o FCD de todas as ações da rodada sumiria sem explicação em
     # lugar nenhum visível. Mesmo padrão do teste acima
