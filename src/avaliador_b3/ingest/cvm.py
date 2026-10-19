@@ -67,7 +67,7 @@ from avaliador_b3.config import (
     VERSAO_SCHEMA_CVM_FCF,
     VERSAO_SCHEMA_CVM_LUCRO,
 )
-from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
+from avaliador_b3.ingest._cache import conteudo_do_envelope, gravar_json_atomico, ler_json_cache
 from avaliador_b3.numeros import converter_finito
 
 TIMEOUT_SEGUNDOS = 60
@@ -196,9 +196,12 @@ def ler_cache_derivado_cvm(
     bruto = ler_json_cache(caminho)
     if bruto is None or bruto.get("versao_schema") != versao_schema:
         return None
-    if not zip_de_origem_vigente(caminho_zip, ano, bruto.get("zip_origem"), hoje):
+    resultado = conteudo_do_envelope(bruto, "resultado", caminho)
+    if resultado is None or not zip_de_origem_vigente(
+        caminho_zip, ano, bruto.get("zip_origem"), hoje
+    ):
         return None
-    return bruto.get("resultado")
+    return resultado
 
 
 def gravar_cache_derivado_cvm(

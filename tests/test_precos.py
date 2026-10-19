@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 import yfinance as yf
 
+from avaliador_b3.empresa import comportamento
 from avaliador_b3.ingest import precos
 
 
@@ -299,6 +300,62 @@ def test_obter_historico_descarta_linha_sem_fechamento_no_meio_da_serie(tmp_path
     df = precos.obter_historico("PETR4", diretorio_cache=tmp_path)
 
     assert list(df["Close"]) == [49.1, 49.9]
+
+
+@pytest.mark.parametrize("invalido", [0.0, -3.5])
+def test_obter_historico_descarta_fechamento_nao_positivo_no_meio_da_serie(
+    tmp_path, monkeypatch, invalido
+):
+    ticker_falso = _TickerFalso(resultado=_historico_com_fechamentos([49.1, invalido, 49.9]))
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    df = precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+
+    assert list(df["Close"]) == [49.1, 49.9]
+
+
+def test_obter_historico_cache_com_fechamento_nao_positivo_e_limpo_na_leitura(
+    tmp_path, monkeypatch
+):
+    caminho = tmp_path / "precos" / "PETR4.SA_3mo.csv"
+    caminho.parent.mkdir(parents=True)
+    caminho.write_text(
+        "data,Close,Volume\n2026-10-01 03:00:00+00:00,49.9,100\n"
+        "2026-10-02 03:00:00+00:00,0.0,200\n2026-10-03 03:00:00+00:00,-1.0,300\n",
+        encoding="utf-8",
+    )
+    ticker_falso = _TickerFalso(resultado=_historico_falso())
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+
+    df = precos.obter_historico("PETR4", diretorio_cache=tmp_path, ttl_segundos=3600)
+
+    assert list(df["Close"]) == [49.9]
+    assert ticker_falso.chamadas == 0
+
+
+def test_beta_e_volatilidade_com_fechamento_nao_positivo_saem_iguais_aos_da_serie_sem_as_linhas(
+    tmp_path, monkeypatch
+):
+    fechamentos = [10.0, 10.2, 0.0, 9.9, 10.5, -2.0, 10.3, 10.4, 10.6, 10.1]
+    bruto = _historico_com_fechamentos(fechamentos)
+    ticker_falso = _TickerFalso(resultado=bruto)
+    monkeypatch.setattr(precos.yf, "Ticker", lambda t: ticker_falso)
+    acao = precos.obter_historico("PETR4", diretorio_cache=tmp_path)
+    ibov = pd.DataFrame(
+        {"data": acao["data"], "Close": [100.0 + i * (-1) ** i for i in range(len(acao))]}
+    )
+
+    esperado = bruto.reset_index().rename(columns={"Date": "data"})
+    esperado = esperado[esperado["Close"] > 0].reset_index(drop=True)
+
+    assert len(acao) == 8
+    assert comportamento.calcular_beta(acao, ibov) == pytest.approx(
+        comportamento.calcular_beta(esperado, ibov)
+    )
+    assert comportamento.calcular_volatilidade_anualizada(acao) == pytest.approx(
+        comportamento.calcular_volatilidade_anualizada(esperado)
+    )
+    assert pd.notna(comportamento.calcular_beta(acao, ibov))
 
 
 def test_obter_historico_so_com_fechamento_vazio_levanta_falha_fonte_preco(tmp_path, monkeypatch):

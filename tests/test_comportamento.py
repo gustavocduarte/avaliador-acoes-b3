@@ -94,3 +94,33 @@ def test_calcular_beta_alinha_por_data_ignorando_dias_sem_sobreposicao():
 
     assert beta is not None
     assert beta == pytest.approx(fator_beta, abs=1e-9)
+
+
+def test_fechamento_zero_no_meio_da_serie_nao_deixa_o_beta_nan():
+    ibov = _historico([100, 101, 99, 102, 105, 103, 104, 106])
+    acao = _historico([10.0, 10.2, 9.9, 0.0, 10.5, 10.3, 10.4, 10.6])
+
+    beta = comportamento.calcular_beta(acao, ibov)
+
+    assert beta is not None and pd.notna(beta) and abs(beta) != float("inf")
+
+
+def test_fechamento_zero_no_ibovespa_tambem_nao_deixa_o_beta_nan():
+    ibov = _historico([100, 101, 0, 102, 105, 103, 104, 106])
+    acao = _historico([10.0, 10.2, 9.9, 10.1, 10.5, 10.3, 10.4, 10.6])
+
+    beta = comportamento.calcular_beta(acao, ibov)
+
+    assert beta is not None and pd.notna(beta)
+
+
+def test_fechamento_zero_no_meio_da_serie_nao_deixa_a_volatilidade_infinita():
+    historico = _historico([10.0, 10.2, 9.9, 0.0, 10.5, 10.3])
+
+    volatilidade = comportamento.calcular_volatilidade_anualizada(historico)
+
+    assert volatilidade is not None and 0 < volatilidade < float("inf")
+
+
+def test_serie_so_de_fechamentos_zero_e_uma_volatilidade_indisponivel():
+    assert comportamento.calcular_volatilidade_anualizada(_historico([0.0, 0.0, 0.0])) is None

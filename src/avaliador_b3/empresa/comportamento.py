@@ -18,6 +18,12 @@ import pandas as pd
 from avaliador_b3.config import DIAS_UTEIS_POR_ANO
 
 
+def _retornos(fechamentos: pd.Series) -> pd.Series:
+    """Retorno diário; o dia seguinte a um fechamento zero (divisão por zero, ±inf) vira
+    NaN, como dado ausente daquele dia, em vez de contaminar o desvio e a covariância."""
+    return fechamentos.pct_change().replace([np.inf, -np.inf], np.nan)
+
+
 def calcular_volume_medio(historico: pd.DataFrame) -> float | None:
     """Volume médio diário negociado no período coberto pelo histórico.
     Devolve None se `historico` estiver vazio — sem esse guard,
@@ -36,7 +42,7 @@ def calcular_volatilidade_anualizada(historico: pd.DataFrame) -> float | None:
     (× sqrt(252) dias úteis/ano — convenção padrão de mercado). Devolve
     None se o histórico não tiver pelo menos 2 preços (não dá pra calcular
     nem um retorno)."""
-    retornos = historico["Close"].pct_change().dropna()
+    retornos = _retornos(historico["Close"]).dropna()
     if retornos.empty:
         return None
     return float(retornos.std() * np.sqrt(DIAS_UTEIS_POR_ANO))
@@ -60,8 +66,8 @@ def calcular_beta(historico_acao: pd.DataFrame, historico_ibovespa: pd.DataFrame
 
     pareados = pd.DataFrame(
         {
-            "acao": combinado["Close_acao"].pct_change(),
-            "ibov": combinado["Close_ibov"].pct_change(),
+            "acao": _retornos(combinado["Close_acao"]),
+            "ibov": _retornos(combinado["Close_ibov"]),
         }
     ).dropna()
 

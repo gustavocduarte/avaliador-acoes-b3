@@ -96,9 +96,11 @@ def preco_valido(preco: float | None) -> bool:
 
 
 def _sem_fechamento_vazio(historico: pd.DataFrame) -> pd.DataFrame:
-    """Tira as linhas sem preço de fechamento. O Yahoo às vezes devolve a
-    última linha só com volume, e o preço atual sairia vazio."""
-    return historico.dropna(subset=["Close"]).reset_index(drop=True)
+    """Tira as linhas sem preço de fechamento, ou com fechamento zero ou negativo. O Yahoo às
+    vezes devolve a última linha só com volume, e o preço atual sairia vazio; um fechamento
+    não positivo é dado inválido e viraria retorno infinito ou de -100%."""
+    com_fechamento = historico.dropna(subset=["Close"])
+    return com_fechamento[com_fechamento["Close"] > 0].reset_index(drop=True)
 
 
 def obter_historico(

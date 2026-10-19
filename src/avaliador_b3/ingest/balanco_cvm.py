@@ -35,6 +35,7 @@ from avaliador_b3.config import (
     LIMITE_TESOURARIA_SOBRE_CAPITAL,
     MES_DIA_BALANCO_DFP,
     MESES_DIAS_BALANCO_ITR,
+    MOTIVO_ACOES_COMPOSICAO_ZERADA,
     MOTIVO_ACOES_DIVERGENCIA_IMPLAUSIVEL,
     MOTIVO_ACOES_SEM_COMPOSICAO,
     MOTIVO_ACOES_SEM_REFERENCIA,
@@ -396,6 +397,13 @@ def calcular_acoes_em_circulacao(
     )
     em_circulacao = integralizado if ja_liquido else integralizado - tesouraria
     com_tesouraria = em_circulacao + tesouraria
+    if em_circulacao <= 0 or com_tesouraria <= 0:
+        return {
+            "acoes": None,
+            "motivo": MOTIVO_ACOES_COMPOSICAO_ZERADA,
+            "aviso_divergencia": None,
+            **base,
+        }
 
     aviso = None
     divergencia = min(abs(referencia / em_circulacao - 1), abs(referencia / com_tesouraria - 1))

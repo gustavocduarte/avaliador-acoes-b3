@@ -341,6 +341,33 @@ def test_cache_json_corrompido_e_tratado_como_ausente(tmp_path, monkeypatch, mon
     _deve_rebuscar(chamar)
 
 
+CHAVE_DO_ENVELOPE = {
+    _fundamentus: ("indicadores", fundamentus.VERSAO_SCHEMA_FUNDAMENTUS),
+    _fcf: ("resultado", cvm.VERSAO_SCHEMA_CVM_FCF),
+    _lucro: ("resultado", cvm.VERSAO_SCHEMA_CVM_LUCRO),
+    _balanco: ("resultado", balanco_cvm.VERSAO_SCHEMA_CVM_BALANCO),
+}
+
+
+@pytest.mark.parametrize("montar", [_fundamentus, _fcf, _lucro, _balanco])
+@pytest.mark.parametrize("conteudo", [[], "texto", 42, None])
+def test_envelope_com_conteudo_que_nao_e_objeto_e_tratado_como_ausente(
+    tmp_path, monkeypatch, caplog, montar, conteudo
+):
+    caminho, chamar = montar(tmp_path, monkeypatch)
+    chave, versao = CHAVE_DO_ENVELOPE[montar]
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        json.dumps({"versao_schema": versao, "zip_origem": None, chave: conteudo}),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level("WARNING"):
+        _deve_rebuscar(chamar)
+
+    assert "formato inesperado" in caplog.text
+
+
 def test_macro_guardado_corrompido_e_tratado_como_ausente(tmp_path):
     caminho = bcb_sgs._caminho_ultimo_macro(tmp_path)
     caminho.parent.mkdir(parents=True, exist_ok=True)

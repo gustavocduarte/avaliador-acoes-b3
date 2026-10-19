@@ -47,7 +47,7 @@ from avaliador_b3.config import (
     URL_FUNDAMENTUS_DETALHES,
     VERSAO_SCHEMA_FUNDAMENTUS,
 )
-from avaliador_b3.ingest._cache import gravar_json_atomico, ler_json_cache
+from avaliador_b3.ingest._cache import conteudo_do_envelope, gravar_json_atomico, ler_json_cache
 from avaliador_b3.ingest._retry import get_com_retry
 from avaliador_b3.numeros import numero_finito
 
@@ -215,7 +215,7 @@ def _ler_cache_com_schema_atual(caminho: Path) -> dict | None:
     bruto = ler_json_cache(caminho)
     if bruto is None or bruto.get("versao_schema") != VERSAO_SCHEMA_FUNDAMENTUS:
         return None
-    return bruto.get("indicadores")
+    return conteudo_do_envelope(bruto, "indicadores", caminho)
 
 
 def obter_indicadores(

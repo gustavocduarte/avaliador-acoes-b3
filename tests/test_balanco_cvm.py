@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 import requests
 
-from avaliador_b3.config import UNITS_COMPOSICAO, VERSAO_SCHEMA_CVM_BALANCO
+from avaliador_b3.config import (
+    MOTIVO_ACOES_COMPOSICAO_ZERADA,
+    UNITS_COMPOSICAO,
+    VERSAO_SCHEMA_CVM_BALANCO,
+)
 from avaliador_b3.ingest import balanco_cvm
 
 CNPJ = "12.345.678/0001-90"
@@ -339,6 +343,51 @@ def test_tesouraria_acima_do_limite_deixa_o_numero_indisponivel():
     assert r["acoes"] is None
     assert r["motivo"].startswith("Tesouraria de 53% do capital")
     assert "limite de 20%" in r["motivo"]
+
+
+@pytest.mark.parametrize(
+    ("integralizado", "tesouraria", "ordinarias", "preferenciais"),
+    [
+        (0.0, 0.0, 0.0, 0.0),
+        (0.0, 50e6, 0.0, 0.0),
+        (0.0, 0.0, 600e6, 400e6),
+        (0.0, 50e6, 600e6, 400e6),
+    ],
+)
+def test_composicao_zerada_deixa_o_numero_indisponivel_com_motivo(
+    integralizado, tesouraria, ordinarias, preferenciais
+):
+    capital = {
+        "ordinarias": ordinarias,
+        "preferenciais": preferenciais,
+        "integralizado": integralizado,
+        "tesouraria": tesouraria,
+        "versao": 1,
+    }
+
+    r = _acoes(capital, 1000e6)
+
+    assert r["acoes"] is None
+    assert r["motivo"] == MOTIVO_ACOES_COMPOSICAO_ZERADA
+    assert r["aviso_divergencia"] is None
+
+
+def test_composicao_de_unit_zerada_deixa_o_numero_indisponivel_com_motivo():
+    capital = {
+        "ordinarias": 0.0,
+        "preferenciais": 0.0,
+        "integralizado": 0.0,
+        "tesouraria": 0.0,
+        "versao": 1,
+    }
+    unit = next(iter(UNITS_COMPOSICAO.values()))
+
+    r = balanco_cvm.calcular_acoes_em_circulacao(
+        capital, 1000e6, 1, "2026-06-30", "ITR", composicao_unit=unit
+    )
+
+    assert r["acoes"] is None
+    assert r["motivo"] == MOTIVO_ACOES_COMPOSICAO_ZERADA
 
 
 def test_integralizado_ja_liquido_de_tesouraria_nao_desconta_duas_vezes():

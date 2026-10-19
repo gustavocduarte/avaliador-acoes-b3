@@ -648,6 +648,10 @@ MOTIVO_ACOES_TESOURARIA_ALTA = (
     "Tesouraria de {percentual} do capital na composição da CVM, acima do limite de "
     "{limite}: provável erro de escala nos dados da CVM."
 )
+MOTIVO_ACOES_COMPOSICAO_ZERADA = (
+    "A composição do capital da CVM não deixa ações em circulação (integralizado e tesouraria "
+    "zerados ou inconsistentes); mantido o número do Fundamentus."
+)
 MOTIVO_ACOES_DIVERGENCIA_IMPLAUSIVEL = (
     "O número de ações da CVM ({cvm}) difere {divergencia} do do Fundamentus "
     "({fundamentus}); mantido o do Fundamentus."

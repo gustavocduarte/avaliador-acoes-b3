@@ -103,7 +103,11 @@ def calcular_correlacao(
             ),
         }
 
-    correlacao = retornos["retorno_a"].corr(retornos["retorno_b"])
+    # Série sem variação: a correlação é indefinida, e `.corr()` avisaria da divisão por zero.
+    sem_variacao = retornos.std() == 0
+    correlacao = (
+        float("nan") if sem_variacao.any() else retornos["retorno_a"].corr(retornos["retorno_b"])
+    )
     if pd.isna(correlacao):
         return {
             "aplicavel": False,

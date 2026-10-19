@@ -90,6 +90,16 @@ def ler_json_cache(caminho: Path) -> dict | None:
     return dados
 
 
+def conteudo_do_envelope(bruto: dict, chave: str, caminho: Path) -> dict | None:
+    """Conteúdo de `chave` num cache com envelope, ou `None` (cache ausente) se não for um
+    objeto JSON (lista, texto, número, nulo)."""
+    conteudo = bruto.get(chave)
+    if not isinstance(conteudo, dict):
+        _log.warning("Cache JSON com %r em formato inesperado, será refeito: %s", chave, caminho)
+        return None
+    return conteudo
+
+
 def ler_csv_cache(
     caminho: Path,
     colunas_esperadas: Iterable[str],
