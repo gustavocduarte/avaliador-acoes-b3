@@ -1341,6 +1341,11 @@ SUBTITULO_APP = (
 NOMES_METODOS = {"graham": "Graham", "bazin": "Bazin", "fcd": "FCD"}
 ROTULOS_METODOS_GRAFICO = {"graham": "Graham", "bazin": "Bazin (preço teto)", "fcd": "FCD"}
 ROTULO_COMBINADO_GRAFICO = "Combinado"
+
+# Só para exibir: a API da B3 devolve o segmento com este texto; dado e cache seguem iguais.
+CORRECOES_EXIBICAO_SEGMENTO_SETORIAL = {
+    "Exploração. Refino e Distribuição": "Exploração, Refino e Distribuição",
+}
 # Gráfico "Histórico de dividendos por ano": o ano corrente, incompleto, leva asterisco.
 ROTULO_ANO_PARCIAL = "{ano}*"
 NOTA_DIVIDENDOS_ANO_PARCIAL = (

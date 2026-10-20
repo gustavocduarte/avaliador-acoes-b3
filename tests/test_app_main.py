@@ -2223,6 +2223,21 @@ def test_painel_de_valor_justo_tem_grafico_selos_e_legenda_dos_nao_aplicaveis(mo
     assert "Como funciona esse cálculo?" in rotulos_expanders
 
 
+def test_segmento_setorial_exibido_corrige_so_o_texto_conhecido():
+    from avaliador_b3.app.main import _html_pilulas, _rotulo_segmento_setorial
+
+    assert (
+        _rotulo_segmento_setorial("Exploração. Refino e Distribuição")
+        == "Exploração, Refino e Distribuição"
+    )
+    assert _rotulo_segmento_setorial("Energia Elétrica") == "Energia Elétrica"
+    assert _rotulo_segmento_setorial(None) is None
+    assert "Exploração, Refino e Distribuição" in _html_pilulas(
+        "Exploração. Refino e Distribuição", None
+    )
+    assert "Energia Elétrica" in _html_pilulas("Energia Elétrica", None)
+
+
 def test_texto_do_fcd_tem_subtitulos_e_mantem_os_ajustes_do_balanco(monkeypatch):
     from avaliador_b3.config import TEXTO_FCD_AJUSTES_DO_BALANCO
 

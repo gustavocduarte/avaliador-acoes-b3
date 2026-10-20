@@ -50,6 +50,7 @@ from avaliador_b3.config import (
     COR_PRINCIPAL,
     COR_TEXTO,
     COR_TEXTO_SECUNDARIO,
+    CORRECOES_EXIBICAO_SEGMENTO_SETORIAL,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
@@ -663,8 +664,14 @@ def _kpi_divergencia(divergencia: dict, valores_por_metodo: dict[str, float]) ->
     }
 
 
+def _rotulo_segmento_setorial(segmento: str | None) -> str | None:
+    """Texto do segmento setorial para exibir; o dado e o agrupamento usam o original."""
+    return CORRECOES_EXIBICAO_SEGMENTO_SETORIAL.get(segmento, segmento) if segmento else segmento
+
+
 def _html_pilulas(segmento_setorial: str | None, segmento_listagem: str | None) -> str:
     """Pílulas com o segmento setorial e o de listagem; só as que existem. Vazio sem nenhuma."""
+    segmento_setorial = _rotulo_segmento_setorial(segmento_setorial)
     pilulas = [
         f'<span class="ab-pilula" title="{escape(titulo)}">{escape(texto)}</span>'
         for titulo, texto in (
@@ -2122,11 +2129,13 @@ with aba_analisar:
                         ]
                         if tabela_pares.empty:
                             st.info(
-                                f"Nenhuma outra ação do segmento setorial {segmento_setorial!r} "
+                                f"Nenhuma outra ação do segmento setorial "
+                                f"{_rotulo_segmento_setorial(segmento_setorial)!r} "
                                 "encontrada no resultado salvo do screener."
                             )
                         else:
-                            st.caption(f"Segmento setorial (B3): {segmento_setorial}")
+                            nome_segmento = _rotulo_segmento_setorial(segmento_setorial)
+                            st.caption(f"Segmento setorial (B3): {nome_segmento}")
                             tabela_pares_fmt, colunas_pares_fmt = _tabela_formatada_pt_br(
                                 tabela_pares,
                                 colunas_moeda={
