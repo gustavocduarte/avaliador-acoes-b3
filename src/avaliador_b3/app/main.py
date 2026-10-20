@@ -38,6 +38,7 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
+    COR_BORDA,
     COR_FUNDO_PAINEL,
     COR_GRADE,
     COR_NEUTRO,
@@ -62,6 +63,7 @@ from avaliador_b3.config import (
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
+    SEQUENCIA_CORES_SERIES,
     SERIES_BCB_SGS,
     SUBTITULO_APP,
     SUBTITULO_POTENCIAL_CARTEIRA,
@@ -505,6 +507,21 @@ def _widget_avancado_tradingview(ticker: str) -> str | None:
     """
 
 
+def aplicar_template_grafico(figura: go.Figure) -> go.Figure:
+    """Template único dos gráficos: fundo transparente (o painel da página
+    aparece por trás), grade discreta, fonte e sequência de cores do tema."""
+    figura.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"color": COR_TEXTO},
+        colorway=list(SEQUENCIA_CORES_SERIES),
+        hoverlabel={"bgcolor": COR_FUNDO_PAINEL, "bordercolor": COR_BORDA},
+    )
+    figura.update_xaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)
+    figura.update_yaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)
+    return figura
+
+
 def _grafico_comparacao_normalizada(
     serie_a: pd.DataFrame, nome_a: str, serie_b: pd.DataFrame, nome_b: str
 ) -> tuple[go.Figure | None, list[str]]:
@@ -554,13 +571,10 @@ def _grafico_comparacao_normalizada(
         xaxis_title="Data",
         hovermode="x unified",
         margin={"t": 20},
-        paper_bgcolor=COR_FUNDO_PAINEL,
-        plot_bgcolor=COR_FUNDO_PAINEL,
-        font={"color": COR_TEXTO},
     )
+    aplicar_template_grafico(figura)
     tickvals, ticktext = ticks_mensais_pt_br(serie_a["data"])
-    figura.update_xaxes(gridcolor=COR_GRADE, tickmode="array", tickvals=tickvals, ticktext=ticktext)
-    figura.update_yaxes(gridcolor=COR_GRADE)
+    figura.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
     return figura, []
 
 
@@ -1628,7 +1642,7 @@ with aba_analisar:
                 if figura_preco is None:
                     st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
                 else:
-                    st.plotly_chart(figura_preco, width="stretch")
+                    st.plotly_chart(figura_preco, width="stretch", theme=None)
 
         st.divider()
         st.subheader("Comparando com Petróleo (Brent)")
@@ -1664,7 +1678,7 @@ with aba_analisar:
                 if figura_petroleo is None:
                     st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
                 else:
-                    st.plotly_chart(figura_petroleo, width="stretch")
+                    st.plotly_chart(figura_petroleo, width="stretch", theme=None)
 
         st.divider()
         st.subheader("Gráfico avançado (TradingView)")
@@ -1778,13 +1792,9 @@ with aba_analisar:
                             "x": 0,
                         },
                         margin={"t": 40},
-                        paper_bgcolor=COR_FUNDO_PAINEL,
-                        plot_bgcolor=COR_FUNDO_PAINEL,
-                        font={"color": COR_TEXTO},
                     )
-                    figura_dividendos.update_xaxes(gridcolor=COR_GRADE)
-                    figura_dividendos.update_yaxes(gridcolor=COR_GRADE)
-                    st.plotly_chart(figura_dividendos, width="stretch")
+                    aplicar_template_grafico(figura_dividendos)
+                    st.plotly_chart(figura_dividendos, width="stretch", theme=None)
                     if dividendos_por_ano["parcial"].any():
                         st.caption(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=datetime.now().year))
 

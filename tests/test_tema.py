@@ -78,3 +78,16 @@ def test_tokens_sao_cores_hexadecimais():
 @pytest.mark.parametrize("cor", CORES_DE_TEXTO_E_SERIE)
 def test_texto_e_series_tem_contraste_minimo_sobre_os_fundos(cor, fundo):
     assert _contraste(cor, fundo) >= 4.5
+
+
+def test_template_grafico_fundo_transparente_e_grade_do_tema():
+    import plotly.graph_objects as go
+
+    from avaliador_b3.app.main import aplicar_template_grafico
+
+    figura = aplicar_template_grafico(go.Figure(go.Scatter(x=[1, 2], y=[1, 2])))
+    assert figura.layout.paper_bgcolor == "rgba(0,0,0,0)"
+    assert figura.layout.plot_bgcolor == "rgba(0,0,0,0)"
+    assert figura.layout.xaxis.gridcolor == config.COR_GRADE
+    assert figura.layout.yaxis.gridcolor == config.COR_GRADE
+    assert tuple(figura.layout.colorway) == config.SEQUENCIA_CORES_SERIES
