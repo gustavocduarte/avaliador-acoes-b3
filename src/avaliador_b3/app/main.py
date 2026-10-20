@@ -65,8 +65,10 @@ from avaliador_b3.config import (
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_ANO_PARCIAL,
+    ROTULO_COMBINADO_GRAFICO,
     ROTULO_POTENCIAL,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
+    ROTULOS_METODOS_GRAFICO,
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
@@ -674,86 +676,139 @@ def _html_pilulas(segmento_setorial: str | None, segmento_listagem: str | None) 
     return f'<div class="ab-pilulas">{"".join(pilulas)}</div>' if pilulas else ""
 
 
-def _cartao_metodo(
-    nome: str, resultado: dict, rotulo_valor: str, preco_atual: float | None
-) -> None:
-    """Renderiza um cartão de método de valor justo (Graham/Bazin/FCD):
-    `st.metric` com o valor e delta de upside contra `preco_atual` quando
-    `resultado["aplicavel"]`, ou "—" com o motivo em `st.caption` quando
-    não. `resultado` é o dict padrão `{"aplicavel", rotulo_valor,
-    "motivo_nao_aplicavel"}` que os três modelos já devolvem —
-    `rotulo_valor` é o nome da chave do valor em si (`"valor_justo"` pra
-    Graham/FCD, `"preco_teto"` pro Bazin, já que os métodos não usam o
-    mesmo nome de campo).
+def _notas_do_metodo(resultado: dict) -> tuple[list[str], list[str]]:
+    """Legendas de um método aplicável (Graham/Bazin/FCD), em duas listas: as que ficam à
+    vista (hoje só o aviso de dívida líquida indisponível, que muda a leitura do valor) e as
+    de detalhe, que vão para o expander. `resultado` é o dict padrão dos três modelos.
 
-    `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD
-    (ver modelos/fcd.py) — quando presente e `False`, mostra um aviso no
-    lugar de "Aplicável": o valor não teve dívida líquida deduzida (dado
-    ausente pra essa empresa específica — banco nunca chega aqui, já é
-    "não aplicável" antes, ver
-    config.SEGMENTOS_FCD_NAO_APLICAVEL), então aproxima Enterprise Value
-    como Equity Value em vez do valor real por ação."""
-    if resultado["aplicavel"]:
-        st.metric(
-            nome,
-            _fmt_bilhoes(resultado[rotulo_valor]),
-            delta=_delta_percentual_upside(resultado[rotulo_valor], preco_atual),
-            help=TOOLTIP_POTENCIAL_CARTAO,
+    `resultado.get("divida_liquida_deduzida")` só existe no dict do FCD (ver modelos/fcd.py):
+    `False` significa que o valor não teve a dívida líquida deduzida (dado ausente pra essa
+    empresa; banco nunca chega aqui, já é "não aplicável" antes, ver
+    config.SEGMENTOS_FCD_NAO_APLICAVEL)."""
+    visiveis: list[str] = []
+    detalhes: list[str] = []
+    if resultado.get("divida_liquida_deduzida") is False:
+        visiveis.append(
+            "Dívida líquida indisponível pra essa empresa — sem ela pra "
+            "deduzir, este valor não desconta a dívida da empresa, então "
+            "tende a ficar mais alto do que se a dedução fosse possível."
         )
-        if resultado.get("divida_liquida_deduzida") is False:
-            st.caption(
-                "Dívida líquida indisponível pra essa empresa — sem ela pra "
-                "deduzir, este valor não desconta a dívida da empresa, então "
-                "tende a ficar mais alto do que se a dedução fosse possível."
-            )
-        else:
-            st.caption("Aplicável")
-        # Sem balanço da CVM, os três ajustes que dependem dele ficam de fora pelo mesmo
-        # motivo: uma legenda só, em vez de três iguais.
-        motivo_sem_nao_controladores = resultado.get("motivo_sem_nao_controladores")
-        motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
-        motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
-        motivos_do_balanco = {
-            motivo_sem_nao_controladores,
-            motivo_sem_arrendamento,
-            motivo_sem_patrimonio_total,
-        }
-        balanco_inteiro_indisponivel = (
-            len(motivos_do_balanco) == 1 and None not in motivos_do_balanco
+    # Sem balanço da CVM, os três ajustes que dependem dele ficam de fora pelo mesmo
+    # motivo: uma legenda só, em vez de três iguais.
+    motivo_sem_nao_controladores = resultado.get("motivo_sem_nao_controladores")
+    motivo_sem_arrendamento = resultado.get("motivo_sem_arrendamento")
+    motivo_sem_patrimonio_total = resultado.get("motivo_sem_patrimonio_total")
+    motivos_do_balanco = {
+        motivo_sem_nao_controladores,
+        motivo_sem_arrendamento,
+        motivo_sem_patrimonio_total,
+    }
+    balanco_inteiro_indisponivel = len(motivos_do_balanco) == 1 and None not in motivos_do_balanco
+    if balanco_inteiro_indisponivel:
+        detalhes.append(TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo_sem_nao_controladores))
+    elif motivo_sem_nao_controladores:
+        detalhes.append(
+            TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
         )
-        if balanco_inteiro_indisponivel:
-            st.caption(TEXTO_SEM_AJUSTES_DO_BALANCO.format(motivo=motivo_sem_nao_controladores))
-        elif motivo_sem_nao_controladores:
-            st.caption(
-                TEXTO_SEM_DESCONTO_NAO_CONTROLADORES.format(motivo=motivo_sem_nao_controladores)
+    motivo_sem_acoes = resultado.get("motivo_sem_acoes_em_circulacao")
+    if motivo_sem_acoes:
+        detalhes.append(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo_sem_acoes))
+    if motivo_sem_arrendamento and not balanco_inteiro_indisponivel:
+        detalhes.append(TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo_sem_arrendamento))
+    if motivo_sem_patrimonio_total and not balanco_inteiro_indisponivel:
+        detalhes.append(
+            TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS.format(motivo=motivo_sem_patrimonio_total)
+        )
+    motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
+    if motivo_crescimento_ipca:
+        detalhes.append(TEXTO_CRESCIMENTO_IPCA.format(motivo=motivo_crescimento_ipca))
+    if resultado.get("crescimento_limitado_pela_receita"):
+        detalhes.append(
+            TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA.format(
+                taxa=_fmt_percentual(resultado["taxa_crescimento_receita"] * 100, 1)
             )
-        motivo_sem_acoes = resultado.get("motivo_sem_acoes_em_circulacao")
-        if motivo_sem_acoes:
-            st.caption(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo_sem_acoes))
-        if motivo_sem_arrendamento and not balanco_inteiro_indisponivel:
-            st.caption(TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA.format(motivo=motivo_sem_arrendamento))
-        if motivo_sem_patrimonio_total and not balanco_inteiro_indisponivel:
-            st.caption(
-                TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS.format(motivo=motivo_sem_patrimonio_total)
+        )
+    elif resultado.get("motivo_sem_limite_da_receita"):
+        detalhes.append(
+            TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA.format(
+                motivo=resultado["motivo_sem_limite_da_receita"]
             )
-        motivo_crescimento_ipca = resultado.get("motivo_crescimento_ipca")
-        if motivo_crescimento_ipca:
-            st.caption(TEXTO_CRESCIMENTO_IPCA.format(motivo=motivo_crescimento_ipca))
-        if resultado.get("crescimento_limitado_pela_receita"):
-            st.caption(
-                TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA.format(
-                    taxa=_fmt_percentual(resultado["taxa_crescimento_receita"] * 100, 1)
-                )
-            )
-        elif resultado.get("motivo_sem_limite_da_receita"):
-            st.caption(
-                TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA.format(
-                    motivo=resultado["motivo_sem_limite_da_receita"]
-                )
-            )
-    else:
-        st.metric(nome, "—")
-        st.caption(f"Não aplicável: {resultado['motivo_nao_aplicavel']}")
+        )
+    return visiveis, detalhes
+
+
+def _rotulo_barra_valor_justo(valor: float, preco_atual: float | None) -> str:
+    """Rótulo da barra: o valor e, havendo preço, a diferença para ele ("93,22  +60,7%")."""
+    texto = _pt_br(f"{valor:,.2f}")
+    if preco_atual is None:
+        return texto
+    diferenca = (valor - preco_atual) / preco_atual * 100
+    sinal = "+" if diferenca > 0 else ""
+    return f"{texto}\u00a0\u00a0{sinal}{_fmt_percentual(diferenca)}"
+
+
+def _figura_valor_justo(
+    valores_por_metodo: dict[str, float], valor_combinado: float, preco_atual: float | None
+) -> go.Figure:
+    """Barras horizontais do valor de cada método aplicável e do combinado, com o preço atual
+    numa linha tracejada. Verde acima do preço, rosa abaixo; o combinado em ciano; sem preço,
+    barras neutras e sem linha."""
+    rotulos = [ROTULOS_METODOS_GRAFICO.get(nome, nome) for nome in valores_por_metodo]
+    valores = [*valores_por_metodo.values(), valor_combinado]
+    rotulos.append(ROTULO_COMBINADO_GRAFICO)
+
+    def cor_da_barra(valor: float) -> str:
+        if preco_atual is None:
+            return COR_NEUTRO
+        return COR_POSITIVO if valor >= preco_atual else COR_NEGATIVO
+
+    cores = [cor_da_barra(valor) for valor in valores[:-1]] + [COR_PRINCIPAL]
+    figura = go.Figure(
+        go.Bar(
+            x=valores,
+            y=rotulos,
+            orientation="h",
+            marker={"color": cores},
+            text=[_rotulo_barra_valor_justo(valor, preco_atual) for valor in valores],
+            textposition="outside",
+            textfont={"color": COR_TEXTO},
+            cliponaxis=False,
+            hovertemplate="%{y}: %{text}<extra></extra>",
+        )
+    )
+    extremos = [0.0, *valores] + ([preco_atual] if preco_atual is not None else [])
+    menor, maior = min(extremos), max(extremos)
+    amplitude = (maior - menor) or 1.0
+    figura.update_xaxes(
+        range=[menor - 0.1 * amplitude if menor < 0 else 0, maior + 0.4 * amplitude],
+        showticklabels=False,
+    )
+    figura.update_yaxes(autorange="reversed")
+    if preco_atual is not None:
+        figura.add_vline(
+            x=preco_atual,
+            line_dash="dash",
+            line_color=COR_ALERTA,
+            annotation_text=f"Preço {_fmt_bilhoes(preco_atual)}",
+            annotation_position="top",
+            annotation_font_color=COR_ALERTA,
+        )
+    figura.update_layout(
+        height=70 + 46 * len(valores), margin={"t": 36, "b": 10, "l": 10, "r": 10}, showlegend=False
+    )
+    return aplicar_template_grafico(figura)
+
+
+def _html_cabecalho_painel(titulo: str, selos: list[tuple[str, str]]) -> str:
+    """Título do painel (pequeno, em caixa alta) e, à direita, selos `(texto, dica)`."""
+    html_selos = "".join(
+        f'<span class="ab-selo" title="{escape(dica)}">{escape(texto)}</span>'
+        for texto, dica in selos
+    )
+    return (
+        f'<div class="ab-cabecalho"><span class="ab-titulo">{escape(titulo)}</span>'
+        f'<span class="ab-selos">{html_selos}</span></div>'
+    )
 
 
 def _cartao_correlacao(nome: str, resultado: dict) -> None:
@@ -1038,6 +1093,11 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-cor-negativo { color: $negativo; }
 .ab-cor-alerta { color: $alerta; }
 .ab-cor-secundario { color: $secundario; }
+.ab-cabecalho { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: .5rem; margin-bottom: .25rem; }
+.ab-selos { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ab-selo { padding: .05rem .6rem; border: 1px solid $borda; border-radius: 999px; font-size: .75rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace; color: $texto; cursor: help; }
 .ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
@@ -1403,43 +1463,118 @@ with aba_analisar:
         with espaco_pilulas:
             st.html(_html_pilulas(segmento_setorial, segmento_listagem))
 
+        proporcao_reinvestimento = None
+        selos_valor_justo: list[tuple[str, str]] = []
+        if resultado_fcd["aplicavel"]:
+            origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
+            beta_wacc = _fmt(resultado_fcd["beta_utilizado"])
+            selos_valor_justo.append(
+                (f"Beta {beta_wacc}", f"Beta no WACC: {beta_wacc} ({origem_beta})")
+            )
+            if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
+                proporcao_reinvestimento = calcular_proporcao_capex_caixa_operacional_percentual(
+                    caixa_fcd_utilizado, capex_fcd_utilizado
+                )
+            # Sem capex identificado, sem selo (o FCD nem é calculado).
+            if proporcao_reinvestimento is not None:
+                selos_valor_justo.append(
+                    (
+                        f"Reinvestimento {proporcao_reinvestimento:.0f}%",
+                        LEGENDA_REINVESTIMENTO_CAPEX.format(
+                            ano=ano_fcd_utilizado, proporcao=proporcao_reinvestimento
+                        ),
+                    )
+                )
+
+        metodos_painel = (
+            ("graham", resultado_graham),
+            ("bazin", resultado_bazin),
+            ("fcd", resultado_fcd),
+        )
         with st.container(border=True, key="painel_valor_justo"):
-            st.subheader("Valor Justo")
-            coluna_graham, coluna_bazin, coluna_fcd = st.columns(3)
-            with coluna_graham:
-                _cartao_metodo("Graham", resultado_graham, "valor_justo", preco_atual)
-            with coluna_bazin:
-                _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto", preco_atual)
-                razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
-                if (
-                    razao_dividendos_bazin is not None
-                    and razao_dividendos_bazin > RAZAO_DIVIDENDOS_ATIPICA_BAZIN
-                ):
+            st.html(_html_cabecalho_painel("Valor justo por método", selos_valor_justo))
+            if resultado_combinado["aplicavel"]:
+                st.plotly_chart(
+                    _figura_valor_justo(
+                        resultado_combinado["valores_por_metodo"],
+                        resultado_combinado["valor_combinado"],
+                        preco_atual,
+                    ),
+                    width="stretch",
+                    theme=None,
+                )
+            else:
+                st.info(
+                    f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']} "
+                    f"{TEXTO_COMPLEMENTO_SEM_METODO}"
+                )
+            # Método fora do gráfico: legenda com o motivo.
+            for chave, resultado in metodos_painel:
+                nome = ROTULOS_METODOS_GRAFICO[chave]
+                if not resultado["aplicavel"]:
+                    st.caption(f"{nome} — Não aplicável: {resultado['motivo_nao_aplicavel']}")
+                elif chave not in resultado_combinado["valores_por_metodo"]:
+                    st.caption(f"{nome} — Valor indisponível.")
+
+            razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
+            if (
+                resultado_bazin["aplicavel"]
+                and razao_dividendos_bazin is not None
+                and razao_dividendos_bazin > RAZAO_DIVIDENDOS_ATIPICA_BAZIN
+            ):
+                st.caption(
+                    "Dividendos dos últimos 12 meses em "
+                    f"{razao_dividendos_bazin * 100:.0f}% da mediana dos 5 anos "
+                    "anteriores. Pode ser crescimento real dos pagamentos ou um "
+                    "pagamento extraordinário — a fonte não permite distinguir. "
+                    "Se for extraordinário, o preço teto está inflado."
+                )
+            if resultado_fcd["aplicavel"]:
+                aviso_fcd_extremo = avaliar_fcd_extremo(resultado_fcd, preco_atual)
+                if aviso_fcd_extremo is not None:
+                    st.warning(aviso_fcd_extremo["texto"].replace("$", "\\$"))
+            notas_por_metodo = {
+                chave: _notas_do_metodo(resultado)
+                for chave, resultado in metodos_painel
+                if resultado["aplicavel"]
+            }
+            for visiveis, _detalhes in notas_por_metodo.values():
+                for nota in visiveis:
+                    st.caption(nota)
+
+            with st.expander("Métodos utilizados"):
+                if resultado_combinado["aplicavel"]:
                     st.caption(
-                        "Dividendos dos últimos 12 meses em "
-                        f"{razao_dividendos_bazin * 100:.0f}% da mediana dos 5 anos "
-                        "anteriores. Pode ser crescimento real dos pagamentos ou um "
-                        "pagamento extraordinário — a fonte não permite distinguir. "
-                        "Se for extraordinário, o preço teto está inflado."
+                        "Métodos utilizados: "
+                        + _nomes_dos_metodos(resultado_combinado["metodos_utilizados"])
                     )
-            with coluna_fcd:
-                _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
+                    divergencia = divergencia_metodos
+                    if divergencia["aplicavel"]:
+                        if divergencia["divergencia_percentual"] is not None:
+                            st.caption(
+                                "Os métodos aplicáveis vão de "
+                                f"{_fmt_bilhoes_md(divergencia['menor'])} a "
+                                f"{_fmt_bilhoes_md(divergencia['maior'])}: uma diferença "
+                                f"equivalente a {divergencia['divergencia_percentual']:.0f}% do "
+                                "preço atual. Quanto maior essa diferença, menos os métodos "
+                                "concordam entre si."
+                            )
+                        else:
+                            st.caption(
+                                "Os métodos aplicáveis vão de "
+                                f"{_fmt_bilhoes_md(divergencia['menor'])} a "
+                                f"{_fmt_bilhoes_md(divergencia['maior'])} "
+                                f"({_fmt_bilhoes_md(divergencia['diferenca'])} de diferença)."
+                            )
+                for chave, (_visiveis, detalhes) in notas_por_metodo.items():
+                    if detalhes:
+                        st.markdown(f"**{ROTULOS_METODOS_GRAFICO[chave]}**")
+                    for nota in detalhes:
+                        st.caption(nota)
                 if resultado_fcd["aplicavel"]:
-                    aviso_fcd_extremo = avaliar_fcd_extremo(resultado_fcd, preco_atual)
-                    if aviso_fcd_extremo is not None:
-                        st.warning(aviso_fcd_extremo["texto"].replace("$", "\\$"))
-                    origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
-                    st.caption(
-                        f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})"
-                    )
-                    # Rótulo específico do FCD (não da página toda) — só o FCD vem
-                    # da DFP anual da CVM; "Saúde financeira" abaixo vem do
-                    # Fundamentus (últimos 12 meses), sem relação com esse ano.
-                    # Caso normal (sem fallback) não tem legenda própria aqui —
-                    # o ano já aparece no bloco "Datas de referência dos dados
-                    # usados" (pra reduzir texto repetido); a
-                    # variante de fallback fica, porque diz algo específico
-                    # dessa ação que não está em lugar nenhum.
+                    # Só o FCD vem da DFP anual da CVM; "Saúde financeira" vem do Fundamentus
+                    # (últimos 12 meses), sem relação com esse ano. Sem fallback, o ano já
+                    # aparece em "Datas de referência dos dados usados".
                     if fcd_usou_fallback:
                         st.caption(
                             f"FCD calculado com a demonstração financeira anual de "
@@ -1453,47 +1588,6 @@ with aba_analisar:
                                 valor=_fmt_bilhoes_md(abs(risco_sacado_fcd_utilizado)),
                             )
                         )
-                    if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
-                        proporcao_reinvestimento = (
-                            calcular_proporcao_capex_caixa_operacional_percentual(
-                                caixa_fcd_utilizado, capex_fcd_utilizado
-                            )
-                        )
-                        # Sem capex identificado, sem legenda (o FCD nem é calculado).
-                        if proporcao_reinvestimento is not None:
-                            st.caption(
-                                LEGENDA_REINVESTIMENTO_CAPEX.format(
-                                    ano=ano_fcd_utilizado, proporcao=proporcao_reinvestimento
-                                )
-                            )
-            if resultado_combinado["aplicavel"]:
-                st.caption(
-                    "Métodos utilizados: "
-                    + _nomes_dos_metodos(resultado_combinado["metodos_utilizados"])
-                )
-                divergencia = divergencia_metodos
-                if divergencia["aplicavel"]:
-                    if divergencia["divergencia_percentual"] is not None:
-                        st.caption(
-                            "Os métodos aplicáveis vão de "
-                            f"{_fmt_bilhoes_md(divergencia['menor'])} a "
-                            f"{_fmt_bilhoes_md(divergencia['maior'])}: uma diferença "
-                            f"equivalente a {divergencia['divergencia_percentual']:.0f}% do "
-                            "preço atual. Quanto maior essa diferença, menos os métodos "
-                            "concordam entre si."
-                        )
-                    else:
-                        st.caption(
-                            "Os métodos aplicáveis vão de "
-                            f"{_fmt_bilhoes_md(divergencia['menor'])} a "
-                            f"{_fmt_bilhoes_md(divergencia['maior'])} "
-                            f"({_fmt_bilhoes_md(divergencia['diferenca'])} de diferença)."
-                        )
-            else:
-                st.info(
-                    f"Valor combinado: {resultado_combinado['motivo_nao_aplicavel']} "
-                    f"{TEXTO_COMPLEMENTO_SEM_METODO}"
-                )
 
             st.caption(
                 "Os valores acima são calculados a partir de fórmulas de valuation "

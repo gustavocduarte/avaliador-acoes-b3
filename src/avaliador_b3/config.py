@@ -818,7 +818,7 @@ RAZAO_DIVIDENDOS_ATIPICA_BAZIN = 2.0
 # dominante sozinho — a dedução da dívida líquida (acima) pesa mais que o
 # reinvestimento nesse caso específico. Reinvestimento
 # não explica tudo sozinho, por isso a decisão foi mostrar a proporção
-# reinvestida como contexto (ver `_cartao_metodo`/coluna "Reinvestimento" no
+# reinvestida como contexto (ver `_html_cabecalho_painel`/coluna "Reinvestimento" no
 # Screener), não excluir setores nem ajustar o cálculo do FCF.
 #
 # Opção cogitada e descartada por enquanto: usar a conta de Depreciação e
@@ -1339,6 +1339,8 @@ SUBTITULO_APP = (
 )
 # Nomes dos métodos como aparecem na tela (o CSV do screener guarda "graham,bazin,fcd").
 NOMES_METODOS = {"graham": "Graham", "bazin": "Bazin", "fcd": "FCD"}
+ROTULOS_METODOS_GRAFICO = {"graham": "Graham", "bazin": "Bazin (preço teto)", "fcd": "FCD"}
+ROTULO_COMBINADO_GRAFICO = "Combinado"
 # Gráfico "Histórico de dividendos por ano": o ano corrente, incompleto, leva asterisco.
 ROTULO_ANO_PARCIAL = "{ano}*"
 NOTA_DIVIDENDOS_ANO_PARCIAL = (

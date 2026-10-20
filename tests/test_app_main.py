@@ -205,6 +205,46 @@ def _kpi_por_rotulo(at, rotulo: str) -> dict | None:
     return cartoes[0] if cartoes else None
 
 
+def _figura_valor_justo(at) -> dict | None:
+    """Figura (spec JSON) do gráfico de barras horizontais do valor justo por método."""
+    for grafico in at.get("plotly_chart"):
+        figura = json.loads(grafico.proto.spec)
+        if figura["data"] and figura["data"][0].get("orientation") == "h":
+            return figura
+    return None
+
+
+def _barra_valor_justo(at, rotulo: str) -> dict | None:
+    """`{"valor", "texto"}` da barra do método (ou "Combinado") no gráfico; `None` se não houver
+    barra (método não aplicável)."""
+    figura = _figura_valor_justo(at)
+    if figura is None:
+        return None
+    barras = figura["data"][0]
+    if rotulo not in barras["y"]:
+        return None
+    indice = barras["y"].index(rotulo)
+    return {"valor": barras["x"][indice], "texto": barras["text"][indice]}
+
+
+def _valor_do_metodo(at, rotulo: str) -> float | None:
+    barra = _barra_valor_justo(at, rotulo)
+    return None if barra is None else barra["valor"]
+
+
+def _selos_valor_justo(at) -> list[tuple[str, str]]:
+    """`(texto, dica)` dos selos do cabeçalho do painel de valor justo."""
+    import html
+
+    selos = []
+    for elemento in at.get("html"):
+        for dica, texto in re.findall(
+            r'<span class="ab-selo" title="(.*?)">(.*?)</span>', elemento.proto.body
+        ):
+            selos.append((html.unescape(texto), html.unescape(dica)))
+    return selos
+
+
 def _metrica_por_label(at, rotulo: str):
     """Acha o único `st.metric` com esse `label` na árvore de elementos de
     `at` — levanta `AssertionError` se não achar exatamente um (rótulo
@@ -538,11 +578,11 @@ def test_card_de_valor_justo_mostra_delta_so_quando_aplicavel(monkeypatch):
     assert not at.exception
 
     # Graham = raiz(22,5 × 5 × 20) ≈ 47,43; preço 50 -> delta ≈ -5,1%.
-    metrica_graham = _metrica_por_label(at, "Graham")
-    assert metrica_graham.value == "R$ 47,43"
-    assert metrica_graham.delta == "-5,1%"
+    barra_graham = _barra_valor_justo(at, "Graham")
+    assert barra_graham["valor"] == pytest.approx(47.4342, abs=0.001)
+    assert barra_graham["texto"] == "47,43\u00a0\u00a0-5,1%"
 
-    assert not _metrica_por_label(at, "Bazin (preço teto)").delta
+    assert _barra_valor_justo(at, "Bazin (preço teto)") is None
 
 
 def _leitura_balanco_mock(
@@ -646,7 +686,7 @@ def test_fcd_nao_mostra_aviso_quando_divida_liquida_esta_disponivel(monkeypatch)
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != "—"
+    assert _valor_do_metodo(at, "FCD") is not None
 
     avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
     assert avisos_divida == []
@@ -683,7 +723,7 @@ def test_rest_do_bcb_fora_do_ar_e_soap_respondendo_nao_mostra_aviso_de_falha_na_
     assert not at.exception
     assert pedidos_soap, f"o SOAP ({FONTE_BCB_SOAP}) devia ter sido consultado"
     # O FCD usa a Selic e o IPCA vindos do SOAP, e nenhuma falha intermediária vira aviso.
-    assert _metrica_por_label(at, "FCD").value != "—"
+    assert _valor_do_metodo(at, "FCD") is not None
     textos = [w.value for w in at.warning] + [e.value for e in at.error]
     termos_do_bcb = ("api.bcb.gov.br", "BCB", "Banco Central", "Selic", "IPCA")
     assert not [t for t in textos if any(termo in t for termo in termos_do_bcb)]
@@ -764,7 +804,7 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
-    sem_ajuste = _metrica_por_label(at, "FCD").value
+    sem_ajuste = _valor_do_metodo(at, "FCD")
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -775,7 +815,7 @@ def test_fcd_desconta_os_nao_controladores_do_balanco_da_cvm(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != sem_ajuste
+    assert _valor_do_metodo(at, "FCD") != sem_ajuste
 
 
 def test_valor_de_mercado_e_de_firma_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
@@ -932,8 +972,8 @@ def test_fcd_e_graham_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
-    assert _metrica_por_label(at, "Graham").value == "R$ 47,43"
-    fcd_sem_leitura = _metrica_por_label(at, "FCD").value
+    assert _valor_do_metodo(at, "Graham") == pytest.approx(47.43, abs=0.005)
+    fcd_sem_leitura = _valor_do_metodo(at, "FCD")
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -945,8 +985,8 @@ def test_fcd_e_graham_usam_as_acoes_em_circulacao_da_cvm(monkeypatch):
 
     assert not at.exception
     # Graham = 47,43 x 100 / 80.
-    assert _metrica_por_label(at, "Graham").value == "R$ 59,29"
-    assert _metrica_por_label(at, "FCD").value != fcd_sem_leitura
+    assert _valor_do_metodo(at, "Graham") == pytest.approx(59.29, abs=0.005)
+    assert _valor_do_metodo(at, "FCD") != fcd_sem_leitura
     assert not [c.value for c in at.caption if "ações em circulação da CVM" in c.value]
 
 
@@ -964,7 +1004,7 @@ def test_fcd_sem_acoes_em_circulacao_mostra_o_motivo_no_cartao(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Graham").value == "R$ 47,43"
+    assert _valor_do_metodo(at, "Graham") == pytest.approx(47.43, abs=0.005)
     assert TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo) in [c.value for c in at.caption]
 
 
@@ -972,7 +1012,7 @@ def test_fcd_soma_o_arrendamento_fora_da_divida_e_nao_mostra_aviso_de_arrendamen
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
-    sem_arrendamento = _metrica_por_label(at, "FCD").value
+    sem_arrendamento = _valor_do_metodo(at, "FCD")
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -983,7 +1023,7 @@ def test_fcd_soma_o_arrendamento_fora_da_divida_e_nao_mostra_aviso_de_arrendamen
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != sem_arrendamento
+    assert _valor_do_metodo(at, "FCD") != sem_arrendamento
     assert not [c.value for c in at.caption if "passivo de arrendamento" in c.value]
 
 
@@ -1010,7 +1050,7 @@ def test_fcd_com_patrimonio_total_muda_o_valor_e_nao_mostra_aviso_dos_pesos(monk
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
-    sem_patrimonio_total = _metrica_por_label(at, "FCD").value
+    sem_patrimonio_total = _valor_do_metodo(at, "FCD")
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -1021,7 +1061,7 @@ def test_fcd_com_patrimonio_total_muda_o_valor_e_nao_mostra_aviso_dos_pesos(monk
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != sem_patrimonio_total
+    assert _valor_do_metodo(at, "FCD") != sem_patrimonio_total
     assert not [c.value for c in at.caption if "Pesos do custo de capital" in c.value]
 
 
@@ -1060,7 +1100,7 @@ def test_fcd_sem_leitura_do_balanco_mostra_o_motivo_na_explicacao_do_cartao(monk
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != "—"
+    assert _valor_do_metodo(at, "FCD") is not None
     esperado = TEXTO_SEM_AJUSTES_DO_BALANCO.format(
         motivo="A empresa não tem balanço consolidado de 30/06/2026 no ITR da CVM."
     )
@@ -1074,7 +1114,7 @@ def test_fcd_mostra_aviso_quando_divida_liquida_esta_ausente(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value != "—"
+    assert _valor_do_metodo(at, "FCD") is not None
 
     avisos_divida = [c.value for c in at.caption if "Dívida líquida indisponível" in c.value]
     assert len(avisos_divida) == 1
@@ -1208,7 +1248,7 @@ def test_caption_reinvestimento_caso_normal(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    captions = [c.value for c in at.caption if "reinvestiu" in c.value]
+    captions = [dica for _, dica in _selos_valor_justo(at) if "reinvestiu" in dica]
     assert len(captions) == 1
     assert captions[0] == LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=30.0)
 
@@ -1250,7 +1290,7 @@ def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada
     assert divergencia["valor"] == "—"
     assert divergencia["linha"] == "Nenhum método aplicável"
     captions = [c.value for c in at.caption]
-    assert f"Não aplicável: {MOTIVO_FCD_FLUXO_NAO_POSITIVO}" in captions
+    assert f"FCD — Não aplicável: {MOTIVO_FCD_FLUXO_NAO_POSITIVO}" in captions
 
 
 def test_fcd_sem_capex_identificado_no_ano_de_referencia_e_nao_aplicavel_com_motivo(
@@ -1272,7 +1312,9 @@ def test_fcd_sem_capex_identificado_no_ano_de_referencia_e_nao_aplicavel_com_mot
     at.run(timeout=60)
 
     assert not at.exception
-    assert f"Não aplicável: {MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO}" in [c.value for c in at.caption]
+    assert f"FCD — Não aplicável: {MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO}" in [
+        c.value for c in at.caption
+    ]
 
 
 def test_fcd_com_capex_do_ano_base_nao_identificado_mostra_que_o_crescimento_usou_o_ipca(
@@ -1309,7 +1351,7 @@ def test_caption_reinvestimento_divide_pelo_caixa_operacional_do_fcd(monkeypatch
     at.run(timeout=60)
 
     assert not at.exception
-    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    legendas = [dica for _, dica in _selos_valor_justo(at) if "reinvestiu" in dica]
     assert legendas == [
         LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=90_000 / 160_000 * 100)
     ]
@@ -1329,7 +1371,7 @@ def test_caption_reinvestimento_usa_o_caixa_ajustado_pelo_risco_sacado(monkeypat
     at.run(timeout=60)
 
     assert not at.exception
-    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    legendas = [dica for _, dica in _selos_valor_justo(at) if "reinvestiu" in dica]
     assert legendas == [
         LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=300_000 / 666_000 * 100)
     ]
@@ -1346,7 +1388,7 @@ def test_caption_reinvestimento_usa_o_capex_e_nao_o_caixa_de_investimento(monkey
     at.run(timeout=60)
 
     assert not at.exception
-    legendas = [c.value for c in at.caption if "reinvestiu" in c.value]
+    legendas = [dica for _, dica in _selos_valor_justo(at) if "reinvestiu" in dica]
     assert legendas == [LEGENDA_REINVESTIMENTO_CAPEX.format(ano=ANO_FCD_MOCK, proporcao=20.0)]
 
 
@@ -1357,7 +1399,7 @@ def test_caption_reinvestimento_ausente_quando_o_capex_nao_foi_identificado(monk
     at.run(timeout=60)
 
     assert not at.exception
-    assert not [c.value for c in at.caption if "reinvestiu" in c.value]
+    assert not [dica for _, dica in _selos_valor_justo(at) if "reinvestiu" in dica]
     assert not [
         c.value for c in at.caption if "o caixa gerado pela operação foi negativo" in c.value
     ]
@@ -1638,8 +1680,7 @@ def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatc
 
     assert not at.exception
 
-    metrica_fcd = _metrica_por_label(at, "FCD")
-    assert metrica_fcd.value == "—"
+    assert _valor_do_metodo(at, "FCD") is None
 
     avisos_fcd = [c.value for c in at.caption if "Instituição financeira" in c.value]
     assert len(avisos_fcd) == 1
@@ -1711,7 +1752,7 @@ def test_caption_divergencia_some_com_um_so_metodo_aplicavel(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "FCD").value == "—"
+    assert _valor_do_metodo(at, "FCD") is None
     divergencias = [c.value for c in at.caption if "Os métodos aplicáveis vão de" in c.value]
     assert divergencias == []
 
@@ -2129,6 +2170,57 @@ def test_pilulas_mostram_so_o_que_existe_e_escapam_o_texto():
     assert "Petróleo &amp; Gás" in so_setor
     assert so_setor.count('class="ab-pilula"') == 1
     assert _html_pilulas("Energia", "Novo Mercado").count('class="ab-pilula"') == 2
+
+
+def test_figura_do_valor_justo_cores_rotulos_e_linha_do_preco():
+    from avaliador_b3 import config
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    figura = _figura_valor_justo({"graham": 160.0, "fcd": 40.0}, 100.0, 100.0)
+    barras = figura.data[0]
+    assert list(barras.y) == ["Graham", "FCD", "Combinado"]
+    assert list(barras.marker.color) == [
+        config.COR_POSITIVO,
+        config.COR_NEGATIVO,
+        config.COR_PRINCIPAL,
+    ]
+    assert list(barras.text) == [
+        "160,00  +60,0%",
+        "40,00  -60,0%",
+        "100,00  0,0%",
+    ]
+    linha_preco = figura.layout.shapes[0]
+    assert linha_preco.x0 == 100.0
+    assert linha_preco.line.color == config.COR_ALERTA
+    assert linha_preco.line.dash == "dash"
+    assert figura.layout.annotations[0].text == "Preço R$ 100,00"
+
+
+def test_figura_do_valor_justo_sem_preco_nao_tem_linha_nem_diferenca():
+    from avaliador_b3 import config
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    figura = _figura_valor_justo({"graham": 47.43}, 47.43, None)
+    assert list(figura.layout.shapes) == []
+    assert list(figura.data[0].text) == ["47,43", "47,43"]
+    assert list(figura.data[0].marker.color) == [config.COR_NEUTRO, config.COR_PRINCIPAL]
+
+
+def test_painel_de_valor_justo_tem_grafico_selos_e_legenda_dos_nao_aplicaveis(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=1000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _barra_valor_justo(at, "Combinado") is not None
+    assert _valor_do_metodo(at, "FCD") is not None
+    textos_selos = [texto for texto, _ in _selos_valor_justo(at)]
+    assert any(texto.startswith("Beta ") for texto in textos_selos)
+    assert any(c.value.startswith("Bazin (preço teto) — Não aplicável:") for c in at.caption)
+    rotulos_expanders = [e.label for e in at.expander]
+    assert "Métodos utilizados" in rotulos_expanders
+    assert "Como funciona esse cálculo?" in rotulos_expanders
 
 
 def test_texto_do_fcd_tem_subtitulos_e_mantem_os_ajustes_do_balanco(monkeypatch):
