@@ -2084,6 +2084,21 @@ with aba_screener:
                 "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
             )
 
+        macro_referencia = carregar_macro_referencia()
+        with st.container(border=True, key="painel_destaque_screener"):
+            col_universo, col_fcd, col_mediana, col_selic, col_data = st.columns(5)
+            col_universo.metric("Ações no universo", len(tabela_screener))
+            col_fcd.metric("Ações com FCD", int(tabela_screener["fcd_valor_justo"].notna().sum()))
+            col_mediana.metric(
+                "Mediana do potencial",
+                _fmt_percentual(tabela_screener["desconto_percentual"].median()),
+                help=TOOLTIP_POTENCIAL_COLUNA,
+            )
+            selic = macro_referencia.get("selic_meta") if macro_referencia else None
+            col_selic.metric("Selic", "N/D" if selic is None else _fmt_percentual(selic * 100, 2))
+            data_busca = macro_referencia.get("data_busca") if macro_referencia else None
+            col_data.metric("Atualizado em", _fmt_data(data_busca))
+
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:
             st.warning(
@@ -2101,39 +2116,40 @@ with aba_screener:
         tabela_screener_fmt["metodos_utilizados"] = tabela_screener_fmt["metodos_utilizados"].map(
             _nomes_dos_metodos_do_csv
         )
-        st.dataframe(
-            tabela_screener_fmt,
-            column_order=COLUNAS_TABELA_SCREENER,
-            column_config={
-                "ticker": "Ticker",
-                **colunas_screener_fmt,
-                # NUMÉRICA de propósito, não texto pré-formatado como as
-                # demais colunas de `colunas_screener_fmt` acima — sem
-                # casa decimal não existe o problema de vírgula brasileira
-                # que forçou o resto da tabela a virar texto (ver
-                # `_tabela_formatada_pt_br`), então clicar no cabeçalho
-                # continua ordenando numericamente de verdade, que é o
-                # motivo desta coluna existir (filtrar por concordância
-                # entre os métodos).
-                "divergencia_percentual_metodos": st.column_config.NumberColumn(
-                    "Divergência", format="%d%%"
-                ),
-                # NUMÉRICA pelo mesmo motivo da Divergência acima — ordenar
-                # pelo cabeçalho precisa continuar numérico de verdade.
-                "bazin_razao_dividendos_percentual": st.column_config.NumberColumn(
-                    "Dividendos vs. histórico", format="%d%%"
-                ),
-                # NUMÉRICA pelo mesmo motivo acima.
-                "proporcao_reinvestimento_percentual": st.column_config.NumberColumn(
-                    "Reinvestimento", format="%d%%"
-                ),
-                "metodos_utilizados": "Métodos utilizados",
-                "aviso_desconto_extremo": "Aviso",
-                "erro": "Observação",
-            },
-            hide_index=True,
-            width="stretch",
-        )
+        with st.container(border=True, key="painel_tabela_screener"):
+            st.dataframe(
+                tabela_screener_fmt,
+                column_order=COLUNAS_TABELA_SCREENER,
+                column_config={
+                    "ticker": "Ticker",
+                    **colunas_screener_fmt,
+                    # NUMÉRICA de propósito, não texto pré-formatado como as
+                    # demais colunas de `colunas_screener_fmt` acima — sem
+                    # casa decimal não existe o problema de vírgula brasileira
+                    # que forçou o resto da tabela a virar texto (ver
+                    # `_tabela_formatada_pt_br`), então clicar no cabeçalho
+                    # continua ordenando numericamente de verdade, que é o
+                    # motivo desta coluna existir (filtrar por concordância
+                    # entre os métodos).
+                    "divergencia_percentual_metodos": st.column_config.NumberColumn(
+                        "Divergência", format="%d%%"
+                    ),
+                    # NUMÉRICA pelo mesmo motivo da Divergência acima — ordenar
+                    # pelo cabeçalho precisa continuar numérico de verdade.
+                    "bazin_razao_dividendos_percentual": st.column_config.NumberColumn(
+                        "Dividendos vs. histórico", format="%d%%"
+                    ),
+                    # NUMÉRICA pelo mesmo motivo acima.
+                    "proporcao_reinvestimento_percentual": st.column_config.NumberColumn(
+                        "Reinvestimento", format="%d%%"
+                    ),
+                    "metodos_utilizados": "Métodos utilizados",
+                    "aviso_desconto_extremo": "Aviso",
+                    "erro": "Observação",
+                },
+                hide_index=True,
+                width="stretch",
+            )
 
 with aba_carteira:
     st.caption(TEXTO_ABERTURA_SIMULADOR)

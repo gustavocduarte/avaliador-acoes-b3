@@ -2386,6 +2386,51 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
     assert rotulos["erro"]["label"] == "Observação"
 
 
+def test_linha_de_destaque_do_screener(monkeypatch, tmp_path):
+    import avaliador_b3.screener as screener_mod
+    from avaliador_b3.screener import COLUNAS_RESULTADO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.bcb_sgs.carregar_macro_referencia",
+        lambda: {"selic_meta": 0.1475, "data_busca": pd.Timestamp("2026-10-19")},
+    )
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "aviso_desconto_extremo": "",
+        "erro": "",
+        "metodos_utilizados": "graham",
+    }
+    linhas = [
+        base | {"ticker": "AAA3", "preco_atual": 10.0, "desconto_percentual": 10.0},
+        base
+        | {
+            "ticker": "BBB4",
+            "preco_atual": 10.0,
+            "desconto_percentual": 30.0,
+            "fcd_valor_justo": 15.0,
+        },
+        base | {"ticker": "CCC3", "preco_atual": 10.0, "desconto_percentual": 20.0},
+    ]
+    caminho = tmp_path / "screener.csv"
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Ações no universo").value == "3"
+    assert _metrica_por_label(at, "Ações com FCD").value == "1"
+    assert _metrica_por_label(at, "Mediana do potencial").value == "20,0%"
+    assert _metrica_por_label(at, "Selic").value == "14,75%"
+    assert _metrica_por_label(at, "Atualizado em").value == "19/10/2026"
+
+
 def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs):
     from avaliador_b3.config import SERIES_BCB_SGS
 
