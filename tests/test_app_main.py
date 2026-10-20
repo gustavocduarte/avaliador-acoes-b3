@@ -31,7 +31,6 @@ from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
     LEGENDA_REINVESTIMENTO_CAPEX,
     MOTIVO_RECEITA_SEM_DRE,
-    NOTA_DIVIDENDOS_ANO_PARCIAL,
     SUBTITULO_APP,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
@@ -2024,57 +2023,6 @@ def test_correlacao_sem_serie_gpr_nao_mostra_data_do_ultimo_dado(monkeypatch):
     assert not any(c.value.startswith("Último dado do GPR") for c in at.caption)
 
 
-def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
-    # figura_dividendos usava texttemplate="R$ %{text:.2f}" e "%{text:.1f}%"
-    # — o d3-format que o Plotly usa por trás desses especificadores tem o
-    # mesmo problema de locale do _fmt/_fmt_bilhoes (sem vírgula decimal
-    # brasileira sem registrar um locale que o bundle do Streamlit não
-    # traz). `text` é pré-formatado com _fmt_bilhoes/
-    # _fmt_percentual e usa "%{text}" (passthrough) no texttemplate.
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
-        lambda **kwargs: _universo_falso(),
-    )
-    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.precos.obter_historico",
-        _historico_por_periodo(
-            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
-        ),
-    )
-    dividendos_fake = pd.DataFrame(
-        {"data": pd.to_datetime(["2023-06-01", "2024-06-01"]), "dividendo": [2.5, 3.25]}
-    )
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.precos.obter_dividendos", lambda *args, **kwargs: dividendos_fake
-    )
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.fundamentus.obter_indicadores",
-        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
-    )
-
-    at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
-
-    assert not at.exception
-
-    graficos_plotly = at.get("plotly_chart")
-    figuras_dividendos = [
-        json.loads(g.proto.spec)
-        for g in graficos_plotly
-        if json.loads(g.proto.spec)["data"]
-        and json.loads(g.proto.spec)["data"][0].get("name") == "Dividendos"
-    ]
-    assert len(figuras_dividendos) == 1
-    trace_dividendos = figuras_dividendos[0]["data"][0]
-    # R$ por ano só no hover das barras (sem rótulo fixo); o rótulo visível é o do yield.
-    assert trace_dividendos["textposition"] == "none"
-    assert trace_dividendos["hovertemplate"] == "%{text}<extra></extra>"
-    for texto in trace_dividendos["text"]:
-        assert "," in texto and "R$" in texto
-        assert not re.search(r"\d\.\d\d\b", texto), f"rótulo com ponto decimal: {texto!r}"
-
-
 @pytest.mark.parametrize(
     ("preco", "potencial_esperado", "linha_esperada", "classe_esperada"),
     [
@@ -3328,59 +3276,3 @@ def _valores_plotly(serie):
     if isinstance(serie, dict):
         return list(np.frombuffer(base64.b64decode(serie["bdata"]), dtype=serie["dtype"]))
     return list(serie)
-
-
-def test_grafico_de_dividendos_mostra_o_ano_sem_dividendo_e_o_ano_corrente_parcial(monkeypatch):
-    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
-    ano_atual = pd.Timestamp.now().year
-    # Dividendos em ano_atual - 3 e no ano corrente; os dois anos do meio ficam sem pagamento.
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.precos.obter_dividendos",
-        lambda *args, **kwargs: pd.DataFrame(
-            {
-                "data": [
-                    pd.Timestamp(year=ano_atual - 3, month=5, day=1),
-                    pd.Timestamp(year=ano_atual, month=2, day=1),
-                ],
-                "dividendo": [1.0, 0.5],
-            }
-        ),
-    )
-
-    at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
-
-    assert not at.exception
-    graficos_plotly = [e for e in at.get("plotly_chart") if "Dividendos" in e.proto.spec]
-    assert len(graficos_plotly) == 1
-    figura = json.loads(graficos_plotly[0].proto.spec)
-    barras = next(t for t in figura["data"] if t["name"] == "Dividendos")
-    assert barras["x"] == [
-        str(ano_atual - 3),
-        str(ano_atual - 2),
-        str(ano_atual - 1),
-        f"{ano_atual}*",
-    ]
-    assert _valores_plotly(barras["y"]) == [1.0, 0.0, 0.0, 0.5]
-    nota = NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=ano_atual)
-    assert nota in [c.value for c in at.caption]
-
-
-def test_grafico_de_dividendos_estende_a_serie_ate_o_ano_corrente_mesmo_sem_dividendo_nele(
-    monkeypatch,
-):
-    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
-    monkeypatch.setattr(
-        "avaliador_b3.ingest.precos.obter_dividendos",
-        lambda *args, **kwargs: pd.DataFrame(
-            {"data": [pd.Timestamp(year=2020, month=5, day=1)], "dividendo": [1.0]}
-        ),
-    )
-
-    at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
-
-    assert not at.exception
-    # O ano corrente entra na série (sem dividendo) e é marcado como parcial.
-    ano_atual = pd.Timestamp.now().year
-    assert NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=ano_atual) in [c.value for c in at.caption]

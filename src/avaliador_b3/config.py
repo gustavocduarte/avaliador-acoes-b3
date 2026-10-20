@@ -1357,6 +1357,20 @@ NOTA_DIVIDENDOS_ANO_PARCIAL = (
     "* {ano}: ano em andamento, com só os dividendos pagos até agora. Anos sem dividendo "
     "aparecem com barra zero."
 )
+NOTA_DIVIDEND_YIELD_SUBESTIMADO = (
+    "Dividend Yield histórico pode ficar um pouco subestimado em anos com dividendo pago em "
+    "várias parcelas no mesmo dia — limitação de completude de dado do yfinance, não do cálculo."
+)
+TITULO_PAINEL_DIVIDENDOS = "Histórico de dividendos por ano"
+# Janela inicial do gráfico (anos, contando o corrente) e as opções do controle; o gráfico
+# completo começa no primeiro ano com dado.
+ANOS_JANELA_DIVIDENDOS = 10
+ROTULO_JANELA_DIVIDENDOS_CURTA = "{anos} anos"
+ROTULO_JANELA_DIVIDENDOS_COMPLETA = "Desde {ano}"
+# Opacidade da barra do ano em andamento (as demais são opacas).
+OPACIDADE_BARRA_PARCIAL = 0.7
+# Configuração do Plotly em todos os gráficos: sem a barra de ferramentas.
+CONFIG_PLOTLY = {"displayModeBar": False}
 ROTULO_POTENCIAL = "Potencial"
 TOOLTIP_POTENCIAL_COLUNA = (
     "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "

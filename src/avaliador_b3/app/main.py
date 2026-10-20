@@ -34,12 +34,14 @@ from avaliador_b3.carteira import (
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
+    ANOS_JANELA_DIVIDENDOS,
     AVISO_MACRO_ARQUIVO_REFERENCIA,
     AVISO_MACRO_IPCA_FONTE,
     AVISO_MACRO_MESMA_FONTE,
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
+    CONFIG_PLOTLY,
     COR_ALERTA,
     COR_BORDA,
     COR_FUNDO_PAGINA,
@@ -63,7 +65,9 @@ from avaliador_b3.config import (
     LIMITE_SINAL_INDICADOR,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
     NOMES_METODOS,
+    NOTA_DIVIDEND_YIELD_SUBESTIMADO,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
+    OPACIDADE_BARRA_PARCIAL,
     PADRAO_TICKER_B3,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
@@ -72,6 +76,8 @@ from avaliador_b3.config import (
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_ANO_PARCIAL,
     ROTULO_COMBINADO_GRAFICO,
+    ROTULO_JANELA_DIVIDENDOS_COMPLETA,
+    ROTULO_JANELA_DIVIDENDOS_CURTA,
     ROTULO_POTENCIAL,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
@@ -107,6 +113,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
+    TITULO_PAINEL_DIVIDENDOS,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CENARIO,
@@ -539,6 +546,65 @@ def aplicar_template_grafico(figura: go.Figure) -> go.Figure:
     figura.update_xaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)
     figura.update_yaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)
     return figura
+
+
+def exibir_grafico(figura: go.Figure) -> None:
+    """Único ponto de `st.plotly_chart` do app: tema do Plotly (não o do Streamlit), largura
+    total e sem a barra de ferramentas."""
+    st.plotly_chart(figura, width="stretch", theme=None, config=CONFIG_PLOTLY)
+
+
+def _figura_dividendos(
+    dividendos_por_ano: pd.DataFrame, dividend_yield_por_ano: pd.DataFrame, ano_inicial: int | None
+) -> go.Figure:
+    """Barras do dividend yield (%) de cada ano, em eixo único; o yield e o total pago (R$/ação)
+    ficam no hover. Com `ano_inicial`, mostra só dele em diante e escreve o % sobre cada barra
+    (anos sem dividendo ficam sem rótulo); sem ele, o histórico todo, com rótulo só no hover. O
+    ano corrente, incompleto, tem barra clara com hachura e asterisco no rótulo do eixo."""
+    anos = dividendos_por_ano.merge(dividend_yield_por_ano, on="ano")
+    if ano_inicial is not None:
+        anos = anos[anos["ano"] >= ano_inicial]
+    rotulos_x = [
+        ROTULO_ANO_PARCIAL.format(ano=int(ano)) if parcial else str(int(ano))
+        for ano, parcial in zip(anos["ano"], anos["parcial"], strict=True)
+    ]
+    # Formatado em Python: o d3-format do Plotly não tem vírgula decimal sem um locale registrado.
+    percentuais = [_fmt_percentual(y) for y in anos["yield_percentual"]]
+    totais = list(anos["total"])
+    hover = [[pct, _fmt_bilhoes(total)] for pct, total in zip(percentuais, totais, strict=True)]
+    rotulos = [pct if total > 0 else "" for pct, total in zip(percentuais, totais, strict=True)]
+    figura = go.Figure(
+        go.Bar(
+            x=rotulos_x,
+            y=anos["yield_percentual"],
+            text=rotulos,
+            textposition="outside" if ano_inicial is not None else "none",
+            textfont={"color": COR_TEXTO},
+            cliponaxis=False,
+            customdata=hover,
+            hovertemplate="Dividend Yield: %{customdata[0]}<br>Total pago: %{customdata[1]}"
+            "<extra></extra>",
+            marker={
+                "color": COR_PRINCIPAL,
+                "opacity": [OPACIDADE_BARRA_PARCIAL if p else 1.0 for p in anos["parcial"]],
+                "line": {"color": COR_PRINCIPAL, "width": 2},
+                "pattern": {
+                    "shape": ["/" if p else "" for p in anos["parcial"]],
+                    "fgcolor": COR_PRINCIPAL,
+                    "bgcolor": COR_FUNDO_PAINEL,
+                },
+            },
+        )
+    )
+    figura.update_layout(
+        xaxis={"type": "category"},
+        yaxis={"ticksuffix": "%", "rangemode": "tozero"},
+        showlegend=False,
+        margin={"t": 20, "b": 10, "l": 10, "r": 10},
+    )
+    figura.update_xaxes(automargin=True)
+    figura.update_yaxes(automargin=True)
+    return aplicar_template_grafico(figura)
 
 
 def _grafico_comparacao_normalizada(
@@ -1576,14 +1642,12 @@ with aba_analisar:
         ):
             st.html(_html_cabecalho_painel("Valor justo por método", selos_valor_justo))
             if resultado_combinado["aplicavel"]:
-                st.plotly_chart(
+                exibir_grafico(
                     _figura_valor_justo(
                         resultado_combinado["valores_por_metodo"],
                         resultado_combinado["valor_combinado"],
                         preco_atual,
-                    ),
-                    width="stretch",
-                    theme=None,
+                    )
                 )
             else:
                 st.info(
@@ -1921,7 +1985,7 @@ with aba_analisar:
                 if figura_preco is None:
                     st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
                 else:
-                    st.plotly_chart(figura_preco, width="stretch", theme=None)
+                    exibir_grafico(figura_preco)
 
         with coluna_saude, st.container(border=True, key="painel_governanca"):
             _titulo_painel("Governança")
@@ -2057,7 +2121,7 @@ with aba_analisar:
                     if figura_petroleo is None:
                         st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
                     else:
-                        st.plotly_chart(figura_petroleo, width="stretch", theme=None)
+                        exibir_grafico(figura_petroleo)
 
         with st.container(border=True, key="painel_tradingview"):
             _titulo_painel("Gráfico avançado (TradingView)")
@@ -2079,25 +2143,23 @@ with aba_analisar:
             coluna_dividendos,
             st.container(border=True, key="painel_dividendos", height="stretch"),
         ):
-            _titulo_painel("Histórico de dividendos por ano")
             if erro_dividendos:
+                _titulo_painel(TITULO_PAINEL_DIVIDENDOS)
                 st.info("Gráfico indisponível — ver aviso de dividendos acima.")
             else:
+                ano_corrente = datetime.now().year
                 # Reaproveita `dividendos` já buscado pro método de Bazin acima —
                 # não busca dado novo.
                 dividendos_por_ano = agregar_dividendos_por_ano(
-                    dividendos, ano_corrente=datetime.now().year
+                    dividendos, ano_corrente=ano_corrente
                 )
                 if dividendos_por_ano.empty:
+                    _titulo_painel(TITULO_PAINEL_DIVIDENDOS)
                     st.info("Nenhum dividendo pago no histórico disponível.")
                 else:
-                    # period="max" (não reaproveita o histórico de 1 ano já
-                    # buscado pro Beta/gráfico de preço acima) porque o Dividend
-                    # Yield por ano precisa do preço médio de TODOS os anos com
-                    # dividendo pago, que podem ir bem além de 1 ano atrás.
-                    # auto_adjust=False: preço NOMINAL da época, não ajustado
-                    # retroativamente por dividendos futuros — ver docstring de
-                    # _buscar_historico/ingest.precos.obter_historico.
+                    # period="max" porque o Dividend Yield por ano precisa do preço médio de
+                    # TODOS os anos com dividendo pago. auto_adjust=False: preço NOMINAL da
+                    # época, não ajustado por dividendos futuros (ver `_buscar_historico`).
                     historico_max, erro_historico_max = _buscar_historico(
                         ticker, "max", auto_adjust=False
                     )
@@ -2107,81 +2169,48 @@ with aba_analisar:
                         if not erro_historico_max
                         else pd.DataFrame(columns=["data", "Close"]),
                     )
-
-                    # Eixo de categorias: o ano corrente, incompleto, leva asterisco.
-                    rotulos_anos = {
-                        int(linha.ano): (
-                            ROTULO_ANO_PARCIAL.format(ano=int(linha.ano))
-                            if linha.parcial
-                            else str(int(linha.ano))
-                        )
-                        for linha in dividendos_por_ano.itertuples()
-                    }
-                    figura_dividendos = go.Figure()
-                    # text/hovertemplate pré-formatados com _fmt_bilhoes/
-                    # _fmt_percentual (não "%{text:.2f}"/"%{y:.1f}%" do
-                    # Plotly) — o d3-format que o Plotly usa por trás desses
-                    # especificadores também não tem vírgula decimal
-                    # brasileira sem um locale registrado, mesmo problema do
-                    # ponto vs. vírgula resolvido em _fmt_bilhoes/_fmt.
-                    figura_dividendos.add_trace(
-                        go.Bar(
-                            x=dividendos_por_ano["ano"].map(rotulos_anos),
-                            y=dividendos_por_ano["total"],
-                            name="Dividendos",
-                            text=dividendos_por_ano["total"].apply(_fmt_bilhoes),
-                            textposition="none",
-                            hovertemplate="%{text}<extra></extra>",
-                            marker={"color": COR_PRINCIPAL},
-                        )
-                    )
+                    notas = []
+                    if dividendos_por_ano["parcial"].any():
+                        notas.append(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=ano_corrente))
                     if not dividend_yield_por_ano.empty:
-                        figura_dividendos.add_trace(
-                            go.Scatter(
-                                x=dividend_yield_por_ano["ano"].map(rotulos_anos),
-                                y=dividend_yield_por_ano["yield_percentual"],
-                                name="Dividend Yield",
-                                mode="lines+markers+text",
-                                text=dividend_yield_por_ano["yield_percentual"].apply(
-                                    _fmt_percentual
+                        notas.append(NOTA_DIVIDEND_YIELD_SUBESTIMADO)
+                    _titulo_painel(TITULO_PAINEL_DIVIDENDOS, " ".join(notas) or None)
+
+                    if not dividend_yield_por_ano.empty:
+                        ano_inicial_janela = ano_corrente - ANOS_JANELA_DIVIDENDOS + 1
+                        primeiro_ano = int(dividend_yield_por_ano["ano"].min())
+                        rotulo_janela_curta = ROTULO_JANELA_DIVIDENDOS_CURTA.format(
+                            anos=ANOS_JANELA_DIVIDENDOS
+                        )
+                        janela_dividendos = rotulo_janela_curta
+                        # Com o histórico todo dentro da janela curta, não há o que escolher.
+                        if primeiro_ano < ano_inicial_janela:
+                            janela_dividendos = (
+                                st.pills(
+                                    "Janela do histórico",
+                                    options=[
+                                        rotulo_janela_curta,
+                                        ROTULO_JANELA_DIVIDENDOS_COMPLETA.format(ano=primeiro_ano),
+                                    ],
+                                    default=rotulo_janela_curta,
+                                    key="janela_dividendos",
+                                )
+                                or rotulo_janela_curta
+                            )
+                        exibir_grafico(
+                            _figura_dividendos(
+                                dividendos_por_ano,
+                                dividend_yield_por_ano,
+                                ano_inicial=(
+                                    ano_inicial_janela
+                                    if janela_dividendos == rotulo_janela_curta
+                                    else None
                                 ),
-                                texttemplate="%{text}",
-                                textposition="top center",
-                                textfont={"color": COR_TEXTO},
-                                yaxis="y2",
-                                hovertemplate="%{text}<extra></extra>",
-                                line={"color": COR_NEUTRO},
-                                marker_color=COR_NEUTRO,
                             )
                         )
-                    figura_dividendos.update_layout(
-                        yaxis_title="Total pago no ano (R$/ação)",
-                        xaxis_title="Ano",
-                        xaxis={"type": "category"},
-                        yaxis2={
-                            "title": "Dividend Yield (%)",
-                            "overlaying": "y",
-                            "side": "right",
-                            "showgrid": False,
-                        },
-                        hovermode="x unified",
-                        legend={
-                            "orientation": "h",
-                            "yanchor": "bottom",
-                            "y": 1.02,
-                            "xanchor": "left",
-                            "x": 0,
-                        },
-                        margin={"t": 40},
-                    )
-                    aplicar_template_grafico(figura_dividendos)
-                    st.plotly_chart(figura_dividendos, width="stretch", theme=None)
-                    if dividendos_por_ano["parcial"].any():
-                        st.caption(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=datetime.now().year))
 
-                    # Degradação transparente: yield ausente ou parcial não é
-                    # erro, mas merece uma linha explicando o motivo — mesmo
-                    # padrão de aviso nomeado usado no resto do projeto.
+                    # Degradação transparente: yield ausente ou parcial não é erro, mas merece
+                    # uma linha explicando o motivo.
                     if erro_historico_max:
                         st.caption(f"Dividend Yield indisponível: {erro_historico_max}")
                     elif dividend_yield_por_ano.empty:
@@ -2189,30 +2218,11 @@ with aba_analisar:
                             "Dividend Yield indisponível — sem preço histórico "
                             "suficiente pros anos com dividendo pago."
                         )
-                    else:
-                        if len(dividend_yield_por_ano) < len(dividendos_por_ano):
-                            st.caption(
-                                "Dividend Yield mostrado só pros anos com preço "
-                                "histórico disponível — ação listada há menos "
-                                "tempo que o histórico de dividendos."
-                            )
-                        # Limitação conhecida da FONTE (yfinance), não do
-                        # cálculo — mesmo padrão de transparência já usado pra
-                        # outras limitações do yfinance no projeto (ver
-                        # ingest/precos.py). Quando a empresa fragmenta o
-                        # dividendo de uma mesma data em várias parcelas (comum
-                        # na Petrobras, dividendo + JCP anunciados juntos), o
-                        # yfinance às vezes só captura parte do valor total
-                        # daquele dia — confirmado comparando PETR4 2022 contra
-                        # uma fonte de mercado externa (dadosdemercado.com.br):
-                        # yfinance perdeu ~R$1,61/ação de um único dia
-                        # (22/11/2022) por esse motivo. Não é um remendo
-                        # perseguível caso a caso, só uma limitação a avisar.
+                    elif len(dividend_yield_por_ano) < len(dividendos_por_ano):
                         st.caption(
-                            "Dividend Yield histórico pode ficar um pouco "
-                            "subestimado em anos com dividendo pago em várias "
-                            "parcelas no mesmo dia — limitação de completude de "
-                            "dado do yfinance, não do cálculo."
+                            "Dividend Yield mostrado só pros anos com preço "
+                            "histórico disponível — ação listada há menos "
+                            "tempo que o histórico de dividendos."
                         )
 
         with (
