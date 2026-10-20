@@ -42,6 +42,7 @@ from avaliador_b3.config import (
     AVISO_SIMULADOR_SEM_PREVISAO,
     COR_ALERTA,
     COR_BORDA,
+    COR_FUNDO_PAGINA,
     COR_FUNDO_PAINEL,
     COR_GRADE,
     COR_NEGATIVO,
@@ -51,11 +52,15 @@ from avaliador_b3.config import (
     COR_TEXTO,
     COR_TEXTO_SECUNDARIO,
     CORRECOES_EXIBICAO_SEGMENTO_SETORIAL,
+    FOLGA_ROTULO_BARRA,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
+    LARGURA_CARACTERE_ROTULO_BARRA,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
+    LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
+    LIMITE_SINAL_INDICADOR,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
     NOMES_METODOS,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
@@ -78,6 +83,7 @@ from avaliador_b3.config import (
     SUBTITULO_APP,
     SUBTITULO_POTENCIAL_CARTEIRA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
@@ -580,14 +586,15 @@ def _grafico_comparacao_normalizada(
         )
     )
     figura.update_layout(
-        yaxis_title="Desempenho (base 100 no início do período)",
-        xaxis_title="Data",
         hovermode="x unified",
-        margin={"t": 20},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.12, "xanchor": "left", "x": 0},
+        margin={"t": 10, "b": 10, "l": 10, "r": 10},
     )
     aplicar_template_grafico(figura)
     tickvals, ticktext = ticks_mensais_pt_br(serie_a["data"])
     figura.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+    # Margem esquerda pequena: o eixo Y cresce sozinho para caber os números.
+    figura.update_yaxes(automargin=True)
     return figura, []
 
 
@@ -790,7 +797,31 @@ def _figura_valor_justo(
         range=[menor - 0.1 * amplitude if menor < 0 else 0, maior + 0.4 * amplitude],
         showticklabels=False,
     )
-    figura.update_yaxes(autorange="reversed")
+    limite_x = maior + 0.4 * amplitude
+    fora_da_barra = []
+    for rotulo, valor in zip(rotulos, valores, strict=True):
+        largura_necessaria = len(rotulo) * LARGURA_CARACTERE_ROTULO_BARRA + FOLGA_ROTULO_BARRA
+        if valor > 0 and valor / limite_x >= largura_necessaria:
+            figura.add_annotation(
+                x=0,
+                y=rotulo,
+                text=f"<b>{rotulo}</b>",
+                showarrow=False,
+                xanchor="left",
+                xshift=6,
+                font={"color": COR_FUNDO_PAGINA},
+            )
+        else:
+            fora_da_barra.append(rotulo)
+    # Nome dentro da barra; o que não cabe fica no eixo, à esquerda (a margem acompanha).
+    figura.update_yaxes(
+        autorange="reversed",
+        tickmode="array",
+        tickvals=fora_da_barra,
+        ticktext=fora_da_barra,
+        showticklabels=bool(fora_da_barra),
+        automargin=True,
+    )
     if preco_atual is not None:
         figura.add_vline(
             x=preco_atual,
@@ -806,15 +837,50 @@ def _figura_valor_justo(
     return aplicar_template_grafico(figura)
 
 
-def _html_cabecalho_painel(titulo: str, selos: list[tuple[str, str]]) -> str:
-    """Título do painel (pequeno, em caixa alta) e, à direita, selos `(texto, dica)`."""
+def _html_cabecalho_painel(
+    titulo: str, selos: list[tuple[str, str]], ajuda: str | None = None
+) -> str:
+    """Título do painel (pequeno, em caixa alta, com "?" opcional) e, à direita, selos
+    `(texto, dica)`."""
+    marca_ajuda = f'<span class="ab-ajuda" title="{escape(ajuda)}">?</span>' if ajuda else ""
     html_selos = "".join(
         f'<span class="ab-selo" title="{escape(dica)}">{escape(texto)}</span>'
         for texto, dica in selos
     )
     return (
-        f'<div class="ab-cabecalho"><span class="ab-titulo">{escape(titulo)}</span>'
+        f'<div class="ab-cabecalho"><span class="ab-titulo">{escape(titulo)}{marca_ajuda}</span>'
         f'<span class="ab-selos">{html_selos}</span></div>'
+    )
+
+
+def _cor_indicador(valor: float | None, regra: str) -> str:
+    """Classe de cor de um indicador da Saúde financeira: `"sinal"` (verde acima de zero, rosa
+    abaixo), `"queda"` (rosa abaixo de zero) ou `"liquidez"` (amarelo abaixo do limite). Sem
+    cor para zero, dado ausente ou fora dessas regras."""
+    if valor is None or pd.isna(valor):
+        return "ab-cor-texto"
+    if regra == "liquidez":
+        return "ab-cor-alerta" if valor < LIMITE_LIQUIDEZ_CORRENTE_BAIXA else "ab-cor-texto"
+    if valor < LIMITE_SINAL_INDICADOR:
+        return "ab-cor-negativo"
+    if valor > LIMITE_SINAL_INDICADOR and regra == "sinal":
+        return "ab-cor-positivo"
+    return "ab-cor-texto"
+
+
+def _titulo_painel(titulo: str, ajuda: str | None = None) -> None:
+    """Título pequeno de painel, sem âncora (no lugar de `st.subheader`)."""
+    st.html(_html_cabecalho_painel(titulo, [], ajuda))
+
+
+def _html_indicador(
+    rotulo: str, valor: str, classe_cor: str = "ab-cor-texto", ajuda: str = ""
+) -> str:
+    """Um indicador da grade: rótulo pequeno e valor monoespaçado; `ajuda` vira tooltip."""
+    dica = f' title="{escape(ajuda)}"' if ajuda else ""
+    return (
+        f'<div class="ab-ind"{dica}><span class="ab-ind-rotulo">{escape(rotulo)}</span>'
+        f'<span class="ab-ind-valor {classe_cor}">{escape(valor)}</span></div>'
     )
 
 
@@ -1105,6 +1171,11 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-selos { display: flex; flex-wrap: wrap; gap: .4rem; }
 .ab-selo { padding: .05rem .6rem; border: 1px solid $borda; border-radius: 999px; font-size: .75rem;
   font-family: "IBM Plex Mono", ui-monospace, monospace; color: $texto; cursor: help; }
+.ab-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem 1rem; }
+.ab-ind { min-width: 0; }
+.ab-ind-rotulo { display: block; font-size: .72rem; color: $secundario; }
+.ab-ind-valor { font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; font-size: 1.2rem; font-weight: 600; white-space: nowrap; }
 .ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
@@ -1498,7 +1569,11 @@ with aba_analisar:
             ("bazin", resultado_bazin),
             ("fcd", resultado_fcd),
         )
-        with st.container(border=True, key="painel_valor_justo"):
+        coluna_valor_justo, coluna_saude = st.columns([3, 2])
+        with (
+            coluna_valor_justo,
+            st.container(border=True, key="painel_valor_justo", height="stretch"),
+        ):
             st.html(_html_cabecalho_painel("Valor justo por método", selos_valor_justo))
             if resultado_combinado["aplicavel"]:
                 st.plotly_chart(
@@ -1757,29 +1832,11 @@ with aba_analisar:
                 "poucos anos de histórico."
             )
 
-        coluna_saude, coluna_governanca = st.columns(2)
         with coluna_saude, st.container(border=True, key="painel_saude"):
-            st.subheader("Saúde financeira")
+            _titulo_painel("Saúde financeira", TEXTO_AJUDA_INDICADORES_AUSENTES)
             if indicadores is None:
                 st.info("Indisponível — ver aviso do Fundamentus acima.")
             else:
-                # 2 colunas por linha (não 3 ou 4) — testado manualmente em
-                # 1024/1366/1920px: valores abreviados como "R$ 618,7 bi"
-                # precisam de ~188px, e só a largura de coluna de uma grade
-                # 2x cabe isso sem cortar nas larguras de notebook comuns.
-                col_a, col_b = st.columns(2)
-                col_a.metric("ROE", _fmt(indicadores["roe_percentual"], "{:.1f}%"))
-                col_b.metric(
-                    "Margem líquida", _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%")
-                )
-                col_c, col_d = st.columns(2)
-                col_c.metric("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
-                col_d.metric("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
-                col_e, col_f = st.columns(2)
-                col_e.metric("Liquidez corrente", _fmt(indicadores["liquidez_corrente"]))
-                col_f.metric(
-                    "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
-                )
                 acoes_em_circulacao = ajustes_balanco["acoes_em_circulacao"]
                 valores_mercado_firma = calcular_valor_mercado_e_firma(
                     preco_atual,
@@ -1788,22 +1845,46 @@ with aba_analisar:
                     ajustes_balanco["nao_controladores"],
                     ajustes_balanco["arrendamento_fora_da_divida"],
                 )
-                col_g, col_h = st.columns(2)
-                col_g.metric(
-                    "Cresc. receita (5a)",
-                    _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
-                )
-                col_h.metric(
-                    "Valor de mercado", _fmt_bilhoes(valores_mercado_firma["valor_mercado"])
-                )
-                col_i, col_j = st.columns(2)
-                col_i.metric(
-                    "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
-                )
-                col_j.metric(
-                    "Valor de firma",
-                    _fmt_bilhoes(valores_mercado_firma["valor_firma"]),
-                    help=TOOLTIP_VALOR_FIRMA,
+                # Grade de 2 colunas: "R$ 618,7 bi" cabe sem cortar nas larguras de notebook.
+                st.html(
+                    '<div class="ab-grade">'
+                    + _html_indicador(
+                        "ROE",
+                        _fmt(indicadores["roe_percentual"], "{:.1f}%"),
+                        _cor_indicador(indicadores["roe_percentual"], "sinal"),
+                    )
+                    + _html_indicador(
+                        "Margem líquida",
+                        _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%"),
+                        _cor_indicador(indicadores["margem_liquida_percentual"], "sinal"),
+                    )
+                    + _html_indicador("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
+                    + _html_indicador("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
+                    + _html_indicador(
+                        "Liquidez corrente",
+                        _fmt(indicadores["liquidez_corrente"]),
+                        _cor_indicador(indicadores["liquidez_corrente"], "liquidez"),
+                    )
+                    + _html_indicador(
+                        "Dív. líq./patrim.", _fmt(indicadores["divida_liquida_sobre_patrimonio"])
+                    )
+                    + _html_indicador(
+                        "Cresc. receita (5a)",
+                        _fmt(indicadores["crescimento_receita_5a_percentual"], "{:.1f}%"),
+                        _cor_indicador(indicadores["crescimento_receita_5a_percentual"], "queda"),
+                    )
+                    + _html_indicador(
+                        "Valor de mercado", _fmt_bilhoes(valores_mercado_firma["valor_mercado"])
+                    )
+                    + _html_indicador(
+                        "Dívida líquida", _fmt_bilhoes(valores_mercado_firma["divida_liquida"])
+                    )
+                    + _html_indicador(
+                        "Valor de firma",
+                        _fmt_bilhoes(valores_mercado_firma["valor_firma"]),
+                        ajuda=TOOLTIP_VALOR_FIRMA,
+                    )
+                    + "</div>"
                 )
                 if valores_mercado_firma["componentes_ausentes"]:
                     st.caption(
@@ -1820,13 +1901,30 @@ with aba_analisar:
                             motivo=ajustes_balanco["motivo_sem_acoes_em_circulacao"]
                         )
                     )
-                st.caption(
-                    'Indicadores individuais ausentes ("N/D") — comum em bancos, onde o '
-                    "Fundamentus não reporta alguns desses índices no mesmo formato."
-                )
 
-        with coluna_governanca, st.container(border=True, key="painel_governanca"):
-            st.subheader("Governança")
+        with st.container(border=True, key="painel_grafico_preco"):
+            _titulo_painel("Preço vs. Ibovespa (1 ano, base 100)")
+            if erro_historico_beta or erro_historico_ibovespa_beta:
+                st.info(
+                    "Gráfico indisponível — histórico de preço ou do Ibovespa não pôde ser "
+                    "buscado (ver avisos acima)."
+                )
+            else:
+                # Reaproveita historico_beta/historico_ibovespa_beta (PERIODO_BETA,
+                # 1 ano) já buscados pro cálculo de Beta acima — não busca dado
+                # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
+                # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
+                # ação uma linha reta ilegível.
+                figura_preco, nomes_sem_dados_preco = _grafico_comparacao_normalizada(
+                    historico_beta, ticker, historico_ibovespa_beta, "Ibovespa"
+                )
+                if figura_preco is None:
+                    st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
+                else:
+                    st.plotly_chart(figura_preco, width="stretch", theme=None)
+
+        with coluna_saude, st.container(border=True, key="painel_governanca"):
+            _titulo_painel("Governança")
             linha_universo = (
                 universo_ibovespa[universo_ibovespa["ticker"] == ticker]
                 if universo_ibovespa is not None
@@ -1848,9 +1946,12 @@ with aba_analisar:
                 st.metric("Free float", "—")
                 st.caption("Dado não disponível nas fontes usadas.")
 
-        coluna_comportamento, coluna_grafico_preco = st.columns([1, 2])
-        with coluna_comportamento, st.container(border=True, key="painel_comportamento"):
-            st.subheader("Comportamento da ação")
+        coluna_comportamento, coluna_correlacao = st.columns(2)
+        with (
+            coluna_comportamento,
+            st.container(border=True, key="painel_comportamento", height="stretch"),
+        ):
+            _titulo_painel("Comportamento da ação")
             if erro_historico:
                 st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
             else:
@@ -1879,29 +1980,48 @@ with aba_analisar:
                 if beta is None:
                     st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
 
-        with coluna_grafico_preco, st.container(border=True, key="painel_grafico_preco"):
-            st.subheader("Preço vs. Ibovespa (1 ano, base 100)")
-            if erro_historico_beta or erro_historico_ibovespa_beta:
-                st.info(
-                    "Gráfico indisponível — histórico de preço ou do Ibovespa não pôde ser "
-                    "buscado (ver avisos acima)."
-                )
+        with (
+            coluna_correlacao,
+            st.container(border=True, key="painel_correlacao", height="stretch"),
+        ):
+            _titulo_painel("Correlação com fatores externos")
+            st.caption(
+                "Correlação (Pearson) entre o retorno diário da ação e três fatores "
+                f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
+                f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
+                "variação percentual dia a dia de cada série, nunca o nível bruto — "
+                "correlacionar séries em tendência infla o número de forma espúria, "
+                "sem relação real entre elas."
+            )
+            if erro_acao_correlacao:
+                st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
             else:
-                # Reaproveita historico_beta/historico_ibovespa_beta (PERIODO_BETA,
-                # 1 ano) já buscados pro cálculo de Beta acima — não busca dado
-                # novo. Normalizado pra base 100 (ver graficos.py): plotar preço
-                # bruto da ação ao lado dos ~130 mil pontos do Ibovespa deixaria a
-                # ação uma linha reta ilegível.
-                figura_preco, nomes_sem_dados_preco = _grafico_comparacao_normalizada(
-                    historico_beta, ticker, historico_ibovespa_beta, "Ibovespa"
+                if erro_petroleo:
+                    st.warning(f"Petróleo (Brent): {erro_petroleo}")
+                if erro_cambio:
+                    st.warning(f"Câmbio USD/BRL: {erro_cambio}")
+                if erro_gpr:
+                    st.warning(f"GPR: {erro_gpr}")
+
+                resultados_correlacao = calcular_correlacoes_fatores(
+                    historico_acao=historico_acao_correlacao,
+                    historico_petroleo=historico_petroleo,
+                    serie_cambio=serie_cambio,
+                    serie_gpr=serie_gpr,
                 )
-                if figura_preco is None:
-                    st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_preco))
-                else:
-                    st.plotly_chart(figura_preco, width="stretch", theme=None)
+
+                col_petroleo, col_cambio, col_gpr = st.columns(3)
+                with col_petroleo:
+                    _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
+                with col_cambio:
+                    _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
+                with col_gpr:
+                    _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
+                    if serie_gpr is not None and not serie_gpr.empty:
+                        st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
 
         with st.container(border=True, key="painel_petroleo"):
-            st.subheader("Comparando com Petróleo (Brent)")
+            _titulo_painel("Comparando com Petróleo (Brent) · base 100")
             janela_petroleo_selecionada = st.pills(
                 "Janela de comparação",
                 options=list(JANELAS_COMPARACAO_PETROLEO.keys()),
@@ -1940,7 +2060,7 @@ with aba_analisar:
                         st.plotly_chart(figura_petroleo, width="stretch", theme=None)
 
         with st.container(border=True, key="painel_tradingview"):
-            st.subheader("Gráfico avançado (TradingView)")
+            _titulo_painel("Gráfico avançado (TradingView)")
             st.caption(
                 "Widget ao vivo do TradingView — dado direto deles, sem nenhum "
                 "processamento nosso (diferente do gráfico acima, calculado por "
@@ -1955,8 +2075,11 @@ with aba_analisar:
                 st.iframe(html_tradingview.strip(), height=520)
 
         coluna_dividendos, coluna_comparacao_setorial = st.columns(2)
-        with coluna_dividendos, st.container(border=True, key="painel_dividendos"):
-            st.subheader("Histórico de dividendos por ano")
+        with (
+            coluna_dividendos,
+            st.container(border=True, key="painel_dividendos", height="stretch"),
+        ):
+            _titulo_painel("Histórico de dividendos por ano")
             if erro_dividendos:
                 st.info("Gráfico indisponível — ver aviso de dividendos acima.")
             else:
@@ -2094,9 +2217,9 @@ with aba_analisar:
 
         with (
             coluna_comparacao_setorial,
-            st.container(border=True, key="painel_comparacao_setorial"),
+            st.container(border=True, key="painel_comparacao_setorial", height="stretch"),
         ):
-            st.subheader("Comparação setorial")
+            _titulo_painel("Comparação setorial")
             # segmento_setorial/erro_segmento_setorial já buscados mais
             # acima (perto do cnpj, pro FCD) — reaproveitado aqui, sem
             # busca nova.
@@ -2157,43 +2280,6 @@ with aba_analisar:
                                 hide_index=True,
                                 width="stretch",
                             )
-
-        with st.container(border=True, key="painel_correlacao"):
-            st.subheader("Correlação com fatores externos")
-            st.caption(
-                "Correlação (Pearson) entre o retorno diário da ação e três fatores "
-                f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
-                f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
-                "variação percentual dia a dia de cada série, nunca o nível bruto — "
-                "correlacionar séries em tendência infla o número de forma espúria, "
-                "sem relação real entre elas."
-            )
-            if erro_acao_correlacao:
-                st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
-            else:
-                if erro_petroleo:
-                    st.warning(f"Petróleo (Brent): {erro_petroleo}")
-                if erro_cambio:
-                    st.warning(f"Câmbio USD/BRL: {erro_cambio}")
-                if erro_gpr:
-                    st.warning(f"GPR: {erro_gpr}")
-
-                resultados_correlacao = calcular_correlacoes_fatores(
-                    historico_acao=historico_acao_correlacao,
-                    historico_petroleo=historico_petroleo,
-                    serie_cambio=serie_cambio,
-                    serie_gpr=serie_gpr,
-                )
-
-                col_petroleo, col_cambio, col_gpr = st.columns(3)
-                with col_petroleo:
-                    _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
-                with col_cambio:
-                    _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
-                with col_gpr:
-                    _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
-                    if serie_gpr is not None and not serie_gpr.empty:
-                        st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
 
 with aba_screener:
     st.caption(

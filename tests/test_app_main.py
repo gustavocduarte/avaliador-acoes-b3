@@ -245,6 +245,23 @@ def _selos_valor_justo(at) -> list[tuple[str, str]]:
     return selos
 
 
+def _indicador_saude(at, rotulo: str):
+    """Valor (`.value`) do indicador da grade de "Saúde financeira" com esse rótulo; levanta
+    `AssertionError` se não houver exatamente um."""
+    from types import SimpleNamespace
+
+    achados = []
+    for elemento in at.get("html"):
+        for nome, valor in re.findall(
+            r'ab-ind-rotulo">(.*?)</span><span class="ab-ind-valor [^"]*">(.*?)</span>',
+            elemento.proto.body,
+        ):
+            if nome == rotulo:
+                achados.append(valor)
+    assert len(achados) == 1, f"indicador {rotulo!r} não encontrado (ou duplicado)"
+    return SimpleNamespace(value=achados[0])
+
+
 def _metrica_por_label(at, rotulo: str):
     """Acha o único `st.metric` com esse `label` na árvore de elementos de
     `at` — levanta `AssertionError` se não achar exatamente um (rótulo
@@ -515,7 +532,7 @@ def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monke
 
     assert not at.exception
     assert "Correlação com fatores externos" not in [tab.label for tab in at.tabs]
-    assert any(subheader.value == "Correlação com fatores externos" for subheader in at.subheader)
+    assert any("Correlação com fatores externos" in h.proto.body for h in at.get("html"))
 
 
 # --- Delta (%) de upside nos cards de valor justo -----------------------------
@@ -823,8 +840,8 @@ def test_valor_de_mercado_e_de_firma_usam_as_acoes_em_circulacao_da_cvm(monkeypa
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
     # Preço 50 x 100 ações do Fundamentus; firma = mercado + dívida líquida 50.000.
-    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 5.000,00"
-    assert _metrica_por_label(at, "Valor de firma").value == "R$ 55.000,00"
+    assert _indicador_saude(at, "Valor de mercado").value == "R$ 5.000,00"
+    assert _indicador_saude(at, "Valor de firma").value == "R$ 55.000,00"
 
     _preparar_fcd_aplicavel(
         monkeypatch,
@@ -835,8 +852,8 @@ def test_valor_de_mercado_e_de_firma_usam_as_acoes_em_circulacao_da_cvm(monkeypa
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 4.000,00"
-    assert _metrica_por_label(at, "Valor de firma").value == "R$ 54.000,00"
+    assert _indicador_saude(at, "Valor de mercado").value == "R$ 4.000,00"
+    assert _indicador_saude(at, "Valor de firma").value == "R$ 54.000,00"
     assert not [c.value for c in at.caption if "ações em circulação da CVM" in c.value]
 
 
@@ -854,7 +871,7 @@ def test_valor_de_firma_usa_a_ponte_do_fcd_com_nao_controladores_e_arrendamento(
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Valor de firma").value == "R$ 67.000,00"
+    assert _indicador_saude(at, "Valor de firma").value == "R$ 67.000,00"
     assert not [c.value for c in at.caption if "Valor de firma calculado sem" in c.value]
 
 
@@ -868,7 +885,7 @@ def test_valor_de_firma_sem_o_balanco_da_cvm_deixa_de_fora_e_diz_quais_component
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Valor de firma").value == "R$ 55.000,00"
+    assert _indicador_saude(at, "Valor de firma").value == "R$ 55.000,00"
     assert TEXTO_FIRMA_SEM_COMPONENTES.format(
         componentes="não controladores, arrendamento fora da dívida"
     ) in [c.value for c in at.caption]
@@ -890,7 +907,7 @@ def test_valor_de_mercado_sem_acoes_em_circulacao_usa_o_fundamentus_e_mostra_o_m
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Valor de mercado").value == "R$ 5.000,00"
+    assert _indicador_saude(at, "Valor de mercado").value == "R$ 5.000,00"
     legendas = [c.value for c in at.caption]
     # Uma no cartão do FCD e outra em "Saúde financeira", com o mesmo motivo.
     assert legendas.count(TEXTO_SEM_ACOES_EM_CIRCULACAO.format(motivo=motivo)) == 2
@@ -1909,11 +1926,11 @@ def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
 
     # Valores de _indicadores_falsos_aplicavel_pra_graham: roe_percentual=15.0,
     # margem_liquida_percentual=10.0, lpa=5.0, vpa=20.0, liquidez_corrente=1.2.
-    assert _metrica_por_label(at, "ROE").value == "15,0%"
-    assert _metrica_por_label(at, "Margem líquida").value == "10,0%"
-    assert _metrica_por_label(at, "LPA").value == "R$ 5,00"
-    assert _metrica_por_label(at, "VPA").value == "R$ 20,00"
-    assert _metrica_por_label(at, "Liquidez corrente").value == "1,20"
+    assert _indicador_saude(at, "ROE").value == "15,0%"
+    assert _indicador_saude(at, "Margem líquida").value == "10,0%"
+    assert _indicador_saude(at, "LPA").value == "R$ 5,00"
+    assert _indicador_saude(at, "VPA").value == "R$ 20,00"
+    assert _indicador_saude(at, "Liquidez corrente").value == "1,20"
 
 
 def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
@@ -2193,7 +2210,29 @@ def test_figura_do_valor_justo_cores_rotulos_e_linha_do_preco():
     assert linha_preco.x0 == 100.0
     assert linha_preco.line.color == config.COR_ALERTA
     assert linha_preco.line.dash == "dash"
-    assert figura.layout.annotations[0].text == "Preço R$ 100,00"
+    textos = [anotacao.text for anotacao in figura.layout.annotations]
+    assert "Preço R$ 100,00" in textos
+
+
+def test_figura_do_valor_justo_poe_o_nome_na_barra_e_no_eixo_so_o_que_nao_cabe():
+    from avaliador_b3 import config
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    figura = _figura_valor_justo({"graham": 60.0, "bazin": 10.92, "fcd": 30.0}, 33.6, 50.0)
+    nomes_na_barra = {a.text: a for a in figura.layout.annotations if a.text.startswith("<b>")}
+    assert set(nomes_na_barra) == {"<b>Graham</b>", "<b>FCD</b>", "<b>Combinado</b>"}
+    assert all(a.font.color == config.COR_FUNDO_PAGINA for a in nomes_na_barra.values())
+    assert all(a.xanchor == "left" for a in nomes_na_barra.values())
+    # A barra curta do Bazin fica com o nome no eixo, legível, e o eixo ganha margem sozinho.
+    assert list(figura.layout.yaxis.ticktext) == ["Bazin (preço teto)"]
+    assert figura.layout.yaxis.automargin is True
+
+
+def test_figura_do_valor_justo_sem_nome_no_eixo_quando_todas_as_barras_comportam():
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    figura = _figura_valor_justo({"graham": 60.0, "fcd": 50.0}, 55.0, 50.0)
+    assert figura.layout.yaxis.showticklabels is False
 
 
 def test_figura_do_valor_justo_sem_preco_nao_tem_linha_nem_diferenca():
@@ -2236,6 +2275,91 @@ def test_segmento_setorial_exibido_corrige_so_o_texto_conhecido():
         "Exploração. Refino e Distribuição", None
     )
     assert "Energia Elétrica" in _html_pilulas("Energia Elétrica", None)
+
+
+@pytest.mark.parametrize(
+    ("regra", "valor", "esperada"),
+    [
+        ("sinal", 5.0, "ab-cor-positivo"),
+        ("sinal", 0.0, "ab-cor-texto"),
+        ("sinal", -5.0, "ab-cor-negativo"),
+        ("queda", 5.0, "ab-cor-texto"),
+        ("queda", 0.0, "ab-cor-texto"),
+        ("queda", -5.0, "ab-cor-negativo"),
+        ("liquidez", 0.99, "ab-cor-alerta"),
+        ("liquidez", 1.0, "ab-cor-texto"),
+        ("liquidez", 1.01, "ab-cor-texto"),
+        ("sinal", None, "ab-cor-texto"),
+        ("liquidez", float("nan"), "ab-cor-texto"),
+    ],
+)
+def test_cor_dos_indicadores_da_saude_financeira(regra, valor, esperada):
+    from avaliador_b3.app.main import _cor_indicador
+
+    assert _cor_indicador(valor, regra) == esperada
+
+
+def test_grade_da_saude_financeira_colore_so_onde_ajuda(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
+    )
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+    assert not at.exception
+    corpo = "".join(e.proto.body for e in at.get("html"))
+    # ROE 15,0% e margem 10,0% positivos; liquidez 1,2 acima do limite; LPA/VPA sem cor.
+    assert re.search(r'ab-ind-rotulo">ROE</span><span class="ab-ind-valor ab-cor-positivo"', corpo)
+    assert re.search(r'">Margem líquida</span><span class="ab-ind-valor ab-cor-positivo"', corpo)
+    assert re.search(r'">Liquidez corrente</span><span class="ab-ind-valor ab-cor-texto"', corpo)
+    assert re.search(r'">LPA</span><span class="ab-ind-valor ab-cor-texto"', corpo)
+
+
+def test_indicador_da_grade_escapa_o_texto_e_poe_a_ajuda_no_tooltip():
+    from avaliador_b3.app.main import _html_indicador
+
+    html_indicador = _html_indicador("Dív. <b>", "R$ 1,0 bi", ajuda='Diz "x" & y')
+    assert "Dív. &lt;b&gt;" in html_indicador
+    assert 'title="Diz &quot;x&quot; &amp; y"' in html_indicador
+    assert 'class="ab-ind-valor ab-cor-texto"' in html_indicador
+    assert "title=" not in _html_indicador("ROE", "15,0%")
+
+
+def test_titulo_de_painel_e_html_pequeno_sem_ancora_e_com_ajuda_opcional():
+    from avaliador_b3.app.main import _html_cabecalho_painel
+
+    sem_ajuda = _html_cabecalho_painel("Saúde financeira", [])
+    assert 'class="ab-titulo">Saúde financeira</span>' in sem_ajuda
+    assert "href" not in sem_ajuda
+    assert 'class="ab-ajuda" title="dica"' in _html_cabecalho_painel("X", [], "dica")
+
+
+def test_grafico_de_linha_sem_titulo_no_eixo_x_e_com_legenda_horizontal_abaixo():
+    from avaliador_b3.app.main import _grafico_comparacao_normalizada
+
+    datas = pd.date_range("2026-01-01", periods=5, freq="D")
+    acao = pd.DataFrame({"data": datas, "Close": [10.0, 11.0, 12.0, 11.0, 13.0]})
+    indice = pd.DataFrame({"data": datas, "Close": [100.0, 101.0, 99.0, 102.0, 103.0]})
+    figura, sem_dados = _grafico_comparacao_normalizada(acao, "ABCD3", indice, "Ibovespa")
+
+    assert sem_dados == []
+    layout = figura.layout
+    assert layout.xaxis.title.text is None
+    assert layout.legend.orientation == "h"
+    assert layout.legend.y < 0
+    assert layout.margin.t <= 10
+    assert layout.yaxis.automargin is True
 
 
 def test_texto_do_fcd_tem_subtitulos_e_mantem_os_ajustes_do_balanco(monkeypatch):
@@ -2486,9 +2610,9 @@ def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso)
 
     assert not at.exception
 
-    assert _metrica_por_label(at, "Valor de mercado").value == esperado_mercado
-    assert _metrica_por_label(at, "Dívida líquida").value == esperado_divida
-    assert _metrica_por_label(at, "Valor de firma").value == esperado_firma
+    assert _indicador_saude(at, "Valor de mercado").value == esperado_mercado
+    assert _indicador_saude(at, "Dívida líquida").value == esperado_divida
+    assert _indicador_saude(at, "Valor de firma").value == esperado_firma
 
 
 # --- Simulador de carteira (potencial sem prazo) -----------------------------

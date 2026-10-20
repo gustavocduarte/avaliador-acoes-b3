@@ -1342,6 +1342,11 @@ NOMES_METODOS = {"graham": "Graham", "bazin": "Bazin", "fcd": "FCD"}
 ROTULOS_METODOS_GRAFICO = {"graham": "Graham", "bazin": "Bazin (preço teto)", "fcd": "FCD"}
 ROTULO_COMBINADO_GRAFICO = "Combinado"
 
+TEXTO_AJUDA_INDICADORES_AUSENTES = (
+    'Indicadores individuais ausentes ("N/D") — comum em bancos, onde o Fundamentus não reporta '
+    "alguns desses índices no mesmo formato."
+)
+
 # Só para exibir: a API da B3 devolve o segmento com este texto; dado e cache seguem iguais.
 CORRECOES_EXIBICAO_SEGMENTO_SETORIAL = {
     "Exploração. Refino e Distribuição": "Exploração, Refino e Distribuição",
@@ -1362,6 +1367,17 @@ TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor 
 # Divergência entre os métodos no cartão do topo: a partir deste limite (fração do preço), o
 # número é destacado em amarelo. Critério de apresentação; o cálculo não muda.
 LIMITE_DIVERGENCIA_METODOS_ALTA = 0.50
+
+# Cores da grade de Saúde financeira (critério de apresentação; o cálculo não muda): ROE e margem
+# líquida acima de zero em verde e abaixo em rosa; crescimento da receita abaixo de zero em rosa;
+# liquidez corrente abaixo do limite em amarelo.
+LIMITE_SINAL_INDICADOR = 0.0
+
+# Gráfico de valor justo: o nome do método vai dentro da barra se ela tiver esta fração do eixo por
+# caractere (mais a folga); senão fica no eixo, à esquerda.
+LARGURA_CARACTERE_ROTULO_BARRA = 0.017
+FOLGA_ROTULO_BARRA = 0.03
+LIMITE_LIQUIDEZ_CORRENTE_BAIXA = 1.0
 TOOLTIP_DIVERGENCIA_METODOS = (
     "Distância entre o maior e o menor valor justo dos métodos aplicáveis, em % do preço "
     "atual. Acima de 50%, os métodos discordam bastante."
