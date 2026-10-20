@@ -2387,6 +2387,14 @@ def _indicadores_falsos_com(numero_acoes: float, divida_liquida: float) -> dict:
     }
 
 
+def test_fmt_bilhoes_usa_ponto_de_milhar_na_parte_abreviada():
+    from avaliador_b3.app.main import _fmt_bilhoes
+
+    assert _fmt_bilhoes(1_234_500_000_000.0) == "R$ 1.234,5 bi"
+    assert _fmt_bilhoes(-1_234_500_000_000.0) == "R$ -1.234,5 bi"
+    assert _fmt_bilhoes(999_900_000_000.0) == "R$ 999,9 bi"
+
+
 # Cada caso: (preço, número de ações, dívida líquida) -> (Valor de mercado,
 # Dívida líquida, Valor de firma) esperados, já formatados.
 CASOS_FORMATACAO_VALOR_GRANDE = {

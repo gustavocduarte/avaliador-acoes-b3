@@ -896,9 +896,9 @@ def _fmt_bilhoes(valor: float | None) -> str:
     if valor is None or pd.isna(valor):
         return "N/D"
     if abs(valor) >= 1e9:
-        return _pt_br(f"R$ {valor / 1e9:.1f} bi")
+        return _pt_br(f"R$ {valor / 1e9:,.1f} bi")
     if abs(valor) >= 1e6:
-        return _pt_br(f"R$ {valor / 1e6:.1f} mi")
+        return _pt_br(f"R$ {valor / 1e6:,.1f} mi")
     return _pt_br(f"R$ {valor:,.2f}")
 
 
