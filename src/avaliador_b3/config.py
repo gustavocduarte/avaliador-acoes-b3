@@ -1352,6 +1352,16 @@ TOOLTIP_POTENCIAL_COLUNA = (
 )
 TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço − 1)."
 
+# Divergência entre os métodos no cartão do topo: a partir deste limite (fração do preço), o
+# número é destacado em amarelo. Critério de apresentação; o cálculo não muda.
+LIMITE_DIVERGENCIA_METODOS_ALTA = 0.50
+TOOLTIP_DIVERGENCIA_METODOS = (
+    "Distância entre o maior e o menor valor justo dos métodos aplicáveis, em % do preço "
+    "atual. Acima de 50%, os métodos discordam bastante."
+)
+TEXTO_DIVERGENCIA_UM_METODO = "Só um método aplicável"
+TEXTO_DIVERGENCIA_NENHUM_METODO = "Nenhum método aplicável"
+
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra

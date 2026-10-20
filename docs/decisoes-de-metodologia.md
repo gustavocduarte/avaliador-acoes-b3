@@ -166,6 +166,7 @@ O valor de firma da página (mercado + dívida líquida) não incluía os não c
 
 - **Problema.** A coluna "Desconto" é, na verdade, o potencial de valorização (valor justo ÷ preço − 1).
 - **Decisão.** O número mostrado passa a se chamar **Potencial** (`26e8002`). A coluna `desconto_percentual` continua no `screener.csv`: renomeá-la seria uma migração de schema, que fica para quando houver outra mudança de schema.
+- **Divergência entre métodos (apresentação).** O cartão do topo da aba Analisar destaca a divergência em amarelo quando ela é de 50% do preço ou mais (`LIMITE_DIVERGENCIA_METODOS_ALTA`); é só critério de apresentação, nenhum cálculo muda.
 
 ---
 

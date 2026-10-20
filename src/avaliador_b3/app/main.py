@@ -13,7 +13,9 @@ import re
 import sys
 import warnings
 from datetime import datetime, timedelta
+from html import escape
 from pathlib import Path
+from string import Template
 
 # O projeto não está instalado como pacote (sem pyproject [project]/pip
 # install -e . ainda) — `streamlit run` não adiciona src/ ao sys.path
@@ -38,16 +40,21 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
+    COR_ALERTA,
     COR_BORDA,
     COR_FUNDO_PAINEL,
     COR_GRADE,
+    COR_NEGATIVO,
     COR_NEUTRO,
+    COR_POSITIVO,
     COR_PRINCIPAL,
     COR_TEXTO,
+    COR_TEXTO_SECUNDARIO,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    LIMITE_DIVERGENCIA_METODOS_ALTA,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
     NOMES_METODOS,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
@@ -72,6 +79,8 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
+    TEXTO_DIVERGENCIA_NENHUM_METODO,
+    TEXTO_DIVERGENCIA_UM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
@@ -89,6 +98,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
+    TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
@@ -603,6 +613,67 @@ def _delta_percentual_upside(valor: float, preco_atual: float | None) -> str | N
     return _fmt_percentual((valor - preco_atual) / preco_atual * 100)
 
 
+def _html_kpi(
+    rotulo: str,
+    valor: str,
+    classe_cor: str,
+    linha: str = "",
+    classe_linha: str = "ab-cor-secundario",
+    ajuda: str | None = None,
+) -> str:
+    """Cartão de número de destaque (HTML com as classes `.ab-*` de `_CSS_DA_PAGINA`);
+    `st.metric` não deixa colorir o número. `ajuda` vira o "?" com tooltip."""
+    marca_ajuda = f'<span class="ab-ajuda" title="{escape(ajuda)}">?</span>' if ajuda else ""
+    return (
+        '<div class="ab-kpi">'
+        f'<div class="ab-titulo">{escape(rotulo)}{marca_ajuda}</div>'
+        f'<div class="ab-valor {classe_cor}">{escape(valor)}</div>'
+        f'<div class="ab-linha {classe_linha}">{escape(linha)}</div>'
+        "</div>"
+    )
+
+
+def _kpi_divergencia(divergencia: dict, valores_por_metodo: dict[str, float]) -> dict:
+    """Conteúdo do cartão de divergência entre métodos: o número é o
+    `divergencia_percentual` de `calcular_divergencia_metodos`, em amarelo a partir de
+    `LIMITE_DIVERGENCIA_METODOS_ALTA`; a linha pequena traz o menor e o maior valor justo
+    com o nome do método. Sem divergência calculável, "—" e o motivo."""
+    if not divergencia["aplicavel"]:
+        texto = (
+            TEXTO_DIVERGENCIA_UM_METODO
+            if len(valores_por_metodo) == 1
+            else TEXTO_DIVERGENCIA_NENHUM_METODO
+        )
+        return {"valor": "—", "classe_cor": "ab-cor-secundario", "linha": texto}
+    ordenados = sorted(valores_por_metodo.items(), key=lambda item: item[1])
+    menor, maior = ordenados[0], ordenados[-1]
+    linha = " · ".join(
+        f"{NOMES_METODOS.get(nome, nome)} {_fmt_bilhoes(valor)}" for nome, valor in (menor, maior)
+    )
+    percentual = divergencia["divergencia_percentual"]
+    if percentual is None:
+        return {"valor": "—", "classe_cor": "ab-cor-texto", "linha": linha}
+    alta = percentual / 100 >= LIMITE_DIVERGENCIA_METODOS_ALTA
+    return {
+        "valor": f"{percentual:.0f}%",
+        "classe_cor": "ab-cor-alerta" if alta else "ab-cor-texto",
+        "linha": linha,
+    }
+
+
+def _html_pilulas(segmento_setorial: str | None, segmento_listagem: str | None) -> str:
+    """Pílulas com o segmento setorial e o de listagem; só as que existem. Vazio sem nenhuma."""
+    pilulas = [
+        f'<span class="ab-pilula" title="{escape(titulo)}">{escape(texto)}</span>'
+        for titulo, texto in (
+            ("Segmento setorial (B3)", segmento_setorial),
+            ("Segmento de listagem", segmento_listagem),
+        )
+        if texto
+    ]
+    return f'<div class="ab-pilulas">{"".join(pilulas)}</div>' if pilulas else ""
+
+
 def _cartao_metodo(
     nome: str, resultado: dict, rotulo_valor: str, preco_atual: float | None
 ) -> None:
@@ -946,10 +1017,44 @@ ABA_CARTEIRA = "Simulador de carteira"
 # — mostra um resultado de exemplo de cara, sem exigir clique em "Buscar".
 TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
 
+_CSS_DA_PAGINA = Template("""<style>
+/* Fundo dos painéis: gancho `.st-key-painel_*` gerado pelo `key` de cada st.container. */
+[class*="st-key-painel_"] { background-color: $painel; }
+/* Classes `.ab-*`: números de destaque, títulos e pílulas. Se o Streamlit deixar de aceitar
+   este bloco, o conteúdo continua na tela, só sem o estilo. */
+.ab-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
+.ab-kpi { min-width: 0; }
+.ab-titulo { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+  color: $secundario; }
+.ab-ajuda { cursor: help; margin-left: .4rem; padding: 0 .35rem; border: 1px solid $borda;
+  border-radius: 50%; font-size: .65rem; letter-spacing: 0; }
+.ab-valor { font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 2.25rem; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+.ab-linha { font-size: .8rem; color: $secundario; min-height: 1.2em; }
+.ab-cor-texto { color: $texto; }
+.ab-cor-principal { color: $principal; }
+.ab-cor-positivo { color: $positivo; }
+.ab-cor-negativo { color: $negativo; }
+.ab-cor-alerta { color: $alerta; }
+.ab-cor-secundario { color: $secundario; }
+.ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
+.ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
+  font-size: .78rem; color: $secundario; }
+</style>""").substitute(
+    painel=COR_FUNDO_PAINEL,
+    secundario=COR_TEXTO_SECUNDARIO,
+    borda=COR_BORDA,
+    texto=COR_TEXTO,
+    principal=COR_PRINCIPAL,
+    positivo=COR_POSITIVO,
+    negativo=COR_NEGATIVO,
+    alerta=COR_ALERTA,
+)
+
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
-# Único CSS da página: o fundo dos painéis, pelo gancho `.st-key-painel_*` que o Streamlit gera
-# a partir do `key` de cada `st.container`. Sem o gancho, o painel só perde o fundo.
-st.html(f'<style>[class*="st-key-painel_"] {{ background-color: {COR_FUNDO_PAINEL}; }}</style>')
+# Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
+st.html(_CSS_DA_PAGINA)
 st.title("Avaliador de Ações da B3")
 st.caption(SUBTITULO_APP)
 
@@ -1021,6 +1126,8 @@ with aba_analisar:
         ticker = st.text_input("Ticker (ex: PETR4)", value="").strip().upper()
 
     buscar_clicado = st.button("Buscar", on_click=_ativar_aba, args=(ABA_ANALISAR,))
+    # Preenchido depois da busca, quando o segmento setorial já foi obtido.
+    espaco_pilulas = st.container()
 
     # Dispara a busca automaticamente só na primeira abertura da sessão,
     # equivalente a já ter clicado em "Buscar" uma vez — marca a flag em
@@ -1246,23 +1353,55 @@ with aba_analisar:
         resultado_combinado = calcular_valor_combinado(
             resultado_graham, resultado_bazin, resultado_fcd
         )
-        with painel_destaque:
-            coluna_preco, coluna_valor_combinado, coluna_potencial = st.columns(3)
+        divergencia_metodos = calcular_divergencia_metodos(
+            resultado_combinado["valores_por_metodo"], preco_atual
+        )
+        cartoes_destaque = []
+        if preco_atual is not None:
+            cartoes_destaque.append(
+                _html_kpi("Preço atual", _fmt_bilhoes(preco_atual), "ab-cor-texto")
+            )
+        if resultado_combinado["aplicavel"]:
+            valor_combinado = resultado_combinado["valor_combinado"]
+            cartoes_destaque.append(
+                _html_kpi("Valor combinado", _fmt_bilhoes(valor_combinado), "ab-cor-principal")
+            )
             if preco_atual is not None:
-                coluna_preco.metric("Preço atual", _fmt_bilhoes(preco_atual))
-            if resultado_combinado["aplicavel"]:
-                valor_combinado = resultado_combinado["valor_combinado"]
-                coluna_valor_combinado.metric("Valor combinado", _fmt_bilhoes(valor_combinado))
-                if preco_atual is not None:
-                    acima_do_preco = valor_combinado >= preco_atual
-                    coluna_potencial.metric(
+                acima_do_preco = valor_combinado >= preco_atual
+                cor_potencial = "ab-cor-positivo" if acima_do_preco else "ab-cor-negativo"
+                cartoes_destaque.append(
+                    _html_kpi(
                         ROTULO_POTENCIAL,
-                        _delta_percentual_upside(valor_combinado, preco_atual),
-                        delta="acima do preço" if acima_do_preco else "abaixo do preço",
-                        delta_color="green" if acima_do_preco else "red",
-                        delta_arrow="up" if acima_do_preco else "down",
-                        help=TOOLTIP_POTENCIAL_CARTAO,
+                        ("+" if valor_combinado > preco_atual else "")
+                        + (_delta_percentual_upside(valor_combinado, preco_atual) or ""),
+                        cor_potencial,
+                        "▲ valor acima do preço" if acima_do_preco else "▼ valor abaixo do preço",
+                        cor_potencial,
+                        ajuda=TOOLTIP_POTENCIAL_CARTAO,
                     )
+                )
+        cartoes_destaque.append(
+            _html_kpi(
+                "Divergência entre métodos",
+                **_kpi_divergencia(divergencia_metodos, resultado_combinado["valores_por_metodo"]),
+                ajuda=TOOLTIP_DIVERGENCIA_METODOS,
+            )
+        )
+        with painel_destaque:
+            st.html(f'<div class="ab-kpis">{"".join(cartoes_destaque)}</div>')
+
+        linha_listagem = (
+            universo_ibovespa[universo_ibovespa["ticker"] == ticker]
+            if universo_ibovespa is not None
+            else None
+        )
+        segmento_listagem = (
+            linha_listagem.iloc[0]["segmento_listagem"]
+            if linha_listagem is not None and not linha_listagem.empty
+            else None
+        )
+        with espaco_pilulas:
+            st.html(_html_pilulas(segmento_setorial, segmento_listagem))
 
         with st.container(border=True, key="painel_valor_justo"):
             st.subheader("Valor Justo")
@@ -1332,9 +1471,7 @@ with aba_analisar:
                     "Métodos utilizados: "
                     + _nomes_dos_metodos(resultado_combinado["metodos_utilizados"])
                 )
-                divergencia = calcular_divergencia_metodos(
-                    resultado_combinado["valores_por_metodo"], preco_atual
-                )
+                divergencia = divergencia_metodos
                 if divergencia["aplicavel"]:
                     if divergencia["divergencia_percentual"] is not None:
                         st.caption(

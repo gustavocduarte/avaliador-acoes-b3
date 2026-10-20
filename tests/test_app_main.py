@@ -185,6 +185,26 @@ def _bloquear_buscas_de_rede_por_ticker(monkeypatch) -> None:
     monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_macro)
 
 
+def _kpi_por_rotulo(at, rotulo: str) -> dict | None:
+    """Cartão de destaque (HTML `.ab-kpi`) com esse título: `valor`, `classe` de cor do número e
+    `linha` pequena; `None` se não houver. Levanta `AssertionError` se houver mais de um."""
+    cartoes = []
+    for elemento in at.get("html"):
+        for cartao in re.findall(r'<div class="ab-kpi">.*?</div></div>', elemento.proto.body):
+            partes = re.fullmatch(
+                r'<div class="ab-kpi"><div class="ab-titulo">(.*?)(?:<span.*?</span>)?</div>'
+                r'<div class="ab-valor (.*?)">(.*?)</div>'
+                r'<div class="ab-linha (.*?)">(.*?)</div></div>',
+                cartao,
+            )
+            if partes and partes.group(1) == rotulo:
+                cartoes.append(
+                    {"valor": partes.group(3), "classe": partes.group(2), "linha": partes.group(5)}
+                )
+    assert len(cartoes) <= 1, f"cartão {rotulo!r} duplicado"
+    return cartoes[0] if cartoes else None
+
+
 def _metrica_por_label(at, rotulo: str):
     """Acha o único `st.metric` com esse `label` na árvore de elementos de
     `at` — levanta `AssertionError` se não achar exatamente um (rótulo
@@ -341,7 +361,7 @@ def test_historico_vazio_sem_excecao_vira_erro_tratado_nao_crash(monkeypatch):
 
     assert not at.exception
     # "Preço atual" não é mostrado (mesmo caminho de erro_preco_atual real)...
-    assert not any(metrica.label == "Preço atual" for metrica in at.metric)
+    assert _kpi_por_rotulo(at, "Preço atual") is None
     # ... e o motivo aparece como erro tratado, não um traceback cru.
     assert any("veio vazio" in erro.value for erro in at.error)
 
@@ -386,8 +406,10 @@ def test_pagina_da_acao_com_preco_atual_vazio_mostra_aviso_e_nao_calcula_potenci
 
     assert not at.exception
     assert AVISO_PRECO_INDISPONIVEL in [w.value for w in at.warning]
-    assert not [m for m in at.metric if m.label == "Preço atual"]
-    assert not _metrica_por_label(at, "Valor combinado").delta
+    assert _kpi_por_rotulo(at, "Preço atual") is None
+    assert _kpi_por_rotulo(at, "Valor combinado") is not None
+    assert _kpi_por_rotulo(at, "Potencial") is None
+    assert _kpi_por_rotulo(at, "Divergência entre métodos") is not None
 
 
 def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
@@ -429,7 +451,7 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Preço atual").value == "R$ 50,43"
+    assert _kpi_por_rotulo(at, "Preço atual")["valor"] == "R$ 50,43"
 
 
 # --- Correlação com fatores externos, movida pra dentro de "Analisar uma ---
@@ -1223,7 +1245,10 @@ def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada
     avisos = [i.value for i in at.info if i.value.startswith("Valor combinado:")]
     assert len(avisos) == 1
     assert avisos[0].endswith(TEXTO_COMPLEMENTO_SEM_METODO)
-    assert not [m for m in at.metric if m.label == "Valor combinado"]
+    assert _kpi_por_rotulo(at, "Valor combinado") is None
+    divergencia = _kpi_por_rotulo(at, "Divergência entre métodos")
+    assert divergencia["valor"] == "—"
+    assert divergencia["linha"] == "Nenhum método aplicável"
     captions = [c.value for c in at.caption]
     assert f"Não aplicável: {MOTIVO_FCD_FLUXO_NAO_POSITIVO}" in captions
 
@@ -1624,7 +1649,7 @@ def test_fcd_banco_fica_nao_aplicavel_e_combinado_usa_so_graham_bazin(monkeypatc
     # Combinado sem FCD = média dos dois ≈ 32,05 — bem diferente do que
     # sairia se o FCD (não aplicável aqui) entrasse na conta.
     valor_combinado_esperado = ((22.5 * 5 * 20) ** 0.5 + 1.0 / 0.06) / 2
-    texto_combinado = _metrica_por_label(at, "Valor combinado").value
+    texto_combinado = _kpi_por_rotulo(at, "Valor combinado")["valor"]
     valor_combinado_exibido = float(
         texto_combinado.replace("R$ ", "").replace(".", "").replace(",", ".")
     )
@@ -1992,7 +2017,16 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
         assert not re.search(r"\d\.\d\d\b", texto), f"rótulo com ponto decimal: {texto!r}"
 
 
-def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(monkeypatch):
+@pytest.mark.parametrize(
+    ("preco", "potencial_esperado", "linha_esperada", "classe_esperada"),
+    [
+        (50.0, "-5,1%", "▼ valor abaixo do preço", "ab-cor-negativo"),
+        (40.0, "+18,6%", "▲ valor acima do preço", "ab-cor-positivo"),
+    ],
+)
+def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(
+    monkeypatch, preco, potencial_esperado, linha_esperada, classe_esperada
+):
     # Só o Graham se aplica (47,43) contra o preço de 50: o combinado é o próprio Graham, sem
     # seta no cartão, e o potencial (-5,1%) aparece em cartão próprio.
     monkeypatch.setattr(
@@ -2002,7 +2036,7 @@ def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(monkeypatch)
     monkeypatch.setattr(
         "avaliador_b3.ingest.precos.obter_historico",
         _historico_por_periodo(
-            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+            {"1d": preco, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
         ),
     )
 
@@ -2029,13 +2063,72 @@ def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(monkeypatch)
     at.run(timeout=60)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Preço atual").value == "R$ 50,00"
-    combinado = _metrica_por_label(at, "Valor combinado")
-    assert combinado.value == "R$ 47,43"
-    assert not combinado.delta
-    potencial = _metrica_por_label(at, "Potencial")
-    assert potencial.value == "-5,1%"
-    assert potencial.delta == "abaixo do preço"
+    cartao_preco = _kpi_por_rotulo(at, "Preço atual")
+    assert cartao_preco["valor"] == f"R$ {preco:.2f}".replace(".", ",")
+    assert cartao_preco["classe"] == "ab-cor-texto"
+    combinado = _kpi_por_rotulo(at, "Valor combinado")
+    assert combinado["valor"] == "R$ 47,43"
+    assert combinado["classe"] == "ab-cor-principal"
+    potencial = _kpi_por_rotulo(at, "Potencial")
+    assert potencial["valor"] == potencial_esperado
+    assert potencial["classe"] == classe_esperada
+    assert potencial["linha"] == linha_esperada
+    divergencia = _kpi_por_rotulo(at, "Divergência entre métodos")
+    assert divergencia["valor"] == "—"
+    assert divergencia["linha"] == "Só um método aplicável"
+
+
+@pytest.mark.parametrize(
+    ("maior", "valor_esperado", "classe_esperada"),
+    [
+        (99.9, "50%", "ab-cor-texto"),  # logo abaixo do limite: 49,9% do preço
+        (100.0, "50%", "ab-cor-alerta"),  # exatamente no limite
+        (136.0, "86%", "ab-cor-alerta"),  # acima
+    ],
+)
+def test_cartao_de_divergencia_destaca_a_partir_do_limite(maior, valor_esperado, classe_esperada):
+    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
+
+    valores = {"fcd": 50.0, "graham": maior}
+    # Preço 100: divergência = (maior − 50) ÷ 100 × 100.
+    divergencia = calcular_divergencia_metodos(valores, 100.0)
+    cartao = _kpi_divergencia(divergencia, valores)
+    assert cartao["classe_cor"] == classe_esperada
+    assert cartao["linha"].startswith("FCD R$ 50,00 · Graham R$ ")
+    assert cartao["valor"] == f"{divergencia['divergencia_percentual']:.0f}%"
+
+
+def test_cartao_de_divergencia_com_um_metodo_ou_nenhum():
+    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
+
+    um = {"graham": 47.0}
+    cartao_um = _kpi_divergencia(calcular_divergencia_metodos(um, 50.0), um)
+    assert (cartao_um["valor"], cartao_um["linha"]) == ("—", "Só um método aplicável")
+    assert cartao_um["classe_cor"] == "ab-cor-secundario"
+    cartao_zero = _kpi_divergencia(calcular_divergencia_metodos({}, 50.0), {})
+    assert (cartao_zero["valor"], cartao_zero["linha"]) == ("—", "Nenhum método aplicável")
+
+
+def test_cartao_de_divergencia_sem_preco_mantem_menor_e_maior():
+    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
+
+    valores = {"fcd": 43.17, "graham": 93.22}
+    cartao = _kpi_divergencia(calcular_divergencia_metodos(valores, None), valores)
+    assert cartao["valor"] == "—"
+    assert cartao["linha"] == "FCD R$ 43,17 · Graham R$ 93,22"
+
+
+def test_pilulas_mostram_so_o_que_existe_e_escapam_o_texto():
+    from avaliador_b3.app.main import _html_pilulas
+
+    assert _html_pilulas(None, None) == ""
+    so_setor = _html_pilulas("Petróleo & Gás", None)
+    assert "Petróleo &amp; Gás" in so_setor
+    assert so_setor.count('class="ab-pilula"') == 1
+    assert _html_pilulas("Energia", "Novo Mercado").count('class="ab-pilula"') == 2
 
 
 def test_texto_do_fcd_tem_subtitulos_e_mantem_os_ajustes_do_balanco(monkeypatch):
