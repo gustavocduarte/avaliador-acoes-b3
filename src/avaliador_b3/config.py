@@ -1562,26 +1562,24 @@ TIMEOUT_SEGUNDOS_FUNDAMENTUS = 30
 # (convenção do yfinance: "2y"/"5y"/"10y").
 JANELAS_COMPARACAO_PETROLEO = {"2 anos": "2y", "5 anos": "5y", "10 anos": "10y"}
 
-# --- Paleta de tema (2026-09-19 e 2026-09-20) ---
+# --- Paleta de tema ---
 #
-# Tema dark navy + dourado, espelhando `.streamlit/config.toml`
-# (backgroundColor/secondaryBackgroundColor/primaryColor/textColor) —
-# aplicado manualmente aqui porque os gráficos Plotly não herdam o tema
-# do Streamlit automaticamente, só os componentes nativos (st.metric,
-# st.dataframe, etc.) herdam. Usado em `app/main.py` nos `go.Figure()`.
-#
-# COR_GRAFICO_FUNDO = secondaryBackgroundColor do tema (fundo do gráfico,
-# não o fundo da página, pra manter um leve contraste de "cartão").
-# COR_GRAFICO_PROTAGONISTA (dourado) marca a série principal (a ação
-# sendo analisada). COR_GRAFICO_CONTEXTO (cinza-azulado neutro) marca
-# qualquer série de "pano de fundo" que não deve competir visualmente com
-# o protagonista — usado em dois lugares: a série de comparação real
-# (benchmark: Ibovespa ou petróleo) e a linha de Dividend Yield no gráfico
-# de histórico de dividendos (uma segunda métrica da mesma ação, não um
-# benchmark externo). COR_GRAFICO_GRADE é um tom só um pouco mais claro que
-# COR_GRAFICO_FUNDO, pras linhas de grade ficarem discretas.
-COR_GRAFICO_FUNDO = "#16212F"
-COR_GRAFICO_TEXTO = "#E9E4D8"
-COR_GRAFICO_PROTAGONISTA = "#C9982F"
-COR_GRAFICO_CONTEXTO = "#5B6B7C"
-COR_GRAFICO_GRADE = "#233040"
+# Dashboard escuro com ciano como cor principal. O `.streamlit/config.toml` repete estes
+# valores (o TOML não importa Python) e tests/test_tema.py confere que os dois batem.
+# Os gráficos Plotly não herdam o tema do Streamlit, então usam estes tokens direto.
+# Contraste mínimo de 4,5:1 do texto e das cores de série sobre o fundo da página e o do painel.
+COR_FUNDO_PAGINA = "#0B0F14"
+COR_FUNDO_PAINEL = "#121820"
+COR_BORDA = "#243040"
+COR_TEXTO = "#E6EDF3"
+COR_TEXTO_SECUNDARIO = "#9AA7B8"
+COR_PRINCIPAL = "#22D3EE"
+COR_POSITIVO = "#34D399"
+COR_NEGATIVO = "#F472B6"
+COR_NEUTRO = "#7C8A9C"
+COR_DESTAQUE = "#BEF264"
+COR_ALERTA = "#FACC15"
+# Linhas de grade dos gráficos: só um pouco mais claras que o painel.
+COR_GRADE = "#1B2634"
+# Séries dos gráficos, em ordem: ciano, lima, rosa, amarelo, violeta e cinza.
+SEQUENCIA_CORES_SERIES = ("#22D3EE", "#BEF264", "#F472B6", "#FACC15", "#A78BFA", "#94A3B8")

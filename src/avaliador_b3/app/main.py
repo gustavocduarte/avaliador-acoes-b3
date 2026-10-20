@@ -38,11 +38,11 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
-    COR_GRAFICO_CONTEXTO,
-    COR_GRAFICO_FUNDO,
-    COR_GRAFICO_GRADE,
-    COR_GRAFICO_PROTAGONISTA,
-    COR_GRAFICO_TEXTO,
+    COR_FUNDO_PAINEL,
+    COR_GRADE,
+    COR_NEUTRO,
+    COR_PRINCIPAL,
+    COR_TEXTO,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     JANELAS_COMPARACAO_PETROLEO,
@@ -538,7 +538,7 @@ def _grafico_comparacao_normalizada(
             x=serie_a["data"],
             y=normalizado_a,
             name=nome_a,
-            line={"color": COR_GRAFICO_PROTAGONISTA},
+            line={"color": COR_PRINCIPAL},
         )
     )
     figura.add_trace(
@@ -546,7 +546,7 @@ def _grafico_comparacao_normalizada(
             x=serie_b["data"],
             y=normalizado_b,
             name=nome_b,
-            line={"color": COR_GRAFICO_CONTEXTO},
+            line={"color": COR_NEUTRO},
         )
     )
     figura.update_layout(
@@ -554,15 +554,13 @@ def _grafico_comparacao_normalizada(
         xaxis_title="Data",
         hovermode="x unified",
         margin={"t": 20},
-        paper_bgcolor=COR_GRAFICO_FUNDO,
-        plot_bgcolor=COR_GRAFICO_FUNDO,
-        font={"color": COR_GRAFICO_TEXTO},
+        paper_bgcolor=COR_FUNDO_PAINEL,
+        plot_bgcolor=COR_FUNDO_PAINEL,
+        font={"color": COR_TEXTO},
     )
     tickvals, ticktext = ticks_mensais_pt_br(serie_a["data"])
-    figura.update_xaxes(
-        gridcolor=COR_GRAFICO_GRADE, tickmode="array", tickvals=tickvals, ticktext=ticktext
-    )
-    figura.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
+    figura.update_xaxes(gridcolor=COR_GRADE, tickmode="array", tickvals=tickvals, ticktext=ticktext)
+    figura.update_yaxes(gridcolor=COR_GRADE)
     return figura, []
 
 
@@ -1740,7 +1738,7 @@ with aba_analisar:
                             texttemplate="%{text}",
                             textposition="outside",
                             hovertemplate="%{text}<extra></extra>",
-                            marker={"color": COR_GRAFICO_PROTAGONISTA},
+                            marker={"color": COR_PRINCIPAL},
                         )
                     )
                     if not dividend_yield_por_ano.empty:
@@ -1757,8 +1755,8 @@ with aba_analisar:
                                 textposition="top center",
                                 yaxis="y2",
                                 hovertemplate="%{text}<extra></extra>",
-                                line={"color": COR_GRAFICO_CONTEXTO},
-                                marker_color=COR_GRAFICO_CONTEXTO,
+                                line={"color": COR_NEUTRO},
+                                marker_color=COR_NEUTRO,
                             )
                         )
                     figura_dividendos.update_layout(
@@ -1780,12 +1778,12 @@ with aba_analisar:
                             "x": 0,
                         },
                         margin={"t": 40},
-                        paper_bgcolor=COR_GRAFICO_FUNDO,
-                        plot_bgcolor=COR_GRAFICO_FUNDO,
-                        font={"color": COR_GRAFICO_TEXTO},
+                        paper_bgcolor=COR_FUNDO_PAINEL,
+                        plot_bgcolor=COR_FUNDO_PAINEL,
+                        font={"color": COR_TEXTO},
                     )
-                    figura_dividendos.update_xaxes(gridcolor=COR_GRAFICO_GRADE)
-                    figura_dividendos.update_yaxes(gridcolor=COR_GRAFICO_GRADE)
+                    figura_dividendos.update_xaxes(gridcolor=COR_GRADE)
+                    figura_dividendos.update_yaxes(gridcolor=COR_GRADE)
                     st.plotly_chart(figura_dividendos, width="stretch")
                     if dividendos_por_ano["parcial"].any():
                         st.caption(NOTA_DIVIDENDOS_ANO_PARCIAL.format(ano=datetime.now().year))
