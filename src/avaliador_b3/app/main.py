@@ -947,6 +947,9 @@ ABA_CARTEIRA = "Simulador de carteira"
 TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
 
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
+# Único CSS da página: o fundo dos painéis, pelo gancho `.st-key-painel_*` que o Streamlit gera
+# a partir do `key` de cada `st.container`. Sem o gancho, o painel só perde o fundo.
+st.html(f'<style>[class*="st-key-painel_"] {{ background-color: {COR_FUNDO_PAINEL}; }}</style>')
 st.title("Avaliador de Ações da B3")
 st.caption(SUBTITULO_APP)
 
@@ -1112,6 +1115,8 @@ with aba_analisar:
             leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores, ticker) if cnpj else None
 
         st.subheader(ticker)
+        # Números de destaque: preenchido mais abaixo, quando o valor combinado já existe.
+        painel_destaque = st.container(border=True, key="painel_destaque")
 
         # st.error (preço) vs. st.warning (indicadores/dividendos/CNPJ/
         # macro abaixo) não é inconsistência: investigado e confirmado que
@@ -1131,9 +1136,7 @@ with aba_analisar:
         else:
             assert historico_preco_atual is not None, "sem erro de preço, o histórico existe"
             preco_atual = float(historico_preco_atual["Close"].iloc[-1])
-            if preco_valido(preco_atual):
-                st.metric("Preço atual", _fmt_bilhoes(preco_atual))
-            else:
+            if not preco_valido(preco_atual):
                 st.warning(AVISO_PRECO_INDISPONIVEL)
                 preco_atual = None
 
@@ -1240,80 +1243,91 @@ with aba_analisar:
                 "motivo_nao_aplicavel": MENSAGEM_MACRO_INDISPONIVEL_CURTA,
             }
 
-        st.divider()
-        st.subheader("Valor Justo")
         resultado_combinado = calcular_valor_combinado(
             resultado_graham, resultado_bazin, resultado_fcd
         )
-        coluna_graham, coluna_bazin, coluna_fcd, coluna_combinado = st.columns(4)
-        with coluna_graham:
-            _cartao_metodo("Graham", resultado_graham, "valor_justo", preco_atual)
-        with coluna_bazin:
-            _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto", preco_atual)
-            razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
-            if (
-                razao_dividendos_bazin is not None
-                and razao_dividendos_bazin > RAZAO_DIVIDENDOS_ATIPICA_BAZIN
-            ):
-                st.caption(
-                    "Dividendos dos últimos 12 meses em "
-                    f"{razao_dividendos_bazin * 100:.0f}% da mediana dos 5 anos "
-                    "anteriores. Pode ser crescimento real dos pagamentos ou um "
-                    "pagamento extraordinário — a fonte não permite distinguir. "
-                    "Se for extraordinário, o preço teto está inflado."
-                )
-        with coluna_fcd:
-            _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
-            if resultado_fcd["aplicavel"]:
-                aviso_fcd_extremo = avaliar_fcd_extremo(resultado_fcd, preco_atual)
-                if aviso_fcd_extremo is not None:
-                    st.warning(aviso_fcd_extremo["texto"].replace("$", "\\$"))
-                origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
-                st.caption(f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})")
-                # Rótulo específico do FCD (não da página toda) — só o FCD vem
-                # da DFP anual da CVM; "Saúde financeira" abaixo vem do
-                # Fundamentus (últimos 12 meses), sem relação com esse ano.
-                # Caso normal (sem fallback) não tem legenda própria aqui —
-                # o ano já aparece no bloco "Datas de referência dos dados
-                # usados" (pra reduzir texto repetido); a
-                # variante de fallback fica, porque diz algo específico
-                # dessa ação que não está em lugar nenhum.
-                if fcd_usou_fallback:
+        with painel_destaque:
+            coluna_preco, coluna_valor_combinado, coluna_potencial = st.columns(3)
+            if preco_atual is not None:
+                coluna_preco.metric("Preço atual", _fmt_bilhoes(preco_atual))
+            if resultado_combinado["aplicavel"]:
+                valor_combinado = resultado_combinado["valor_combinado"]
+                coluna_valor_combinado.metric("Valor combinado", _fmt_bilhoes(valor_combinado))
+                if preco_atual is not None:
+                    acima_do_preco = valor_combinado >= preco_atual
+                    coluna_potencial.metric(
+                        ROTULO_POTENCIAL,
+                        _delta_percentual_upside(valor_combinado, preco_atual),
+                        delta="acima do preço" if acima_do_preco else "abaixo do preço",
+                        delta_color="green" if acima_do_preco else "red",
+                        delta_arrow="up" if acima_do_preco else "down",
+                        help=TOOLTIP_POTENCIAL_CARTAO,
+                    )
+
+        with st.container(border=True, key="painel_valor_justo"):
+            st.subheader("Valor Justo")
+            coluna_graham, coluna_bazin, coluna_fcd = st.columns(3)
+            with coluna_graham:
+                _cartao_metodo("Graham", resultado_graham, "valor_justo", preco_atual)
+            with coluna_bazin:
+                _cartao_metodo("Bazin (preço teto)", resultado_bazin, "preco_teto", preco_atual)
+                razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
+                if (
+                    razao_dividendos_bazin is not None
+                    and razao_dividendos_bazin > RAZAO_DIVIDENDOS_ATIPICA_BAZIN
+                ):
                     st.caption(
-                        f"FCD calculado com a demonstração financeira anual de "
-                        f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
-                        "ainda não foi entregue por essa empresa."
+                        "Dividendos dos últimos 12 meses em "
+                        f"{razao_dividendos_bazin * 100:.0f}% da mediana dos 5 anos "
+                        "anteriores. Pode ser crescimento real dos pagamentos ou um "
+                        "pagamento extraordinário — a fonte não permite distinguir. "
+                        "Se for extraordinário, o preço teto está inflado."
                     )
-                if risco_sacado_fcd_utilizado:
+            with coluna_fcd:
+                _cartao_metodo("FCD", resultado_fcd, "valor_justo", preco_atual)
+                if resultado_fcd["aplicavel"]:
+                    aviso_fcd_extremo = avaliar_fcd_extremo(resultado_fcd, preco_atual)
+                    if aviso_fcd_extremo is not None:
+                        st.warning(aviso_fcd_extremo["texto"].replace("$", "\\$"))
+                    origem_beta = "calculado, 1a" if beta is not None else "padrão, sem histórico"
                     st.caption(
-                        TEXTO_RISCO_SACADO_RECLASSIFICADO.format(
-                            ano=ano_fcd_utilizado,
-                            valor=_fmt_bilhoes_md(abs(risco_sacado_fcd_utilizado)),
-                        )
+                        f"Beta no WACC: {_fmt(resultado_fcd['beta_utilizado'])} ({origem_beta})"
                     )
-                if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
-                    proporcao_reinvestimento = (
-                        calcular_proporcao_capex_caixa_operacional_percentual(
-                            caixa_fcd_utilizado, capex_fcd_utilizado
-                        )
-                    )
-                    # Sem capex identificado, sem legenda (o FCD nem é calculado).
-                    if proporcao_reinvestimento is not None:
+                    # Rótulo específico do FCD (não da página toda) — só o FCD vem
+                    # da DFP anual da CVM; "Saúde financeira" abaixo vem do
+                    # Fundamentus (últimos 12 meses), sem relação com esse ano.
+                    # Caso normal (sem fallback) não tem legenda própria aqui —
+                    # o ano já aparece no bloco "Datas de referência dos dados
+                    # usados" (pra reduzir texto repetido); a
+                    # variante de fallback fica, porque diz algo específico
+                    # dessa ação que não está em lugar nenhum.
+                    if fcd_usou_fallback:
                         st.caption(
-                            LEGENDA_REINVESTIMENTO_CAPEX.format(
-                                ano=ano_fcd_utilizado, proporcao=proporcao_reinvestimento
+                            f"FCD calculado com a demonstração financeira anual de "
+                            f"{ano_fcd_utilizado} (CVM) — a de {ano_fcd_mais_recente} "
+                            "ainda não foi entregue por essa empresa."
+                        )
+                    if risco_sacado_fcd_utilizado:
+                        st.caption(
+                            TEXTO_RISCO_SACADO_RECLASSIFICADO.format(
+                                ano=ano_fcd_utilizado,
+                                valor=_fmt_bilhoes_md(abs(risco_sacado_fcd_utilizado)),
                             )
                         )
-        with coluna_combinado:
+                    if caixa_fcd_utilizado is not None and capex_fcd_utilizado is not None:
+                        proporcao_reinvestimento = (
+                            calcular_proporcao_capex_caixa_operacional_percentual(
+                                caixa_fcd_utilizado, capex_fcd_utilizado
+                            )
+                        )
+                        # Sem capex identificado, sem legenda (o FCD nem é calculado).
+                        if proporcao_reinvestimento is not None:
+                            st.caption(
+                                LEGENDA_REINVESTIMENTO_CAPEX.format(
+                                    ano=ano_fcd_utilizado, proporcao=proporcao_reinvestimento
+                                )
+                            )
             if resultado_combinado["aplicavel"]:
-                st.metric(
-                    "Valor combinado",
-                    _fmt_bilhoes(resultado_combinado["valor_combinado"]),
-                    delta=_delta_percentual_upside(
-                        resultado_combinado["valor_combinado"], preco_atual
-                    ),
-                    help=TOOLTIP_POTENCIAL_CARTAO,
-                )
                 st.caption(
                     "Métodos utilizados: "
                     + _nomes_dos_metodos(resultado_combinado["metodos_utilizados"])
@@ -1344,12 +1358,12 @@ with aba_analisar:
                     f"{TEXTO_COMPLEMENTO_SEM_METODO}"
                 )
 
-        st.caption(
-            "Os valores acima são calculados a partir de fórmulas de valuation "
-            "públicas e conhecidas (Graham, Bazin, FCD) aplicadas aos dados "
-            "reais da empresa — isto não é uma recomendação de compra ou "
-            "venda, apenas uma referência de estudo."
-        )
+            st.caption(
+                "Os valores acima são calculados a partir de fórmulas de valuation "
+                "públicas e conhecidas (Graham, Bazin, FCD) aplicadas aos dados "
+                "reais da empresa — isto não é uma recomendação de compra ou "
+                "venda, apenas uma referência de estudo."
+            )
 
         with st.expander("Datas de referência dos dados usados"):
             # Preço/Beta vêm da coluna "data" que obter_historico já traz
@@ -1419,57 +1433,68 @@ with aba_analisar:
                 "e pode inflar o preço teto.\n\n"
                 "**FCD (Fluxo de Caixa Descontado)** — projeta os fluxos de caixa "
                 "futuros da empresa e traz isso a valor presente, descontando pelo "
-                "custo de capital (WACC). O custo do capital próprio parte da Selic "
-                "menos o spread de default do Brasil (que a Selic já embute) mais o "
-                "Beta da ação vezes o prêmio de risco do país; o custo da dívida é a "
-                "Selic mais 2 pontos percentuais. Esse valor presente é o da empresa como um "
-                "todo, dívida incluída — por isso a dívida líquida é deduzida antes "
-                "de dividir pelo número de ações, chegando no valor que sobra pros "
-                "acionistas; quando a dívida líquida não está disponível pra uma "
-                "empresa, o cálculo usa o valor da empresa inteira como aproximação, "
-                "sem deduzir nada, e mostra um aviso na tela. Não se aplica a bancos "
-                "— a dívida e os depósitos são a própria operação do banco, não "
-                "financiamento externo — nem a seguradoras e à Itaúsa, cujo caixa "
-                "vem de prêmios e de dividendos de participações; nesses casos a "
-                "lógica de custo de capital do FCD não tem interpretação econômica "
-                "válida (Graham e Bazin continuam funcionando normalmente). Também "
-                "não é calculado quando o caixa livre do último ano foi zero ou "
-                "negativo: projetar um fluxo assim não estima valor. Fora esses "
-                "casos, funciona mesmo para empresas sem lucro contábil no "
-                "momento, já que olha geração de caixa, não resultado contábil "
-                "passado. O fluxo de caixa usado é o caixa gerado pela operação "
-                "menos o que a empresa gastou em imobilizado e intangível "
-                "(máquinas, obras, sistemas) no ano, mais os juros pagos sobre a "
-                "dívida, já descontado o imposto: os juros voltam ao fluxo porque "
-                "o custo da dívida já entra no custo de capital e na dedução da "
-                "dívida líquida. Quando a empresa paga os fornecedores por um convênio "
-                "com banco (risco sacado ou similar) e registra o pagamento ao banco no "
-                "caixa de financiamento, esse valor é tratado como operacional, porque "
+                "custo de capital (WACC).\n\n"
+                "*Taxa de desconto*\n\n"
+                "O custo do capital próprio parte da Selic menos o spread de default "
+                "do Brasil (que a Selic já embute) mais o Beta da ação vezes o prêmio "
+                "de risco do país; o custo da dívida é a Selic mais 2 pontos "
+                "percentuais.\n\n"
+                "*Fluxo de caixa*\n\n"
+                "O fluxo de caixa usado é o caixa gerado pela operação menos o que a "
+                "empresa gastou em imobilizado e intangível (máquinas, obras, "
+                "sistemas) no ano, mais os juros pagos sobre a dívida, já descontado "
+                "o imposto: os juros voltam ao fluxo porque o custo da dívida já "
+                "entra no custo de capital e na dedução da dívida líquida.\n\n"
+                "Quando a empresa paga os fornecedores por um convênio com banco "
+                "(risco sacado ou similar) e registra o pagamento ao banco no caixa "
+                "de financiamento, esse valor é tratado como operacional, porque "
                 "substitui o pagamento ao fornecedor; sem isso o caixa operacional "
-                "pareceria maior do que a geração de caixa, e o cartão avisa quando o "
-                "ajuste é aplicado. Ficam de fora as aplicações financeiras, a compra "
-                "e venda de participações e de ativos e o pagamento de "
-                "arrendamentos (aluguéis de longo prazo). Se o gasto em "
-                "imobilizado e intangível não puder ser identificado na "
-                "demonstração da empresa, o FCD não é calculado, e o mesmo vale "
-                "quando o fluxo do último ano é zero ou negativo. O crescimento do "
-                "fluxo nos cinco anos projetados é medido entre o ano mais recente e "
-                "cinco anos antes, limitado ao crescimento da receita líquida no "
-                "mesmo período (um fluxo não cresce mais que a receita por cinco "
-                "anos, o que assume margem constante) e à faixa de −20% a +30% ao "
-                "ano; sem receita utilizável, vale o crescimento do fluxo, e o cartão "
-                "diz o motivo. Esse crescimento converge gradualmente, ano a ano, "
-                "para o de longo prazo (a inflação, IPCA) em vez de saltar no sexto "
-                "ano. Quando o fluxo de cinco anos atrás não pode ser usado, o "
-                "crescimento passa a ser a inflação (IPCA) e o cartão avisa. Por "
-                "isso, empresas em fase de "
-                "investimento pesado (comuns em energia e saneamento) ou com "
-                "dívida muito alta tendem a ter FCD bem abaixo dos outros "
-                "métodos, mesmo quando são saudáveis. Separar o investimento que "
-                "só mantém a empresa do que a faz crescer exigiria um dado que a "
-                "fonte não informa de forma padronizada. No cartão do FCD, a "
-                "porcentagem reinvestida no ano aparece logo abaixo do valor. "
+                "pareceria maior do que a geração de caixa, e o cartão avisa quando "
+                "o ajuste é aplicado.\n\n"
+                "Ficam de fora as aplicações financeiras, a compra e venda de "
+                "participações e de ativos e o pagamento de arrendamentos (aluguéis "
+                "de longo prazo).\n\n"
+                "*Crescimento*\n\n"
+                "O crescimento do fluxo nos cinco anos projetados é medido entre o "
+                "ano mais recente e cinco anos antes, limitado ao crescimento da "
+                "receita líquida no mesmo período (um fluxo não cresce mais que a "
+                "receita por cinco anos, o que assume margem constante) e à faixa "
+                "de −20% a +30% ao ano; sem receita utilizável, vale o crescimento "
+                "do fluxo, e o cartão diz o motivo. Esse crescimento converge "
+                "gradualmente, ano a ano, para o de longo prazo (a inflação, IPCA) "
+                "em vez de saltar no sexto ano. Quando o fluxo de cinco anos atrás "
+                "não pode ser usado, o crescimento passa a ser a inflação (IPCA) e "
+                "o cartão avisa.\n\n"
+                "Por isso, empresas em fase de investimento pesado (comuns em "
+                "energia e saneamento) ou com dívida muito alta tendem a ter FCD "
+                "bem abaixo dos outros métodos, mesmo quando são saudáveis. Separar "
+                "o investimento que só mantém a empresa do que a faz crescer "
+                "exigiria um dado que a fonte não informa de forma padronizada. No "
+                "cartão do FCD, a porcentagem reinvestida no ano aparece logo abaixo "
+                "do valor.\n\n"
+                "*Do valor da empresa ao valor por ação*\n\n"
+                "Esse valor presente é o da empresa como um todo, dívida incluída — "
+                "por isso a dívida líquida é deduzida antes de dividir pelo número "
+                "de ações, chegando no valor que sobra pros acionistas; quando a "
+                "dívida líquida não está disponível pra uma empresa, o cálculo usa "
+                "o valor da empresa inteira como aproximação, sem deduzir nada, e "
+                "mostra um aviso na tela.\n\n"
                 f"{TEXTO_FCD_AJUSTES_DO_BALANCO}\n\n"
+                "*Quando o FCD não se aplica*\n\n"
+                "Não se aplica a bancos — a dívida e os depósitos são a própria "
+                "operação do banco, não financiamento externo — nem a seguradoras "
+                "e à Itaúsa, cujo caixa vem de prêmios e de dividendos de "
+                "participações; nesses casos a lógica de custo de capital do FCD "
+                "não tem interpretação econômica válida (Graham e Bazin continuam "
+                "funcionando normalmente). Também não é calculado quando o caixa "
+                "livre do último ano foi zero ou negativo: projetar um fluxo assim "
+                "não estima valor. Se o gasto em imobilizado e intangível não puder "
+                "ser identificado na demonstração da empresa, o FCD não é "
+                "calculado, e o mesmo vale quando o fluxo do último ano é zero ou "
+                "negativo.\n\n"
+                "Fora esses casos, funciona mesmo para empresas sem lucro contábil "
+                "no momento, já que olha geração de caixa, não resultado contábil "
+                "passado.\n\n"
                 "**Valor combinado** — média simples só dos métodos que se aplicam à "
                 "empresa (se só um se aplica, o combinado é ele mesmo). É uma "
                 "heurística: os pesos são iguais por simplicidade, não porque exista "
@@ -1494,9 +1519,8 @@ with aba_analisar:
                 "poucos anos de histórico."
             )
 
-        st.divider()
         coluna_saude, coluna_governanca = st.columns(2)
-        with coluna_saude:
+        with coluna_saude, st.container(border=True, key="painel_saude"):
             st.subheader("Saúde financeira")
             if indicadores is None:
                 st.info("Indisponível — ver aviso do Fundamentus acima.")
@@ -1563,7 +1587,7 @@ with aba_analisar:
                     "Fundamentus não reporta alguns desses índices no mesmo formato."
                 )
 
-        with coluna_governanca:
+        with coluna_governanca, st.container(border=True, key="painel_governanca"):
             st.subheader("Governança")
             linha_universo = (
                 universo_ibovespa[universo_ibovespa["ticker"] == ticker]
@@ -1583,17 +1607,11 @@ with aba_analisar:
                         "a única fonte de segmento de listagem que já temos."
                     )
             with col_free_float:
-                st.metric("Free float", "Pendente")
-                st.caption(
-                    "Nenhum adapter atual extrai free float — nem o universo do Ibovespa "
-                    "(b3_universo.py) nem o catálogo de emissores (crosswalk_cnpj.py) "
-                    "trazem esse campo. Fica como pendência explícita, não um valor "
-                    "inventado."
-                )
+                st.metric("Free float", "—")
+                st.caption("Dado não disponível nas fontes usadas.")
 
-        st.divider()
         coluna_comportamento, coluna_grafico_preco = st.columns([1, 2])
-        with coluna_comportamento:
+        with coluna_comportamento, st.container(border=True, key="painel_comportamento"):
             st.subheader("Comportamento da ação")
             if erro_historico:
                 st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
@@ -1623,7 +1641,7 @@ with aba_analisar:
                 if beta is None:
                     st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
 
-        with coluna_grafico_preco:
+        with coluna_grafico_preco, st.container(border=True, key="painel_grafico_preco"):
             st.subheader("Preço vs. Ibovespa (1 ano, base 100)")
             if erro_historico_beta or erro_historico_ibovespa_beta:
                 st.info(
@@ -1644,60 +1662,62 @@ with aba_analisar:
                 else:
                     st.plotly_chart(figura_preco, width="stretch", theme=None)
 
-        st.divider()
-        st.subheader("Comparando com Petróleo (Brent)")
-        janela_petroleo_selecionada = st.pills(
-            "Janela de comparação",
-            options=list(JANELAS_COMPARACAO_PETROLEO.keys()),
-            default="2 anos",
-            key="janela_comparacao_petroleo",
-        )
-        if not janela_petroleo_selecionada:
-            st.info("Selecione uma janela acima pra ver o gráfico.")
-        else:
-            periodo_petroleo = JANELAS_COMPARACAO_PETROLEO[janela_petroleo_selecionada]
-            with st.spinner(
-                f"Buscando histórico de {ticker} e do petróleo (Brent) em "
-                f"{janela_petroleo_selecionada}..."
-            ):
-                historico_acao_petroleo, erro_acao_petroleo = _buscar_historico(
-                    ticker, periodo=periodo_petroleo
-                )
-                historico_petroleo_janela, erro_petroleo_janela = _buscar_historico_petroleo(
-                    periodo=periodo_petroleo
-                )
-
-            if erro_acao_petroleo:
-                st.error(f"Preço de {ticker}: {erro_acao_petroleo}")
-            elif erro_petroleo_janela:
-                st.error(f"Petróleo (Brent): {erro_petroleo_janela}")
+        with st.container(border=True, key="painel_petroleo"):
+            st.subheader("Comparando com Petróleo (Brent)")
+            janela_petroleo_selecionada = st.pills(
+                "Janela de comparação",
+                options=list(JANELAS_COMPARACAO_PETROLEO.keys()),
+                default="2 anos",
+                key="janela_comparacao_petroleo",
+            )
+            if not janela_petroleo_selecionada:
+                st.info("Selecione uma janela acima pra ver o gráfico.")
             else:
-                figura_petroleo, nomes_sem_dados_petroleo = _grafico_comparacao_normalizada(
-                    historico_acao_petroleo, ticker, historico_petroleo_janela, "Petróleo (Brent)"
-                )
-                if figura_petroleo is None:
-                    st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
+                periodo_petroleo = JANELAS_COMPARACAO_PETROLEO[janela_petroleo_selecionada]
+                with st.spinner(
+                    f"Buscando histórico de {ticker} e do petróleo (Brent) em "
+                    f"{janela_petroleo_selecionada}..."
+                ):
+                    historico_acao_petroleo, erro_acao_petroleo = _buscar_historico(
+                        ticker, periodo=periodo_petroleo
+                    )
+                    historico_petroleo_janela, erro_petroleo_janela = _buscar_historico_petroleo(
+                        periodo=periodo_petroleo
+                    )
+
+                if erro_acao_petroleo:
+                    st.error(f"Preço de {ticker}: {erro_acao_petroleo}")
+                elif erro_petroleo_janela:
+                    st.error(f"Petróleo (Brent): {erro_petroleo_janela}")
                 else:
-                    st.plotly_chart(figura_petroleo, width="stretch", theme=None)
+                    figura_petroleo, nomes_sem_dados_petroleo = _grafico_comparacao_normalizada(
+                        historico_acao_petroleo,
+                        ticker,
+                        historico_petroleo_janela,
+                        "Petróleo (Brent)",
+                    )
+                    if figura_petroleo is None:
+                        st.info(_mensagem_grafico_comparacao_sem_dados(nomes_sem_dados_petroleo))
+                    else:
+                        st.plotly_chart(figura_petroleo, width="stretch", theme=None)
 
-        st.divider()
-        st.subheader("Gráfico avançado (TradingView)")
-        st.caption(
-            "Widget ao vivo do TradingView — dado direto deles, sem nenhum "
-            "processamento nosso (diferente do gráfico acima, calculado por "
-            "aqui a partir do histórico buscado via yfinance). Em ambientes "
-            "com JavaScript bloqueado/restrito, o gráfico ao vivo pode não "
-            "carregar."
-        )
-        html_tradingview = _widget_avancado_tradingview(ticker)
-        if html_tradingview is None:
-            st.info(MENSAGEM_TRADINGVIEW_TICKER_INVALIDO)
-        else:
-            st.iframe(html_tradingview.strip(), height=520)
+        with st.container(border=True, key="painel_tradingview"):
+            st.subheader("Gráfico avançado (TradingView)")
+            st.caption(
+                "Widget ao vivo do TradingView — dado direto deles, sem nenhum "
+                "processamento nosso (diferente do gráfico acima, calculado por "
+                "aqui a partir do histórico buscado via yfinance). Em ambientes "
+                "com JavaScript bloqueado/restrito, o gráfico ao vivo pode não "
+                "carregar."
+            )
+            html_tradingview = _widget_avancado_tradingview(ticker)
+            if html_tradingview is None:
+                st.info(MENSAGEM_TRADINGVIEW_TICKER_INVALIDO)
+            else:
+                st.iframe(html_tradingview.strip(), height=520)
 
-        st.divider()
         coluna_dividendos, coluna_comparacao_setorial = st.columns(2)
-        with coluna_dividendos:
+        with coluna_dividendos, st.container(border=True, key="painel_dividendos"):
             st.subheader("Histórico de dividendos por ano")
             if erro_dividendos:
                 st.info("Gráfico indisponível — ver aviso de dividendos acima.")
@@ -1749,8 +1769,7 @@ with aba_analisar:
                             y=dividendos_por_ano["total"],
                             name="Dividendos",
                             text=dividendos_por_ano["total"].apply(_fmt_bilhoes),
-                            texttemplate="%{text}",
-                            textposition="outside",
+                            textposition="none",
                             hovertemplate="%{text}<extra></extra>",
                             marker={"color": COR_PRINCIPAL},
                         )
@@ -1767,6 +1786,7 @@ with aba_analisar:
                                 ),
                                 texttemplate="%{text}",
                                 textposition="top center",
+                                textfont={"color": COR_TEXTO},
                                 yaxis="y2",
                                 hovertemplate="%{text}<extra></extra>",
                                 line={"color": COR_NEUTRO},
@@ -1834,7 +1854,10 @@ with aba_analisar:
                             "dado do yfinance, não do cálculo."
                         )
 
-        with coluna_comparacao_setorial:
+        with (
+            coluna_comparacao_setorial,
+            st.container(border=True, key="painel_comparacao_setorial"),
+        ):
             st.subheader("Comparação setorial")
             # segmento_setorial/erro_segmento_setorial já buscados mais
             # acima (perto do cnpj, pro FCD) — reaproveitado aqui, sem
@@ -1895,42 +1918,42 @@ with aba_analisar:
                                 width="stretch",
                             )
 
-        st.divider()
-        st.subheader("Correlação com fatores externos")
-        st.caption(
-            "Correlação (Pearson) entre o retorno diário da ação e três fatores "
-            f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
-            f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
-            "variação percentual dia a dia de cada série, nunca o nível bruto — "
-            "correlacionar séries em tendência infla o número de forma espúria, "
-            "sem relação real entre elas."
-        )
-        if erro_acao_correlacao:
-            st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
-        else:
-            if erro_petroleo:
-                st.warning(f"Petróleo (Brent): {erro_petroleo}")
-            if erro_cambio:
-                st.warning(f"Câmbio USD/BRL: {erro_cambio}")
-            if erro_gpr:
-                st.warning(f"GPR: {erro_gpr}")
-
-            resultados_correlacao = calcular_correlacoes_fatores(
-                historico_acao=historico_acao_correlacao,
-                historico_petroleo=historico_petroleo,
-                serie_cambio=serie_cambio,
-                serie_gpr=serie_gpr,
+        with st.container(border=True, key="painel_correlacao"):
+            st.subheader("Correlação com fatores externos")
+            st.caption(
+                "Correlação (Pearson) entre o retorno diário da ação e três fatores "
+                f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
+                f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
+                "variação percentual dia a dia de cada série, nunca o nível bruto — "
+                "correlacionar séries em tendência infla o número de forma espúria, "
+                "sem relação real entre elas."
             )
+            if erro_acao_correlacao:
+                st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
+            else:
+                if erro_petroleo:
+                    st.warning(f"Petróleo (Brent): {erro_petroleo}")
+                if erro_cambio:
+                    st.warning(f"Câmbio USD/BRL: {erro_cambio}")
+                if erro_gpr:
+                    st.warning(f"GPR: {erro_gpr}")
 
-            col_petroleo, col_cambio, col_gpr = st.columns(3)
-            with col_petroleo:
-                _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
-            with col_cambio:
-                _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
-            with col_gpr:
-                _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
-                if serie_gpr is not None and not serie_gpr.empty:
-                    st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
+                resultados_correlacao = calcular_correlacoes_fatores(
+                    historico_acao=historico_acao_correlacao,
+                    historico_petroleo=historico_petroleo,
+                    serie_cambio=serie_cambio,
+                    serie_gpr=serie_gpr,
+                )
+
+                col_petroleo, col_cambio, col_gpr = st.columns(3)
+                with col_petroleo:
+                    _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
+                with col_cambio:
+                    _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
+                with col_gpr:
+                    _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
+                    if serie_gpr is not None and not serie_gpr.empty:
+                        st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
 
 with aba_screener:
     st.caption(

@@ -1984,10 +1984,84 @@ def test_grafico_dividendos_mostra_rotulos_com_virgula_brasileira(monkeypatch):
     ]
     assert len(figuras_dividendos) == 1
     trace_dividendos = figuras_dividendos[0]["data"][0]
-    assert trace_dividendos["texttemplate"] == "%{text}"
+    # R$ por ano só no hover das barras (sem rótulo fixo); o rótulo visível é o do yield.
+    assert trace_dividendos["textposition"] == "none"
+    assert trace_dividendos["hovertemplate"] == "%{text}<extra></extra>"
     for texto in trace_dividendos["text"]:
         assert "," in texto and "R$" in texto
         assert not re.search(r"\d\.\d\d\b", texto), f"rótulo com ponto decimal: {texto!r}"
+
+
+def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(monkeypatch):
+    # Só o Graham se aplica (47,43) contra o preço de 50: o combinado é o próprio Graham, sem
+    # seta no cartão, e o potencial (-5,1%) aparece em cartão próprio.
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    def _falha_precos(*args, **kwargs):
+        raise TickerInvalido(MENSAGEM_ERRO_MOCK)
+
+    def _falha_rt(*args, **kwargs):
+        raise RuntimeError(MENSAGEM_ERRO_MOCK)
+
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_historico_ibovespa", _falha_precos)
+    monkeypatch.setattr("avaliador_b3.ingest.precos.obter_dividendos", _falha_precos)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.fundamentus.obter_indicadores",
+        lambda *args, **kwargs: _indicadores_falsos_aplicavel_pra_graham(),
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *args, **kwargs: _catalogo_emissores_vazio(),
+    )
+    monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.obter_serie", _falha_rt)
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _falha_rt)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert _metrica_por_label(at, "Preço atual").value == "R$ 50,00"
+    combinado = _metrica_por_label(at, "Valor combinado")
+    assert combinado.value == "R$ 47,43"
+    assert not combinado.delta
+    potencial = _metrica_por_label(at, "Potencial")
+    assert potencial.value == "-5,1%"
+    assert potencial.delta == "abaixo do preço"
+
+
+def test_texto_do_fcd_tem_subtitulos_e_mantem_os_ajustes_do_balanco(monkeypatch):
+    from avaliador_b3.config import TEXTO_FCD_AJUSTES_DO_BALANCO
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    blocos = [m.value for m in at.markdown if "**FCD (Fluxo de Caixa Descontado)**" in m.value]
+    assert len(blocos) == 1
+    texto = blocos[0]
+    for subtitulo in (
+        "*Taxa de desconto*",
+        "*Fluxo de caixa*",
+        "*Crescimento*",
+        "*Do valor da empresa ao valor por ação*",
+        "*Quando o FCD não se aplica*",
+    ):
+        assert subtitulo in texto
+    assert TEXTO_FCD_AJUSTES_DO_BALANCO in texto
 
 
 # --- Gráfico "Preço vs. Ibovespa" sem dados válidos ------------------------
