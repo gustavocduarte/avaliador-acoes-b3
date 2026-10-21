@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 from streamlit.errors import StreamlitSecretNotFoundError
 
 from avaliador_b3.carteira import (
@@ -41,6 +42,13 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
+    CHAVE_BARRA_ANALISAR,
+    CHAVE_BARRA_CARTEIRA,
+    CHAVE_BARRA_RODAPE,
+    CHAVE_BARRA_SCREENER,
+    CHAVE_DROPDOWN_TICKER,
+    CHAVE_TEXTO_TICKER,
+    CHAVE_TICKER_GUARDADO,
     CONFIG_PLOTLY,
     COR_ALERTA,
     COR_BORDA,
@@ -57,6 +65,9 @@ from avaliador_b3.config import (
     FOLGA_ROTULO_BARRA,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
+    ICONE_PAGINA_ANALISAR,
+    ICONE_PAGINA_CARTEIRA,
+    ICONE_PAGINA_SCREENER,
     JANELAS_COMPARACAO_PETROLEO,
     LARGURA_CARACTERE_ROTULO_BARRA,
     LEGENDA_REINVESTIMENTO_CAPEX,
@@ -88,6 +99,7 @@ from avaliador_b3.config import (
     SERIES_BCB_SGS,
     SUBTITULO_APP,
     SUBTITULO_POTENCIAL_CARTEIRA,
+    SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_COMPLEMENTO_SEM_METODO,
@@ -101,6 +113,8 @@ from avaliador_b3.config import (
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
+    TEXTO_RODAPE_LINK_REPOSITORIO,
+    TEXTO_RODAPE_SCREENER_ATUALIZADO,
     TEXTO_SCREENER_AINDA_NAO_GERADO,
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW,
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
@@ -113,12 +127,19 @@ from avaliador_b3.config import (
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
+    TITULO_PAGINA_ANALISAR,
+    TITULO_PAGINA_CARTEIRA,
+    TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
     TOOLTIP_VALOR_FIRMA,
+    URL_PAGINA_ANALISAR,
+    URL_PAGINA_CARTEIRA,
+    URL_PAGINA_SCREENER,
+    URL_REPOSITORIO,
     VALORES_PERMITIR_RODAR_SCREENER,
     VARIAVEL_PERMITIR_RODAR_SCREENER,
     YIELD_MINIMO_BAZIN,
@@ -1147,10 +1168,10 @@ def _carregar_screener_salvo(caminho: Path) -> pd.DataFrame | None:
 
 
 def _aviso_screener_vazio(instrucao: str) -> None:
-    """Mensagem de "sem resultado salvo ainda" compartilhada entre as abas
+    """Mensagem de "sem resultado salvo ainda" compartilhada entre as páginas
     que dependem do resultado do screener (Analisar uma ação, Screener,
     Simulador de carteira) — cada chamada só varia a instrução de como
-    gerá-lo (rodar na própria aba Screener, via botão "Rodar screener
+    gerá-lo (rodar na própria página Screener, via botão "Rodar screener
     agora", ou apontar pra lá)."""
     st.info(
         "Nenhum resultado salvo ainda (primeira vez rodando o projeto). "
@@ -1202,10 +1223,6 @@ def _texto_screener_atualizado_pelo_workflow() -> str:
     return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW.format(data=_fmt_data(macro["data_busca"]))
 
 
-ABA_ANALISAR = "Analisar uma ação"
-ABA_SCREENER = "Screener (todas as ações)"
-ABA_CARTEIRA = "Simulador de carteira"
-
 # Ticker pré-selecionado e buscado automaticamente só na primeira abertura da
 # sessão (ver `busca_inicial_automatica_feita` em session_state, mais abaixo)
 # — mostra um resultado de exemplo de cara, sem exigir clique em "Buscar".
@@ -1214,6 +1231,15 @@ TICKER_PADRAO_PRIMEIRA_ABERTURA = "PETR4"
 _CSS_DA_PAGINA = Template("""<style>
 /* Fundo dos painéis: gancho `.st-key-painel_*` gerado pelo `key` de cada st.container. */
 [class*="st-key-painel_"] { background-color: $painel; }
+/* Blocos da barra lateral: gancho `.st-key-barra_*`; o da página aberta tem o sufixo `_ativa`. */
+[class*="st-key-barra_"] { background-color: $painel; }
+[class*="st-key-barra_"][class*="_ativa"] { border-color: $principal; }
+[class*="st-key-barra_"] a, [class*="st-key-barra_"] a p { font-size: 16px; font-weight: 600; }
+[class*="st-key-barra_"][class*="_ativa"] a, [class*="st-key-barra_"][class*="_ativa"] a p {
+  color: $principal; }
+[class*="st-key-barra_"] label, [class*="st-key-barra_"] label p { font-size: 14px; }
+.st-key-barra_rodape { background-color: transparent; }
+.st-key-barra_rodape p, .st-key-barra_rodape a { font-size: 14px; }
 /* Classes `.ab-*`: números de destaque, títulos e pílulas. Se o Streamlit deixar de aceitar
    este bloco, o conteúdo continua na tela, só sem o estilo. */
 .ab-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
@@ -1263,25 +1289,7 @@ st.title("Avaliador de Ações da B3")
 st.caption(SUBTITULO_APP)
 
 
-def _ativar_aba(aba: str) -> None:
-    """Callback de on_click: roda ANTES do script recarregar (diferente de
-    só checar o retorno de st.button, que só teria efeito no rerun
-    seguinte) — por isso é a forma certa de fixar a aba ativa a tempo do
-    st.tabs() abaixo já nascer com o valor certo neste mesmo rerun."""
-    st.session_state["aba_ativa"] = aba
-
-
-# `default` fixa qual aba aparece selecionada neste rerun — sem isso, todo
-# st.rerun() (ex: ao terminar "Rodar screener agora") volta pra primeira aba,
-# mesmo que a pessoa estivesse vendo a outra. Guardamos a aba "atual" em
-# session_state, atualizada via on_click nos botões que disparam rerun.
-st.session_state.setdefault("aba_ativa", ABA_ANALISAR)
-aba_analisar, aba_screener, aba_carteira = st.tabs(
-    [ABA_ANALISAR, ABA_SCREENER, ABA_CARTEIRA],
-    default=st.session_state["aba_ativa"],
-)
-
-with aba_analisar:
+def pagina_analisar() -> None:
     # Buscado aqui em cima (não só depois de "Buscar") porque o dropdown
     # abaixo precisa da lista de opções pra se desenhar — reaproveitado
     # mais adiante na seção "Governança", não buscado de novo lá.
@@ -1290,46 +1298,48 @@ with aba_analisar:
 
     busca_inicial_ja_feita = st.session_state.get("busca_inicial_automatica_feita", False)
 
-    if usando_dropdown:
-        assert universo_ibovespa is not None, "o dropdown só é usado com o universo carregado"
-        nomes_por_ticker = dict(
-            zip(universo_ibovespa["ticker"], universo_ibovespa["nome"], strict=True)
-        )
-        opcoes_ticker = list(nomes_por_ticker.keys())
-        # Pré-seleciona o ticker padrão só na primeira abertura da sessão
-        # (session_state ainda sem a flag) — nas próximas reruns, `index`
-        # deixa de forçar nada e o dropdown segue 100% manual, preservando
-        # o que a pessoa escolher por conta própria. `key` explícita e
-        # ESTÁVEL é essencial aqui: sem ela, o Streamlit deriva a
-        # identidade do widget (entre outras coisas) do próprio `index` —
-        # como `index` muda de 0 pra None entre reruns, um widget sem
-        # `key` fixa "reseta" nesse ponto e perde a seleção do usuário.
-        indice_inicial = (
-            opcoes_ticker.index(TICKER_PADRAO_PRIMEIRA_ABERTURA)
-            if not busca_inicial_ja_feita and TICKER_PADRAO_PRIMEIRA_ABERTURA in opcoes_ticker
-            else None
-        )
-        ticker_selecionado = st.selectbox(
-            "Ação (Ibovespa)",
-            options=opcoes_ticker,
-            format_func=lambda t: f"{t} — {nomes_por_ticker[t]}",
-            key="dropdown_ticker_analisar",
-            index=indice_inicial,
-            placeholder="Selecione uma ação...",
-        )
-        ticker = ticker_selecionado or ""
-    else:
-        # Degradação graciosa: a API da B3 pode estar fora do ar — a aba
-        # continua usável via texto livre, só sem a lista pronta. Sem
-        # dropdown não há como pré-selecionar nada, então a busca
-        # automática da primeira abertura não se aplica nesse caminho.
-        st.warning(
-            "Lista de ações do Ibovespa indisponível "
-            f"({erro_universo or 'resultado vazio'}) — digite o ticker manualmente."
-        )
-        ticker = st.text_input("Ticker (ex: PETR4)", value="").strip().upper()
+    # A ação escolhida fica guardada à parte: o Streamlit apaga o estado de um widget que não é
+    # desenhado numa rodada (ao sair da página), e a seleção é restaurada ao voltar.
+    ticker_guardado = st.session_state.get(CHAVE_TICKER_GUARDADO)
+    with _bloco_barra_analisar:
+        if usando_dropdown:
+            assert universo_ibovespa is not None, "o dropdown só é usado com o universo carregado"
+            nomes_por_ticker = dict(
+                zip(universo_ibovespa["ticker"], universo_ibovespa["nome"], strict=True)
+            )
+            opcoes_ticker = list(nomes_por_ticker.keys())
+            if CHAVE_DROPDOWN_TICKER not in st.session_state and ticker_guardado in opcoes_ticker:
+                st.session_state[CHAVE_DROPDOWN_TICKER] = ticker_guardado
+            # Pré-seleciona o ticker padrão só na primeira abertura da sessão; depois, o
+            # dropdown segue 100% manual. A `key` fixa preserva a escolha entre reruns.
+            indice_inicial = (
+                opcoes_ticker.index(TICKER_PADRAO_PRIMEIRA_ABERTURA)
+                if not busca_inicial_ja_feita and TICKER_PADRAO_PRIMEIRA_ABERTURA in opcoes_ticker
+                else None
+            )
+            ticker_selecionado = st.selectbox(
+                "Ação (Ibovespa)",
+                options=opcoes_ticker,
+                format_func=lambda t: f"{t} — {nomes_por_ticker[t]}",
+                key=CHAVE_DROPDOWN_TICKER,
+                index=indice_inicial,
+                placeholder="Selecione uma ação...",
+            )
+            ticker = ticker_selecionado or ""
+        else:
+            # Degradação graciosa: a API da B3 pode estar fora do ar; texto livre, sem a lista.
+            # Sem dropdown não há pré-seleção, então a busca automática não se aplica.
+            st.warning(
+                "Lista de ações do Ibovespa indisponível "
+                f"({erro_universo or 'resultado vazio'}) — digite o ticker manualmente."
+            )
+            if CHAVE_TEXTO_TICKER not in st.session_state and ticker_guardado:
+                st.session_state[CHAVE_TEXTO_TICKER] = ticker_guardado
+            ticker = st.text_input("Ticker (ex: PETR4)", value="", key=CHAVE_TEXTO_TICKER)
+            ticker = ticker.strip().upper()
+        st.session_state[CHAVE_TICKER_GUARDADO] = ticker
 
-    buscar_clicado = st.button("Buscar", on_click=_ativar_aba, args=(ABA_ANALISAR,))
+        buscar_clicado = st.button("Buscar")
     # Preenchido depois da busca, quando o segmento setorial já foi obtido.
     espaco_pilulas = st.container()
 
@@ -2238,7 +2248,7 @@ with aba_analisar:
             else:
                 tabela_screener_setor = _carregar_screener_ou_avisar(
                     CAMINHO_SAIDA_PADRAO,
-                    'Rode o screener primeiro na aba "Screener (todas as ações)"',
+                    'Rode o screener primeiro na página "Screener"',
                 )
                 if tabela_screener_setor is not None:
                     try:
@@ -2291,7 +2301,8 @@ with aba_analisar:
                                 width="stretch",
                             )
 
-with aba_screener:
+
+def pagina_screener() -> None:
     st.caption(
         "Ranking pelo potencial de valorização até o valor combinado (média "
         "simples dos métodos aplicáveis a cada ação). Veja abaixo como ler "
@@ -2303,7 +2314,7 @@ with aba_screener:
             "ou abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
             "combinado é a média simples de Graham, Bazin e FCD aplicáveis, "
             "com pesos iguais por simplicidade — veja 'Como funciona esse "
-            "cálculo?' na aba Analisar uma ação. A tabela vem ordenada do "
+            "cálculo?' na página Analisar uma ação. A tabela vem ordenada do "
             "maior para o menor potencial.\n"
             "- **Divergência** — mostra o quanto os métodos discordam entre "
             "si. Divergência vazia significa que só um método se aplica "
@@ -2332,13 +2343,11 @@ with aba_screener:
     if not rodar_screener_permitido:
         st.info(_texto_screener_atualizado_pelo_workflow())
 
-    if rodar_screener_permitido and st.button(
-        "Rodar screener agora", on_click=_ativar_aba, args=(ABA_SCREENER,)
-    ):
+    if rodar_screener_permitido and st.button("Rodar screener agora"):
         st.warning(
             "Isso faz ~228 requisições reais (preço, dividendos e Beta de cada "
             "uma das ~76 ações, com delay entre chamadas) — leva de 5 a 15 "
-            "minutos. Não feche esta aba enquanto roda."
+            "minutos. Não feche esta página enquanto roda."
         )
         # Captura os avisos emitidos durante a rodada pra poder mostrar na
         # tela os de DeteccaoAnoCvmFalhouWarning especificamente (sem isso,
@@ -2487,12 +2496,13 @@ with aba_screener:
                 width="stretch",
             )
 
-with aba_carteira:
+
+def pagina_carteira() -> None:
     st.caption(TEXTO_ABERTURA_SIMULADOR)
 
     tabela_screener_carteira = _carregar_screener_ou_avisar(
         CAMINHO_SAIDA_PADRAO,
-        'Rode o screener primeiro na aba "Screener (todas as ações)"',
+        'Rode o screener primeiro na página "Screener"',
     )
 
     if tabela_screener_carteira is not None:
@@ -2639,6 +2649,7 @@ with aba_carteira:
                 with st.expander(TITULO_EXPANDER_SIMULADOR):
                     st.markdown(TEXTO_EXPANDER_SIMULADOR)
 
+
 # Nota de rodapé, fora de qualquer aba (aparece nas três) — Streamlit
 # Community Cloud "adormece" apps sem acesso recente. Diferente do que se
 # poderia supor, não é uma tela em branco automática: a plataforma mostra
@@ -2647,6 +2658,59 @@ with aba_carteira:
 # oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
 # Sem esse aviso, o clique extra pareceria um link quebrado.
 st.divider()
+
+
+def _rodape_da_barra_lateral() -> None:
+    """Data da última atualização do screener (a `data_busca` do arquivo de referência, a mesma
+    do cartão "Atualizado em") e o link do repositório."""
+    macro = carregar_macro_referencia()
+    with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
+        if macro is not None:
+            st.caption(TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(macro["data_busca"])))
+        st.markdown(f"[{TEXTO_RODAPE_LINK_REPOSITORIO}]({URL_REPOSITORIO})")
+
+
+_paginas = {
+    CHAVE_BARRA_ANALISAR: st.Page(
+        pagina_analisar,
+        title=TITULO_PAGINA_ANALISAR,
+        icon=ICONE_PAGINA_ANALISAR,
+        url_path=URL_PAGINA_ANALISAR,
+        default=True,
+    ),
+    CHAVE_BARRA_SCREENER: st.Page(
+        pagina_screener,
+        title=TITULO_PAGINA_SCREENER,
+        icon=ICONE_PAGINA_SCREENER,
+        url_path=URL_PAGINA_SCREENER,
+    ),
+    CHAVE_BARRA_CARTEIRA: st.Page(
+        pagina_carteira,
+        title=TITULO_PAGINA_CARTEIRA,
+        icon=ICONE_PAGINA_CARTEIRA,
+        url_path=URL_PAGINA_CARTEIRA,
+    ),
+}
+_ROTULOS_DO_MENU = [
+    (TITULO_PAGINA_ANALISAR, ICONE_PAGINA_ANALISAR),
+    (TITULO_PAGINA_SCREENER, ICONE_PAGINA_SCREENER),
+    (TITULO_PAGINA_CARTEIRA, ICONE_PAGINA_CARTEIRA),
+]
+# Menu próprio (um bloco por página), no lugar do menu padrão do Streamlit.
+pagina_atual = st.navigation(list(_paginas.values()), position="hidden")
+_blocos_barra: dict[str, DeltaGenerator] = {}
+for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_MENU, strict=True):
+    _ativa = _pagina is pagina_atual
+    _blocos_barra[_chave] = st.sidebar.container(
+        border=True, key=_chave + (SUFIXO_BARRA_ATIVA if _ativa else "")
+    )
+    with _blocos_barra[_chave]:
+        st.page_link(_pagina, label=_titulo, icon=_icone)
+# A caixa da ação e o Buscar entram no bloco da análise, só quando a página de análise roda.
+_bloco_barra_analisar = _blocos_barra[CHAVE_BARRA_ANALISAR]
+pagina_atual.run()
+_rodape_da_barra_lateral()
+
 st.caption(
     'Hospedado no Streamlit Community Cloud — se o app estiver "dormindo", '
     "vai aparecer uma tela pedindo um clique pra acordar; depois disso, "

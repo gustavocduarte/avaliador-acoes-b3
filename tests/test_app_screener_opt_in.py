@@ -11,10 +11,12 @@ from avaliador_b3 import screener as screener_mod
 from avaliador_b3.config import (
     TEXTO_SCREENER_AINDA_NAO_GERADO,
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
+    TITULO_PAGINA_SCREENER,
     VARIAVEL_PERMITIR_RODAR_SCREENER,
 )
 from avaliador_b3.screener import COLUNAS_RESULTADO
 from tests import test_app_main as app
+from tests.helpers_app import abrir_pagina
 
 ROTULO_BOTAO = "Rodar screener agora"
 DATA_BUSCA = pd.Timestamp("2026-10-03 22:30")
@@ -62,7 +64,7 @@ def _abrir():
     at = AppTest.from_file(app.CAMINHO_APP)
     # Isola o teste de um .streamlit/secrets.toml local com o opt-in ligado.
     at.secrets[VARIAVEL_PERMITIR_RODAR_SCREENER] = False
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
     assert not at.exception
     return at
 
@@ -145,7 +147,7 @@ def test_secret_com_o_mesmo_nome_liga_ou_desliga_o_botao(
 ):
     at = AppTest.from_file(app.CAMINHO_APP)
     at.secrets[VARIAVEL_PERMITIR_RODAR_SCREENER] = valor
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     assert (ROTULO_BOTAO in _rotulos_dos_botoes(at)) is aparece

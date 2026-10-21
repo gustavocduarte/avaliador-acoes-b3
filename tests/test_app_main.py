@@ -37,6 +37,8 @@ from avaliador_b3.config import (
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TICKER_PETROLEO_BRENT,
+    TITULO_PAGINA_CARTEIRA,
+    TITULO_PAGINA_SCREENER,
     VARIAVEL_PERMITIR_RODAR_SCREENER,
     YIELD_MINIMO_BAZIN,
 )
@@ -45,6 +47,7 @@ from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning
+from tests.helpers_app import abrir_pagina
 
 # Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
 # execução (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não é uma
@@ -1461,7 +1464,7 @@ def test_caption_screener_topo_e_curta(monkeypatch):
     _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     captions = [
@@ -1485,7 +1488,7 @@ def test_expander_como_ler_tabela_existe(monkeypatch):
     _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     rotulos_expander = [e.label for e in at.expander]
@@ -1502,7 +1505,7 @@ def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
     _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     blocos = [m.value for m in at.markdown if "**Potencial**" in m.value and "**Aviso**" in m.value]
@@ -1513,7 +1516,7 @@ def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
         "abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
         "combinado é a média simples de Graham, Bazin e FCD aplicáveis, com "
         "pesos iguais por simplicidade — veja 'Como funciona esse cálculo?' "
-        "na aba Analisar uma ação. A tabela vem ordenada do maior para o "
+        "na página Analisar uma ação. A tabela vem ordenada do maior para o "
         "menor potencial." in bloco
     )
     assert (
@@ -1533,7 +1536,7 @@ def test_expander_como_ler_tabela_explica_coluna_reinvestimento(monkeypatch):
     _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     blocos = [
@@ -2650,7 +2653,7 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     assert not [e.value for e in at.error if "Nenhum dos três métodos" in e.value]
@@ -2701,7 +2704,7 @@ def test_linha_de_destaque_do_screener(monkeypatch, tmp_path):
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     assert _metrica_por_label(at, "Ações no universo").value == "3"
@@ -2740,7 +2743,7 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkey
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
 
@@ -2786,7 +2789,7 @@ def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monk
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     avisos = [w.value for w in at.warning if "ação(ões) com potencial fora do comum" in w.value]
@@ -2826,7 +2829,7 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     botao_screener = next(b for b in at.button if b.label == "Rodar screener agora")
     botao_screener.click().run(timeout=60)
@@ -2866,7 +2869,7 @@ def test_botao_screener_mostra_aviso_na_tela_quando_bcb_falha(monkeypatch):
     monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     botao_screener = next(b for b in at.button if b.label == "Rodar screener agora")
     with pytest.warns(MacroIndisponivelWarning, match="Selic/IPCA indisponíveis"):
@@ -2899,7 +2902,7 @@ def test_botao_screener_rodada_rejeitada_mostra_o_motivo_e_o_arquivo_rejeitado(m
     monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
     next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
 
     assert not at.exception
@@ -2925,7 +2928,7 @@ def test_botao_screener_rodada_aceita_lista_as_acoes_com_falha_de_fonte(monkeypa
     monkeypatch.setattr("avaliador_b3.screener.rodar_screener", rodar_screener_falso)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
     next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
 
     assert not at.exception
@@ -2943,7 +2946,7 @@ def test_botao_screener_rodada_sem_falhas_mostra_so_a_mensagem_de_conclusao(monk
     monkeypatch.setattr("avaliador_b3.screener.rodar_screener", lambda *a, **k: pd.DataFrame())
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
     next(b for b in at.button if b.label == "Rodar screener agora").click().run(timeout=60)
 
     assert not at.exception
@@ -2963,7 +2966,7 @@ def test_expander_como_ler_tabela_explica_dividendos_vs_historico_vazio(monkeypa
     _bloquear_buscas_de_rede_por_ticker(monkeypatch)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     blocos = [
@@ -3025,10 +3028,10 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho_screener_falso)
 
     def _aba_carteira(at):
-        return [tab for tab in at.tabs if tab.label == "Simulador de carteira"][0]
+        return at.main
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_CARTEIRA)
     assert not at.exception
 
     _aba_carteira(at).multiselect[0].set_value(["DOBR4", "SEMC3", "NEGA4"])
@@ -3262,7 +3265,7 @@ def test_tabela_do_screener_mostra_os_metodos_com_os_nomes_da_tela(monkeypatch, 
     monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
 
     at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
+    abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
     tabela = [df.value for df in at.dataframe if "desconto_percentual" in df.value.columns][0]

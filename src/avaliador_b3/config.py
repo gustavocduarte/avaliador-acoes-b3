@@ -1387,6 +1387,35 @@ LIMITE_DIVERGENCIA_METODOS_ALTA = 0.50
 # liquidez corrente abaixo do limite em amarelo.
 LIMITE_SINAL_INDICADOR = 0.0
 
+# Navegação na barra lateral: título, ícone Material e caminho de URL de cada página (a de
+# análise é a padrão, na raiz).
+TITULO_PAGINA_ANALISAR = "Analisar uma ação"
+TITULO_PAGINA_SCREENER = "Screener"
+TITULO_PAGINA_CARTEIRA = "Simulador de carteira"
+ICONE_PAGINA_ANALISAR = ":material/search:"
+ICONE_PAGINA_SCREENER = ":material/table_chart:"
+ICONE_PAGINA_CARTEIRA = ":material/account_balance_wallet:"
+URL_PAGINA_ANALISAR = ""
+URL_PAGINA_SCREENER = "screener"
+URL_PAGINA_CARTEIRA = "simulador"
+URL_REPOSITORIO = "https://github.com/gustavocduarte/avaliador-acoes-b3"
+TEXTO_RODAPE_SCREENER_ATUALIZADO = "Screener atualizado em {data}"
+TEXTO_RODAPE_LINK_REPOSITORIO = "Código no GitHub"
+
+# Blocos da barra lateral: o `key` vira a classe `.st-key-<key>` usada pelo CSS; o bloco da
+# página aberta ganha o sufixo de destaque.
+CHAVE_BARRA_ANALISAR = "barra_analisar"
+CHAVE_BARRA_SCREENER = "barra_screener"
+CHAVE_BARRA_CARTEIRA = "barra_simulador"
+CHAVE_BARRA_RODAPE = "barra_rodape"
+SUFIXO_BARRA_ATIVA = "_ativa"
+
+# Chaves do session_state da ação escolhida na página de análise: as dos widgets e a cópia que
+# sobrevive a uma troca de página.
+CHAVE_DROPDOWN_TICKER = "dropdown_ticker_analisar"
+CHAVE_TEXTO_TICKER = "texto_ticker_analisar"
+CHAVE_TICKER_GUARDADO = "ticker_guardado_analisar"
+
 # Gráfico de valor justo: o nome do método vai dentro da barra se ela tiver esta fração do eixo por
 # caractere (mais a folga); senão fica no eixo, à esquerda.
 LARGURA_CARACTERE_ROTULO_BARRA = 0.017
@@ -1451,7 +1480,7 @@ TEXTO_EXPANDER_SIMULADOR = (
     "justo, em reais de hoje, sem prazo e sem contar dividendos. Valor "
     "justo zero ou negativo conta como perda total (−100%).\n\n"
     "O cenário base é o valor combinado, a mesma média simples explicada "
-    "na aba Analisar uma ação. O pessimista e o otimista são o menor e o "
+    "na página Analisar uma ação. O pessimista e o otimista são o menor e o "
     "maior valor entre os métodos aplicáveis — e o menor pode ser o preço "
     "teto do Bazin, que não é uma estimativa de valor, e sim o máximo a "
     "pagar pelo retorno em dividendos."

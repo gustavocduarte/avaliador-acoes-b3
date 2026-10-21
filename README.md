@@ -73,14 +73,17 @@ O escopo é só o das ações do Ibovespa (as principais da B3): fundos imobili�
   desconta pelo WACC (ver a metodologia abaixo).
 - **Combinado** — média simples só dos métodos que se aplicam àquela ação.
 
-O dashboard tem três abas:
+O dashboard tem três páginas, escolhidas no menu da barra lateral (a caixa de seleção da ação e o
+botão Buscar ficam na barra lateral, na página de análise; o rodapé mostra a data da última
+atualização do screener e o link do repositório). As capturas de tela ficam para a etapa final
+do redesenho.
 
 - **Analisar uma ação** — valor justo pelos três métodos e o combinado contra o
   preço atual, saúde financeira (ROE, margem, dívida, valor de mercado e de
   firma), governança, comportamento da ação (volume, volatilidade, Beta),
   preço contra o Ibovespa, histórico de dividendos, **Comparação setorial** e
   correlação com fatores externos (petróleo, câmbio e risco geopolítico).
-- **Screener (todas as ações)** — a mesma avaliação para todo o Ibovespa, com
+- **Screener** — a mesma avaliação para todo o Ibovespa, com
   potencial, divergência entre métodos, avisos e a proporção do caixa
   operacional reinvestida. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
@@ -192,7 +195,7 @@ Rodar o dashboard, a partir da raiz do repositório:
 streamlit run src/avaliador_b3/app/main.py
 ```
 
-O botão "Rodar screener agora" (aba Screener) **não aparece por padrão**: no app publicado,
+O botão "Rodar screener agora" (página Screener) **não aparece por padrão**: no app publicado,
 qualquer visitante poderia disparar uma rodada de ~228 requisições, então o screener só é
 atualizado pelo workflow. Para habilitá-lo na sua máquina, ligue a variável de ambiente
 `AVALIADOR_B3_PERMITIR_RODAR_SCREENER` (valores aceitos: `1`, `true`, `yes`, `sim` ou `on`)
@@ -216,7 +219,7 @@ Alternativa, sem repetir a variável a cada sessão: crie o arquivo `.streamlit/
 AVALIADOR_B3_PERMITIR_RODAR_SCREENER = true
 ```
 
-Sem o opt-in, a aba mostra que o workflow atualiza o screener nos dias úteis, com a data da
+Sem o opt-in, a página mostra que o workflow atualiza o screener nos dias úteis, com a data da
 última atualização.
 
 Rodar os testes e as verificações de código (as mesmas do CI):
