@@ -1470,10 +1470,9 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
     )
 
 
-def test_caption_screener_topo_e_curta(monkeypatch):
-    # A legenda do topo é um parágrafo curto — o detalhe de cada coluna fica no
-    # expander "Como ler esta tabela" (ver testes abaixo), pra não crescer sem
-    # limite a cada coluna nova.
+def test_ranking_tem_o_texto_de_abertura_no_ponto_de_interrogacao_do_titulo(monkeypatch):
+    # O parágrafo de abertura não é mais uma legenda no topo: vai para o "?" do título da tabela,
+    # e o detalhe de cada coluna fica no expander "Como ler esta tabela", abaixo da tabela.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -1484,17 +1483,13 @@ def test_caption_screener_topo_e_curta(monkeypatch):
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
-    captions = [
-        c.value
-        for c in at.caption
-        if "Ranking pelo potencial de valorização até o valor combinado" in c.value
-    ]
-    assert len(captions) == 1
-    assert captions[0] == (
-        "Ranking pelo potencial de valorização até o valor combinado (média "
-        "simples dos métodos aplicáveis a cada ação). Veja abaixo como ler "
-        "cada coluna."
+    assert not [c for c in at.caption if c.value.startswith("Ranking pelo potencial")]
+    cabecalho = next(
+        h.proto.body for h in at.get("html") if "Ranking por potencial" in h.proto.body
     )
+    assert 'class="ab-ajuda"' in cabecalho
+    assert "Ranking pelo potencial de valorização até o valor combinado" in cabecalho
+    assert "Como ler esta tabela" in [e.label for e in at.expander]
 
 
 def test_expander_como_ler_tabela_existe(monkeypatch):
@@ -2788,7 +2783,7 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
     # No fim da tabela, com potencial indisponível e o motivo na coluna de observação.
     assert list(tabela["ticker"]) == ["NORM4", "SEMM3"]
     linha_sem_metodo = tabela.loc[tabela["ticker"] == "SEMM3"].iloc[0]
-    assert linha_sem_metodo["desconto_percentual"] == "N/D"
+    assert pd.isna(linha_sem_metodo["desconto_percentual"])
     assert linha_sem_metodo["erro"].startswith("Nenhum dos três métodos")
     rotulos = json.loads(tabelas[0].proto.columns)
     assert rotulos["erro"]["label"] == "Observação"
@@ -2865,7 +2860,7 @@ def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs)
     raise RuntimeError(f"série {codigo} não mockada neste teste")
 
 
-def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkeypatch, tmp_path):
+def test_tabela_screener_traz_os_numeros_de_verdade_para_ordenar(monkeypatch, tmp_path):
     # Ver comentário central perto de `_tabela_formatada_pt_br` em
     # app/main.py pro porquê (NumberColumn sem vírgula brasileira em
     # locale nenhum) e o trade-off aceito (ordenar pelo cabeçalho dessas
@@ -2891,12 +2886,13 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkey
     assert len(tabelas_com_preco) == 1
     tabela = tabelas_com_preco[0]
 
-    # texto, não numérico — a coluna virou texto pré-formatado.
-    assert pd.api.types.is_string_dtype(tabela["preco_atual"])
+    # Números de verdade (a ordenação do cabeçalho é numérica); o "R$ 40,00" e o "+100,0%" vêm da
+    # formatação do Styler (ver tests/test_app_screener_tabela.py).
+    assert pd.api.types.is_float_dtype(tabela["preco_atual"])
     linha_dobr4 = tabela.loc[tabela["ticker"] == "DOBR4"].iloc[0]
-    assert linha_dobr4["preco_atual"] == "R$ 40,00"
-    assert linha_dobr4["valor_combinado"] == "R$ 80,00"
-    assert linha_dobr4["desconto_percentual"] == "100,0%"
+    assert linha_dobr4["preco_atual"] == 40.0
+    assert linha_dobr4["valor_combinado"] == 80.0
+    assert linha_dobr4["desconto_percentual"] == 100.0
 
 
 def test_cartao_de_atencao_mostra_o_texto_do_aviso_no_lugar_da_faixa_amarela(monkeypatch, tmp_path):

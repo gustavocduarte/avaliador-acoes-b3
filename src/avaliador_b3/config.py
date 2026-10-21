@@ -1500,6 +1500,26 @@ TEXTO_MEDIANA_NO_GRAFICO = "mediana {mediana}"
 TITULO_EIXO_POTENCIAL = "Potencial (%)"
 TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO = "Nenhuma ação com potencial para mostrar."
 TITULO_ATENCAO = "Atenção"
+TITULO_RANKING_SCREENER = "Ranking por potencial"
+TEXTO_AJUDA_RANKING_SCREENER = (
+    "Ranking pelo potencial de valorização até o valor combinado (média simples dos métodos "
+    "aplicáveis a cada ação), do maior para o menor; as sem valor combinado ficam no fim. Veja "
+    '"Como ler esta tabela", abaixo da tabela.'
+)
+TEXTO_SEM_DADO_NA_TABELA = "—"
+ROTULO_COLUNAS_RANKING_SCREENER = {
+    "ticker": "Ticker",
+    "segmento_setorial": "Setor",
+    "preco_atual": "Preço atual",
+    "valor_combinado": "Valor combinado",
+    "desconto_percentual": ROTULO_POTENCIAL,
+    "erro": "Observação",
+    "divergencia_percentual_metodos": "Divergência",
+    "bazin_razao_dividendos_percentual": "Dividendos vs. histórico",
+    "proporcao_reinvestimento_percentual": "Reinvestimento",
+    "metodos_utilizados": "Métodos utilizados",
+    "aviso_desconto_extremo": "Aviso",
+}
 TITULO_CARTAO_SEM_METODO = "Sem método aplicável"
 TEXTO_CARTAO_SEM_METODO = "{quantidade} ações sem nenhum método aplicável: {tickers}."
 TEXTO_NENHUM_ALERTA = "Nenhum alerta nesta rodada."

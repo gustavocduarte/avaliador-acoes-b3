@@ -218,7 +218,7 @@ def test_abrir_pagina_mostra_um_elemento_caracteristico_de_cada_pagina():
     assert any(subheader.value == "PETR4" for subheader in at.subheader)
 
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
-    assert any(c.value.startswith("Ranking pelo potencial") for c in at.caption)
+    assert any("Ranking por potencial" in h.proto.body for h in at.get("html"))
 
     abrir_pagina(at, TITULO_PAGINA_CARTEIRA)
     assert any(c.value == TEXTO_ABERTURA_SIMULADOR for c in at.caption)

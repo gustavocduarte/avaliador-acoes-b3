@@ -20,6 +20,7 @@ import inspect
 
 import pytest
 import requests
+import streamlit as st
 import yfinance as yf
 
 from avaliador_b3 import config, screener
@@ -110,6 +111,15 @@ def _verificar_data_intocado():
             f"A suíte alterou {diretorio}: criados={criados} apagados={apagados} "
             f"alterados={alterados}"
         )
+
+
+@pytest.fixture(autouse=True)
+def _limpar_cache_do_streamlit():
+    """`st.cache_data` guarda o resultado numa memória global do processo: sem limpar, o universo
+    falso de um teste de tela apareceria como se fosse o do teste seguinte."""
+    st.cache_data.clear()
+    yield
+    st.cache_data.clear()
 
 
 def _rede_bloqueada(metodo: str, url: str):

@@ -100,6 +100,7 @@ from avaliador_b3.config import (
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_ANO_PARCIAL,
+    ROTULO_COLUNAS_RANKING_SCREENER,
     ROTULO_COMBINADO_GRAFICO,
     ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
     ROTULO_FILTRO_METODOS,
@@ -129,6 +130,7 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
+    TEXTO_AJUDA_RANKING_SCREENER,
     TEXTO_AJUDA_TRADINGVIEW,
     TEXTO_CARTAO_SEM_METODO,
     TEXTO_COMPLEMENTO_SEM_METODO,
@@ -167,6 +169,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
+    TEXTO_SEM_DADO_NA_TABELA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
@@ -184,6 +187,7 @@ from avaliador_b3.config import (
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
+    TITULO_RANKING_SCREENER,
     TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_MEDIANA_POTENCIAL,
@@ -275,15 +279,16 @@ MENSAGEM_MACRO_INDISPONIVEL_CURTA = "Selic/IPCA indisponíveis agora — veja o 
 
 COLUNAS_TABELA_SCREENER = [
     "ticker",
+    "segmento_setorial",
     "preco_atual",
     "valor_combinado",
     "desconto_percentual",
+    "erro",
     "divergencia_percentual_metodos",
     "bazin_razao_dividendos_percentual",
     "proporcao_reinvestimento_percentual",
     "metodos_utilizados",
     "aviso_desconto_extremo",
-    "erro",
 ]
 
 COLUNAS_TABELA_CARTEIRA = [
@@ -2797,43 +2802,62 @@ def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def pagina_screener() -> None:
-    st.caption(
-        "Ranking pelo potencial de valorização até o valor combinado (média "
-        "simples dos métodos aplicáveis a cada ação). Veja abaixo como ler "
-        "cada coluna."
-    )
-    with st.expander("Como ler esta tabela"):
-        st.markdown(
-            "- **Potencial** — quanto o valor justo combinado está acima (+) "
-            "ou abaixo (-) do preço atual (valor justo ÷ preço - 1). O valor "
-            "combinado é a média simples de Graham, Bazin e FCD aplicáveis, "
-            "com pesos iguais por simplicidade — veja 'Como funciona esse "
-            "cálculo?' na página Analisar uma ação. A tabela vem ordenada do "
-            "maior para o menor potencial.\n"
-            "- **Divergência** — mostra o quanto os métodos discordam entre "
-            "si. Divergência vazia significa que só um método se aplica "
-            "àquela ação.\n"
-            "- **Dividendos vs. histórico** — mostra os dividendos dos "
-            "últimos 12 meses em relação à mediana dos 5 anos anteriores; "
-            "valores bem acima de 100% deixam o preço teto do Bazin menos "
-            "confiável. Dividendos vs. histórico vazio significa que o Bazin "
-            "não se aplica àquela ação (ou, raramente, que os anos "
-            "anteriores não têm pagamento para comparar).\n"
-            "- **Reinvestimento** — mostra quanto do caixa gerado pela "
-            "operação foi para o investimento em imobilizado e intangível "
-            "(o mesmo usado no cálculo do FCD) no ano, sobre o mesmo caixa "
-            "operacional que o FCD usa (com os juros somados de volta e o ajuste de "
-            "risco sacado); valores altos puxam o FCD para baixo. Vazio quando "
-            "o FCD não se aplica, o investimento não foi identificado ou o "
-            "caixa operacional foi negativo.\n"
-            "- **Aviso** — aparece quando o potencial está fora da faixa "
-            "considerada confiável (valor justo muito acima ou muito abaixo "
-            "do preço); a causa provável varia de uma ação para outra, "
-            "conforme o texto de cada aviso. Vazio significa potencial dentro "
-            "da faixa normal."
-        )
+def _cor_do_potencial(valor: float) -> str:
+    """Estilo CSS da célula do potencial: verde acima de zero, rosa abaixo."""
+    if pd.isna(valor) or valor == LIMITE_SINAL_INDICADOR:
+        return ""
+    return f"color: {COR_POSITIVO if valor > LIMITE_SINAL_INDICADOR else COR_NEGATIVO}"
 
+
+def _tabela_ranking_screener(tabela: pd.DataFrame) -> tuple[pd.io.formats.style.Styler, list[str]]:
+    """Tabela do ranking: ordenada por potencial (as sem valor combinado no fim), com os números de
+    verdade (a ordenação do cabeçalho continua numérica) e a apresentação em pt-BR feita pelo
+    Styler; o potencial leva sinal e cor. Devolve o Styler e as colunas a mostrar, na ordem; a do
+    setor só existe se o arquivo do screener a trouxer."""
+    colunas = [c for c in COLUNAS_TABELA_SCREENER if c in tabela.columns]
+    dados = tabela.sort_values("desconto_percentual", ascending=False, na_position="last")[colunas]
+    dados = dados.assign(
+        metodos_utilizados=dados["metodos_utilizados"].map(_nomes_dos_metodos_do_csv)
+    )
+    if "segmento_setorial" in dados.columns:
+        dados = dados.assign(
+            segmento_setorial=dados["segmento_setorial"].map(
+                lambda segmento: _rotulo_segmento_setorial(segmento) if pd.notna(segmento) else None
+            )
+        )
+    # No Streamlit 1.63 a célula nula de coluna numérica aparece como "None" (cinza), mesmo com
+    # `na_rep` do Styler ou `NumberColumn`; o "—" só vale para as células de texto.
+    sem_dado = TEXTO_SEM_DADO_NA_TABELA
+    estilo = (
+        dados.style.format(na_rep=sem_dado)
+        .format(_fmt_bilhoes, subset=["preco_atual", "valor_combinado"], na_rep=sem_dado)
+        .format(_fmt_potencial, subset=["desconto_percentual"], na_rep=sem_dado)
+        .format(
+            "{:.0f}%",
+            subset=[
+                "divergencia_percentual_metodos",
+                "bazin_razao_dividendos_percentual",
+                "proporcao_reinvestimento_percentual",
+            ],
+            na_rep=sem_dado,
+        )
+        .map(_cor_do_potencial, subset=["desconto_percentual"])
+    )
+    return estilo, colunas
+
+
+def _configuracao_colunas_ranking(colunas: list[str]) -> dict:
+    """`column_config` do ranking: rótulo de cada coluna e a explicação do potencial."""
+    configuracao: dict = {}
+    for coluna in colunas:
+        ajuda = TOOLTIP_POTENCIAL_COLUNA if coluna == "desconto_percentual" else None
+        configuracao[coluna] = st.column_config.Column(
+            ROTULO_COLUNAS_RANKING_SCREENER[coluna], help=ajuda
+        )
+    return configuracao
+
+
+def pagina_screener() -> None:
     rodar_screener_permitido = _rodar_screener_permitido()
 
     if rodar_screener_permitido and st.session_state.pop(CHAVE_RODAR_SCREENER_SOLICITADO, False):
@@ -2953,16 +2977,8 @@ def pagina_screener() -> None:
             _titulo_painel(TITULO_ATENCAO)
             st.html(_html_atencao_screener(tabela_screener))
 
-        tabela_screener_fmt, colunas_screener_fmt = _tabela_formatada_pt_br(
-            tabela_screener,
-            colunas_moeda={"preco_atual": "Preço atual", "valor_combinado": "Valor combinado"},
-            colunas_percentual={"desconto_percentual": ROTULO_POTENCIAL},
-            ajudas={"desconto_percentual": TOOLTIP_POTENCIAL_COLUNA},
-        )
-        tabela_screener_fmt["metodos_utilizados"] = tabela_screener_fmt["metodos_utilizados"].map(
-            _nomes_dos_metodos_do_csv
-        )
         with st.container(border=True, key="painel_tabela_screener"):
+            _titulo_painel(TITULO_RANKING_SCREENER, TEXTO_AJUDA_RANKING_SCREENER)
             st.caption(
                 TEXTO_MOSTRANDO_ACOES.format(
                     mostradas=len(tabela_exibida), total=len(tabela_screener)
@@ -2970,39 +2986,45 @@ def pagina_screener() -> None:
             )
             if tabela_exibida.empty:
                 st.info(TEXTO_NENHUMA_ACAO_NOS_FILTROS)
+            tabela_ranking, colunas_ranking = _tabela_ranking_screener(tabela_exibida)
             st.dataframe(
-                tabela_screener_fmt.loc[tabela_exibida.index],
-                column_order=COLUNAS_TABELA_SCREENER,
-                column_config={
-                    "ticker": "Ticker",
-                    **colunas_screener_fmt,
-                    # NUMÉRICA de propósito, não texto pré-formatado como as
-                    # demais colunas de `colunas_screener_fmt` acima — sem
-                    # casa decimal não existe o problema de vírgula brasileira
-                    # que forçou o resto da tabela a virar texto (ver
-                    # `_tabela_formatada_pt_br`), então clicar no cabeçalho
-                    # continua ordenando numericamente de verdade, que é o
-                    # motivo desta coluna existir (filtrar por concordância
-                    # entre os métodos).
-                    "divergencia_percentual_metodos": st.column_config.NumberColumn(
-                        "Divergência", format="%d%%"
-                    ),
-                    # NUMÉRICA pelo mesmo motivo da Divergência acima — ordenar
-                    # pelo cabeçalho precisa continuar numérico de verdade.
-                    "bazin_razao_dividendos_percentual": st.column_config.NumberColumn(
-                        "Dividendos vs. histórico", format="%d%%"
-                    ),
-                    # NUMÉRICA pelo mesmo motivo acima.
-                    "proporcao_reinvestimento_percentual": st.column_config.NumberColumn(
-                        "Reinvestimento", format="%d%%"
-                    ),
-                    "metodos_utilizados": "Métodos utilizados",
-                    "aviso_desconto_extremo": "Aviso",
-                    "erro": "Observação",
-                },
+                tabela_ranking,
+                column_order=colunas_ranking,
+                column_config=_configuracao_colunas_ranking(colunas_ranking),
                 hide_index=True,
                 width="stretch",
             )
+
+    with st.expander("Como ler esta tabela"):
+        st.markdown(
+            "- **Potencial** — quanto o valor justo combinado está acima (+) "
+            "ou abaixo (-) do preço atual (valor justo ÷ preço - 1). O valor "
+            "combinado é a média simples de Graham, Bazin e FCD aplicáveis, "
+            "com pesos iguais por simplicidade — veja 'Como funciona esse "
+            "cálculo?' na página Analisar uma ação. A tabela vem ordenada do "
+            "maior para o menor potencial.\n"
+            "- **Divergência** — mostra o quanto os métodos discordam entre "
+            "si. Divergência vazia significa que só um método se aplica "
+            "àquela ação.\n"
+            "- **Dividendos vs. histórico** — mostra os dividendos dos "
+            "últimos 12 meses em relação à mediana dos 5 anos anteriores; "
+            "valores bem acima de 100% deixam o preço teto do Bazin menos "
+            "confiável. Dividendos vs. histórico vazio significa que o Bazin "
+            "não se aplica àquela ação (ou, raramente, que os anos "
+            "anteriores não têm pagamento para comparar).\n"
+            "- **Reinvestimento** — mostra quanto do caixa gerado pela "
+            "operação foi para o investimento em imobilizado e intangível "
+            "(o mesmo usado no cálculo do FCD) no ano, sobre o mesmo caixa "
+            "operacional que o FCD usa (com os juros somados de volta e o ajuste de "
+            "risco sacado); valores altos puxam o FCD para baixo. Vazio quando "
+            "o FCD não se aplica, o investimento não foi identificado ou o "
+            "caixa operacional foi negativo.\n"
+            "- **Aviso** — aparece quando o potencial está fora da faixa "
+            "considerada confiável (valor justo muito acima ou muito abaixo "
+            "do preço); a causa provável varia de uma ação para outra, "
+            "conforme o texto de cada aviso. Vazio significa potencial dentro "
+            "da faixa normal."
+        )
 
 
 def pagina_carteira() -> None:
