@@ -2899,11 +2899,9 @@ def test_tabela_screener_mostra_moeda_e_percentual_com_virgula_brasileira(monkey
     assert linha_dobr4["desconto_percentual"] == "100,0%"
 
 
-def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monkeypatch, tmp_path):
-    # A faixa amarela deve citar o nome visível da coluna ("Aviso", ver
-    # column_config em app/main.py), não o nome interno do CSV
-    # ("aviso_desconto_extremo") -- quem lesse a faixa não acharia nenhuma coluna
-    # com esse nome na tela.
+def test_cartao_de_atencao_mostra_o_texto_do_aviso_no_lugar_da_faixa_amarela(monkeypatch, tmp_path):
+    # Cada ação com aviso ganha um cartão em "Atenção", com o texto do aviso; a faixa amarela
+    # "N ação(ões) com potencial fora do comum" saiu da página.
     import avaliador_b3.screener as screener_mod
     from avaliador_b3.screener import COLUNAS_RESULTADO
 
@@ -2932,14 +2930,11 @@ def test_faixa_amarela_desconto_extremo_referencia_o_nome_visivel_da_coluna(monk
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
-    avisos = [w.value for w in at.warning if "ação(ões) com potencial fora do comum" in w.value]
-    assert len(avisos) == 1
-    assert avisos[0] == (
-        "1 ação(ões) com potencial fora do comum (valor justo muito acima ou "
-        'muito abaixo do preço) — veja a coluna "Aviso" na tabela: a causa '
-        "provável varia de uma ação para outra."
-    )
-    assert "aviso_desconto_extremo" not in avisos[0]
+    assert not [w for w in at.warning if "potencial fora do comum" in w.value]
+    atencao = next(h.proto.body for h in at.get("html") if "ab-atencao" in h.proto.body)
+    assert "EXTR3" in atencao and "+200,0%" in atencao
+    assert "calculado só com Graham e/ou Bazin" in atencao
+    assert "aviso_desconto_extremo" not in atencao
 
 
 def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkeypatch):

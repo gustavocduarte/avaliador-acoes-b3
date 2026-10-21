@@ -1296,6 +1296,13 @@ AVISO_DESCONTO_EXTREMO_GENERICO = (
     "Potencial fora do comum — confira os valores individuais de cada "
     "método antes de tirar qualquer conclusão."
 )
+# Linha curta de cada tipo de aviso nos cartões "Atenção" do Screener (o texto completo vai no
+# "?" do cartão). Um aviso de outro texto (por exemplo, de um arquivo antigo) usa o começo dele.
+TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO = {
+    AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD: "Potencial extremo: confira as premissas do FCD",
+    AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD: "Potencial extremo: confira Graham e Bazin",
+    AVISO_DESCONTO_EXTREMO_GENERICO: "Potencial fora do comum: confira os métodos",
+}
 
 # Aviso do cartão do FCD quando o valor é extremo (ver `modelos.aviso_fcd`). Dispara com o FCD
 # a partir de 3 vezes o preço (os mesmos +200% do aviso do Screener) ou positivo mas até 10% do
@@ -1365,6 +1372,7 @@ AVISO_FCD_FECHAMENTO_ALTO = "Não é necessariamente uma oportunidade."
 # coluna e tooltips do Screener, da comparação setorial e dos cartões de
 # Valor Justo. A coluna `desconto_percentual` do CSV mantém o nome.
 # Subtítulo do app, logo abaixo do título.
+TITULO_APP = "Avaliador de Ações da B3"
 SUBTITULO_APP = (
     "Valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
     "comparado ao preço atual. Estimativas de modelos com premissas simplificadas, para "
@@ -1478,6 +1486,23 @@ TOOLTIP_MEDIANA_POTENCIAL = (
 )
 ROTULO_KPI_ABAIXO_DO_VALOR_JUSTO = "Abaixo do valor justo"
 TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO = "ações com potencial acima de zero"
+# Distribuição do potencial e alertas do Screener.
+TITULO_DISTRIBUICAO_POTENCIAL = "Distribuição do potencial"
+TOOLTIP_DISTRIBUICAO_POTENCIAL = (
+    "Quantas das ações mostradas estão em cada faixa de potencial: faixas de 20 pontos de -100% "
+    "a +100%, e uma só para o que passa de +100% (o que fica abaixo de -100% entra na primeira "
+    "faixa). Rosa abaixo de zero, verde acima. A linha tracejada é a mediana."
+)
+FAIXA_POTENCIAL_LARGURA = 20
+FAIXA_POTENCIAL_LIMITE = 100
+TEXTO_FAIXA_ACIMA_DO_LIMITE = ">100%"
+TEXTO_MEDIANA_NO_GRAFICO = "mediana {mediana}"
+TITULO_EIXO_POTENCIAL = "Potencial (%)"
+TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO = "Nenhuma ação com potencial para mostrar."
+TITULO_ATENCAO = "Atenção"
+TITULO_CARTAO_SEM_METODO = "Sem método aplicável"
+TEXTO_CARTAO_SEM_METODO = "{quantidade} ações sem nenhum método aplicável: {tickers}."
+TEXTO_NENHUM_ALERTA = "Nenhum alerta nesta rodada."
 ROTULO_KPI_COM_FCD = "Com FCD aplicável"
 TEXTO_KPI_COM_FCD = "Os demais usam Graham e/ou Bazin"
 TEXTO_NENHUMA_ACAO_NOS_FILTROS = "Nenhuma ação passa pelos filtros."

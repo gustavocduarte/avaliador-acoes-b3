@@ -68,6 +68,8 @@ from avaliador_b3.config import (
     COR_TEXTO,
     COR_TEXTO_SECUNDARIO,
     CORRECOES_EXIBICAO_SEGMENTO_SETORIAL,
+    FAIXA_POTENCIAL_LARGURA,
+    FAIXA_POTENCIAL_LIMITE,
     FOLGA_ROTULO_BARRA,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
@@ -128,6 +130,7 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
     TEXTO_AJUDA_TRADINGVIEW,
+    TEXTO_CARTAO_SEM_METODO,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
@@ -135,6 +138,7 @@ from avaliador_b3.config import (
     TEXTO_DIVERGENCIA_NENHUM_METODO,
     TEXTO_DIVERGENCIA_UM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
+    TEXTO_FAIXA_ACIMA_DO_LIMITE,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
@@ -143,7 +147,9 @@ from avaliador_b3.config import (
     TEXTO_KPI_COM_FCD,
     TEXTO_KPI_SEM_METODO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
+    TEXTO_MEDIANA_NO_GRAFICO,
     TEXTO_MOSTRANDO_ACOES,
+    TEXTO_NENHUM_ALERTA,
     TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_OBSERVACOES_CORRELACAO,
@@ -163,14 +169,22 @@ from avaliador_b3.config import (
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
+    TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
     TEXTO_ULTIMO_DADO_GPR,
+    TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO,
     TICKER_PETROLEO_BRENT,
+    TITULO_APP,
+    TITULO_ATENCAO,
+    TITULO_CARTAO_SEM_METODO,
+    TITULO_DISTRIBUICAO_POTENCIAL,
+    TITULO_EIXO_POTENCIAL,
     TITULO_EXPANDER_SIMULADOR,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
+    TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_MEDIANA_POTENCIAL,
     TOOLTIP_POTENCIAL_CARTAO,
@@ -1390,6 +1404,19 @@ _CSS_DA_PAGINA = Template("""<style>
 .st-key-barra_rodape { background-color: transparent; }
 /* Rótulo de um grupo de filtros, igual ao dos widgets nativos do bloco. */
 .ab-rotulo-filtro { font-size: 14px; margin-bottom: .25rem; }
+/* Cabeçalho do app: título menor, divisória fina e menos espaço no topo da página. */
+[data-testid="stMainBlockContainer"] { padding-top: 4rem; }
+.ab-app-titulo { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.ab-app-divisoria { border-top: 1px solid $borda; margin: .25rem 0 .5rem; }
+/* Limites "mín." e "máx." do slider do potencial: o valor atual já diz se há filtro. */
+[class*="st-key-barra_"] [data-testid="stSliderTickBar"] { display: none; }
+/* Cartões de alerta do Screener. */
+.ab-atencao { display: flex; flex-direction: column; gap: .6rem; max-height: 20rem;
+  overflow-y: auto; }
+.ab-atencao-cartao { padding: .6rem .8rem; border: 1px solid $borda; border-left: 3px solid $alerta;
+  border-radius: 4px; }
+.ab-atencao-titulo { font-weight: 600; margin-bottom: .2rem; }
+.ab-atencao-texto { font-size: .85rem; color: $secundario; }
 .st-key-barra_rodape p, .st-key-barra_rodape a { font-size: 14px; }
 /* Classes `.ab-*`: números de destaque, títulos e pílulas. Se o Streamlit deixar de aceitar
    este bloco, o conteúdo continua na tela, só sem o estilo. */
@@ -1470,7 +1497,7 @@ _CSS_DA_PAGINA = Template("""<style>
 st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
 # Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
 st.html(_CSS_DA_PAGINA)
-st.title("Avaliador de Ações da B3")
+st.html(f'<div class="ab-app-titulo">{escape(TITULO_APP)}</div>')
 st.caption(SUBTITULO_APP)
 
 
@@ -2595,6 +2622,124 @@ def _html_kpis_screener(tabela: pd.DataFrame) -> str:
     return f'<div class="ab-kpis">{"".join(cartoes)}</div>'
 
 
+def _faixa_do_potencial(valor: float) -> int:
+    """Índice da faixa do potencial: 0 a 9 (de 20 em 20 pontos, de -100% a +100%) e 10 para o
+    que passa de +100%; o que fica abaixo de -100% entra na primeira."""
+    faixas = 2 * FAIXA_POTENCIAL_LIMITE // FAIXA_POTENCIAL_LARGURA
+    if valor > FAIXA_POTENCIAL_LIMITE:
+        return faixas
+    indice = int((valor + FAIXA_POTENCIAL_LIMITE) // FAIXA_POTENCIAL_LARGURA)
+    return min(max(indice, 0), faixas - 1)
+
+
+def _rotulos_das_faixas() -> list[str]:
+    limites = range(-FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LARGURA)
+    return [f"{i} a {i + FAIXA_POTENCIAL_LARGURA}%" for i in limites] + [
+        TEXTO_FAIXA_ACIMA_DO_LIMITE
+    ]
+
+
+def _figura_distribuicao_potencial(potencial: pd.Series) -> go.Figure:
+    """Histograma do potencial em faixas de 20 pontos (e uma faixa para o que passa de +100%),
+    com barras rosa abaixo de zero e verdes acima, uma linha fina no zero e a mediana tracejada."""
+    valores = potencial.dropna()
+    rotulos = _rotulos_das_faixas()
+    contagens = [0] * len(rotulos)
+    for valor in valores:
+        contagens[_faixa_do_potencial(valor)] += 1
+    faixas_negativas = FAIXA_POTENCIAL_LIMITE // FAIXA_POTENCIAL_LARGURA
+    cores = [COR_NEGATIVO if i < faixas_negativas else COR_POSITIVO for i in range(len(rotulos))]
+    figura = go.Figure(
+        go.Bar(
+            x=list(range(len(rotulos))),
+            y=contagens,
+            marker={"color": cores},
+            text=[str(c) if c else "" for c in contagens],
+            textposition="outside",
+            textfont={"color": COR_TEXTO},
+            cliponaxis=False,
+            customdata=rotulos,
+            hovertemplate="%{customdata}: %{y} ações<extra></extra>",
+        )
+    )
+    figura.add_vline(x=faixas_negativas - 0.5, line_width=1, line_color=COR_TEXTO_SECUNDARIO)
+    mediana = float(valores.median())
+    figura.add_vline(
+        x=_posicao_no_histograma(mediana),
+        line_dash="dash",
+        line_color=COR_ALERTA,
+        annotation_text=TEXTO_MEDIANA_NO_GRAFICO.format(mediana=_fmt_potencial(mediana)),
+        annotation_position="top",
+        annotation_font_color=COR_ALERTA,
+    )
+    # Rótulos nas bordas das faixas (-100 ... +80) e ">100" sob a última barra; o "%" vai no título.
+    bordas = range(-FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LARGURA)
+    figura.update_xaxes(
+        tickvals=[i - 0.5 for i in range(len(bordas))] + [len(rotulos) - 1],
+        ticktext=[f"{borda:+d}" if borda > 0 else str(borda) for borda in bordas]
+        + [TEXTO_FAIXA_ACIMA_DO_LIMITE.rstrip("%")],
+        tickfont={"size": 10},
+        tickangle=0,
+        automargin=True,
+        title={"text": TITULO_EIXO_POTENCIAL, "font": {"size": 10}, "standoff": 8},
+    )
+    figura.update_yaxes(showticklabels=False, rangemode="tozero")
+    figura.update_layout(height=300, margin={"t": 36, "b": 10, "l": 24, "r": 10}, showlegend=False)
+    return aplicar_template_grafico(figura)
+
+
+def _posicao_no_histograma(valor: float) -> float:
+    """Posição horizontal do valor no histograma: as faixas ocupam [i - 0,5; i + 0,5]; o que passa
+    de +100% fica no centro da última faixa."""
+    faixas = 2 * FAIXA_POTENCIAL_LIMITE // FAIXA_POTENCIAL_LARGURA
+    if valor > FAIXA_POTENCIAL_LIMITE:
+        return float(faixas)
+    limitado = max(valor, -FAIXA_POTENCIAL_LIMITE)
+    return (limitado + FAIXA_POTENCIAL_LIMITE) / FAIXA_POTENCIAL_LARGURA - 0.5
+
+
+def _resumo_do_aviso(aviso: str) -> str:
+    """Linha curta do aviso de potencial extremo (config); um texto desconhecido usa o começo dele,
+    até o primeiro " — " ou ponto."""
+    if aviso in TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO:
+        return TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO[aviso]
+    return re.split(r" — |\. ", aviso, maxsplit=1)[0].rstrip(".")
+
+
+def _html_atencao_screener(tabela: pd.DataFrame) -> str:
+    """Cartões de alerta do universo inteiro: um por ação com aviso de potencial extremo (ticker,
+    potencial, linha curta e o texto completo no "?"), e um com as ações sem método aplicável.
+    Sem nenhum, uma frase."""
+    cartoes = []
+    for linha in tabela[tabela["aviso_desconto_extremo"] != ""].itertuples():
+        cor = (
+            "ab-cor-positivo"
+            if linha.desconto_percentual > LIMITE_SINAL_INDICADOR
+            else "ab-cor-negativo"
+        )
+        cartoes.append(
+            '<div class="ab-atencao-cartao">'
+            f'<div class="ab-atencao-titulo">{escape(str(linha.ticker))} '
+            f'<span class="{cor}">{escape(_fmt_potencial(linha.desconto_percentual))}</span>'
+            f'<span class="ab-ajuda" title="{escape(linha.aviso_desconto_extremo)}">?</span></div>'
+            f'<div class="ab-atencao-texto">'
+            f"{escape(_resumo_do_aviso(linha.aviso_desconto_extremo))}</div></div>"
+        )
+    sem_metodo = tabela[tabela["valor_combinado"].isna()]
+    if len(sem_metodo):
+        texto = TEXTO_CARTAO_SEM_METODO.format(
+            quantidade=len(sem_metodo), tickers=", ".join(sem_metodo["ticker"])
+        )
+        cartoes.append(
+            '<div class="ab-atencao-cartao">'
+            f'<div class="ab-atencao-titulo">{escape(TITULO_CARTAO_SEM_METODO)}</div>'
+            f'<div class="ab-atencao-texto">{escape(texto)}</div></div>'
+        )
+    if not cartoes:
+        return f'<div class="ab-atencao-texto">{escape(TEXTO_NENHUM_ALERTA)}</div>'
+    return f'<div class="ab-atencao">{"".join(cartoes)}</div>'
+
+
 def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
     """Desenha os filtros no bloco atual da barra lateral e devolve as linhas que passam por
     eles. Os valores escolhidos são copiados para `CHAVE_FILTROS_GUARDADOS` e restaurados ao
@@ -2789,13 +2934,24 @@ def pagina_screener() -> None:
         with st.container(border=True, key="painel_destaque_screener"):
             st.html(_html_kpis_screener(tabela_screener))
 
-        linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
-        if linhas_com_aviso:
-            st.warning(
-                f"{linhas_com_aviso} ação(ões) com potencial fora do comum (valor "
-                "justo muito acima ou muito abaixo do preço) — veja a coluna "
-                '"Aviso" na tabela: a causa provável varia de uma ação para outra.'
-            )
+        coluna_distribuicao, coluna_atencao = st.columns([2, 1])
+        with (
+            coluna_distribuicao,
+            st.container(border=True, key="painel_distribuicao_screener", height="stretch"),
+        ):
+            _titulo_painel(TITULO_DISTRIBUICAO_POTENCIAL, TOOLTIP_DISTRIBUICAO_POTENCIAL)
+            if tabela_exibida["desconto_percentual"].notna().any():
+                exibir_grafico(
+                    _figura_distribuicao_potencial(tabela_exibida["desconto_percentual"])
+                )
+            else:
+                st.info(TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO)
+        with (
+            coluna_atencao,
+            st.container(border=True, key="painel_atencao_screener", height="stretch"),
+        ):
+            _titulo_painel(TITULO_ATENCAO)
+            st.html(_html_atencao_screener(tabela_screener))
 
         tabela_screener_fmt, colunas_screener_fmt = _tabela_formatada_pt_br(
             tabela_screener,
@@ -3009,7 +3165,7 @@ def pagina_carteira() -> None:
 # precisa clicar pra acordar o container (confirmado contra a documentação
 # oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
 # Sem esse aviso, o clique extra pareceria um link quebrado.
-st.divider()
+st.html('<div class="ab-app-divisoria"></div>')
 
 
 def _rodape_da_barra_lateral() -> None:
