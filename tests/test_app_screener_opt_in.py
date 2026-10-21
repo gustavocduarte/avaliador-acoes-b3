@@ -69,6 +69,11 @@ def _abrir():
     return at
 
 
+def _ajudas_do_rodape(at):
+    """Textos do "?" das legendas da barra lateral (a data do screener explica o workflow)."""
+    return [legenda.proto.help for legenda in at.sidebar.caption if legenda.proto.help]
+
+
 def _rotulos_dos_botoes(at):
     return [botao.label for botao in at.button]
 
@@ -83,12 +88,13 @@ def test_por_padrao_o_botao_nao_aparece_e_a_tela_explica_o_workflow(
     at = _abrir()
 
     assert ROTULO_BOTAO not in _rotulos_dos_botoes(at)
-    informacoes = [info.value for info in at.info]
+    ajudas = _ajudas_do_rodape(at)
     assert any(
         "atualizado automaticamente pelo workflow nos dias úteis" in texto
         and "Última atualização: 03/10/2026" in texto
-        for texto in informacoes
+        for texto in ajudas
     )
+    assert not [info.value for info in at.info if "pelo workflow" in info.value]
 
 
 def test_no_app_publicado_nenhum_texto_manda_clicar_no_botao(
@@ -105,7 +111,7 @@ def test_sem_arquivo_de_referencia_o_aviso_vem_sem_data(monkeypatch, sem_opt_in,
 
     at = _abrir()
 
-    assert TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA in [info.value for info in at.info]
+    assert TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA in _ajudas_do_rodape(at)
 
 
 def test_no_app_publicado_sem_resultado_salvo_nao_manda_rodar_o_screener(

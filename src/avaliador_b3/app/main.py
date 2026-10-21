@@ -47,6 +47,12 @@ from avaliador_b3.config import (
     CHAVE_BARRA_RODAPE,
     CHAVE_BARRA_SCREENER,
     CHAVE_DROPDOWN_TICKER,
+    CHAVE_FILTRO_ESCONDER_SEM_COMBINADO,
+    CHAVE_FILTRO_METODO_PREFIXO,
+    CHAVE_FILTRO_POTENCIAL_MINIMO,
+    CHAVE_FILTRO_SETOR,
+    CHAVE_FILTROS_GUARDADOS,
+    CHAVE_RODAR_SCREENER_SOLICITADO,
     CHAVE_TEXTO_TICKER,
     CHAVE_TICKER_GUARDADO,
     CONFIG_PLOTLY,
@@ -81,17 +87,27 @@ from avaliador_b3.config import (
     NOTA_DIVIDEND_YIELD_SUBESTIMADO,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
     OPACIDADE_BARRA_PARCIAL,
+    OPCAO_TODOS_OS_SETORES,
     PADRAO_TICKER_B3,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
+    POTENCIAL_MINIMO_FILTRO_DESLIGADO,
+    POTENCIAL_MINIMO_FILTRO_MAXIMO,
+    POTENCIAL_MINIMO_FILTRO_PASSO,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_ANO_PARCIAL,
     ROTULO_COMBINADO_GRAFICO,
+    ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
+    ROTULO_FILTRO_METODOS,
+    ROTULO_FILTRO_POTENCIAL_MINIMO,
+    ROTULO_FILTRO_SETOR,
     ROTULO_JANELA_DIVIDENDOS_COMPLETA,
     ROTULO_JANELA_DIVIDENDOS_CURTA,
+    ROTULO_LIMPAR_FILTROS,
     ROTULO_POTENCIAL,
+    ROTULO_RODAR_SCREENER,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
     ROTULOS_POTENCIAL_CENARIO,
@@ -118,12 +134,16 @@ from avaliador_b3.config import (
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
+    TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_METODO_SE_APLICA,
+    TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_OBSERVACOES_CORRELACAO,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_RODAPE_LINK_REPOSITORIO,
     TEXTO_RODAPE_SCREENER_ATUALIZADO,
+    TEXTO_RODAPE_SCREENER_SEM_DATA,
+    TEXTO_RODAPE_SELIC,
     TEXTO_SCREENER_AINDA_NAO_GERADO,
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW,
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
@@ -134,6 +154,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
+    TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
     TEXTO_ULTIMO_DADO_GPR,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
@@ -2467,6 +2488,103 @@ def pagina_analisar() -> None:
             )
 
 
+def _filtrar_tabela_screener(
+    tabela: pd.DataFrame,
+    setor_por_ticker: dict[str, str] | None,
+    setor: str,
+    potencial_minimo: float,
+    metodos_exigidos: list[str],
+    esconder_sem_combinado: bool,
+) -> pd.DataFrame:
+    """Linhas do screener que passam pelos filtros: setor (rótulo exibido), potencial mínimo
+    (desligado no valor mínimo do slider; ação sem potencial não passa quando ligado), métodos
+    que precisam estar todos entre os aplicáveis e, se pedido, só ações com valor combinado."""
+    mascara = pd.Series(True, index=tabela.index)
+    if esconder_sem_combinado:
+        mascara &= tabela["valor_combinado"].notna()
+    if potencial_minimo > POTENCIAL_MINIMO_FILTRO_DESLIGADO:
+        mascara &= tabela["desconto_percentual"] >= potencial_minimo
+    if metodos_exigidos:
+        aplicaveis = tabela["metodos_utilizados"].fillna("").map(lambda v: set(v.split(",")))
+        mascara &= aplicaveis.map(lambda usados: set(metodos_exigidos) <= usados)
+    if setor != OPCAO_TODOS_OS_SETORES and setor_por_ticker is not None:
+        mascara &= tabela["ticker"].map(setor_por_ticker) == setor
+    return tabela[mascara]
+
+
+def _padroes_filtros_screener() -> dict[str, object]:
+    """Chave do session_state de cada filtro e o valor padrão."""
+    return {
+        CHAVE_FILTRO_SETOR: OPCAO_TODOS_OS_SETORES,
+        CHAVE_FILTRO_POTENCIAL_MINIMO: POTENCIAL_MINIMO_FILTRO_DESLIGADO,
+        **{CHAVE_FILTRO_METODO_PREFIXO + metodo: False for metodo in NOMES_METODOS},
+        CHAVE_FILTRO_ESCONDER_SEM_COMBINADO: True,
+    }
+
+
+def _limpar_filtros_screener() -> None:
+    padroes = _padroes_filtros_screener()
+    st.session_state.update(padroes)
+    st.session_state[CHAVE_FILTROS_GUARDADOS] = dict(padroes)
+
+
+def _solicitar_rodada_screener() -> None:
+    st.session_state[CHAVE_RODAR_SCREENER_SOLICITADO] = True
+
+
+def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
+    """Desenha os filtros no bloco atual da barra lateral e devolve as linhas que passam por
+    eles. Os valores escolhidos são copiados para `CHAVE_FILTROS_GUARDADOS` e restaurados ao
+    voltar à página."""
+    padroes = _padroes_filtros_screener()
+    for chave, valor in {**padroes, **st.session_state.get(CHAVE_FILTROS_GUARDADOS, {})}.items():
+        st.session_state.setdefault(chave, valor)
+
+    # O setor vem do próprio screener.csv (sem buscar o catálogo); um arquivo anterior à coluna
+    # fica sem o filtro de setor até a próxima atualização.
+    setor_por_ticker: dict[str, str] | None = None
+    if "segmento_setorial" in tabela.columns and tabela["segmento_setorial"].notna().any():
+        setor_por_ticker = {
+            ticker: _rotulo_segmento_setorial(segmento) or ""
+            for ticker, segmento in zip(tabela["ticker"], tabela["segmento_setorial"].fillna(""))
+        }
+    else:
+        st.caption(TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO)
+    if setor_por_ticker:
+        opcoes = [
+            OPCAO_TODOS_OS_SETORES,
+            *sorted(set(setor_por_ticker.values()) - {""}, key=str.casefold),
+        ]
+        if st.session_state.get(CHAVE_FILTRO_SETOR) not in opcoes:
+            st.session_state[CHAVE_FILTRO_SETOR] = OPCAO_TODOS_OS_SETORES
+        st.selectbox(ROTULO_FILTRO_SETOR, opcoes, key=CHAVE_FILTRO_SETOR)
+
+    st.slider(
+        ROTULO_FILTRO_POTENCIAL_MINIMO,
+        min_value=POTENCIAL_MINIMO_FILTRO_DESLIGADO,
+        max_value=POTENCIAL_MINIMO_FILTRO_MAXIMO,
+        step=POTENCIAL_MINIMO_FILTRO_PASSO,
+        format="%d%%",
+        key=CHAVE_FILTRO_POTENCIAL_MINIMO,
+    )
+    st.markdown(f"**{ROTULO_FILTRO_METODOS}**")
+    for metodo, nome in NOMES_METODOS.items():
+        st.checkbox(nome, key=CHAVE_FILTRO_METODO_PREFIXO + metodo)
+    st.checkbox(ROTULO_FILTRO_ESCONDER_SEM_COMBINADO, key=CHAVE_FILTRO_ESCONDER_SEM_COMBINADO)
+    st.button(ROTULO_LIMPAR_FILTROS, on_click=_limpar_filtros_screener)
+
+    valores = {chave: st.session_state.get(chave, padrao) for chave, padrao in padroes.items()}
+    st.session_state[CHAVE_FILTROS_GUARDADOS] = valores
+    return _filtrar_tabela_screener(
+        tabela,
+        setor_por_ticker,
+        valores[CHAVE_FILTRO_SETOR],
+        valores[CHAVE_FILTRO_POTENCIAL_MINIMO],
+        [m for m in NOMES_METODOS if valores[CHAVE_FILTRO_METODO_PREFIXO + m]],
+        valores[CHAVE_FILTRO_ESCONDER_SEM_COMBINADO],
+    )
+
+
 def pagina_screener() -> None:
     st.caption(
         "Ranking pelo potencial de valorização até o valor combinado (média "
@@ -2505,10 +2623,8 @@ def pagina_screener() -> None:
         )
 
     rodar_screener_permitido = _rodar_screener_permitido()
-    if not rodar_screener_permitido:
-        st.info(_texto_screener_atualizado_pelo_workflow())
 
-    if rodar_screener_permitido and st.button("Rodar screener agora"):
+    if rodar_screener_permitido and st.session_state.pop(CHAVE_RODAR_SCREENER_SOLICITADO, False):
         st.warning(
             "Isso faz ~228 requisições reais (preço, dividendos e Beta de cada "
             "uma das ~76 ações, com delay entre chamadas) — leva de 5 a 15 "
@@ -2583,10 +2699,19 @@ def pagina_screener() -> None:
 
     tabela_screener = _carregar_screener_ou_avisar(
         CAMINHO_SAIDA_PADRAO,
-        f'Clique em "Rodar screener agora" acima pra gerar {CAMINHO_SAIDA_PADRAO.name}',
+        f'Clique em "{ROTULO_RODAR_SCREENER}" na barra lateral pra gerar '
+        f"{CAMINHO_SAIDA_PADRAO.name}",
     )
 
-    if tabela_screener is not None:
+    # Filtros e botão da rodada ficam no bloco da barra lateral, depois do link da página.
+    with _bloco_barra_screener:
+        tabela_exibida = None
+        if tabela_screener is not None:
+            tabela_exibida = _desenhar_filtros_screener(tabela_screener)
+        if rodar_screener_permitido:
+            st.button(ROTULO_RODAR_SCREENER, on_click=_solicitar_rodada_screener)
+
+    if tabela_screener is not None and tabela_exibida is not None:
         if rodar_screener_permitido:
             atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
             st.caption(
@@ -2627,8 +2752,15 @@ def pagina_screener() -> None:
             _nomes_dos_metodos_do_csv
         )
         with st.container(border=True, key="painel_tabela_screener"):
+            st.caption(
+                TEXTO_MOSTRANDO_ACOES.format(
+                    mostradas=len(tabela_exibida), total=len(tabela_screener)
+                )
+            )
+            if tabela_exibida.empty:
+                st.info(TEXTO_NENHUMA_ACAO_NOS_FILTROS)
             st.dataframe(
-                tabela_screener_fmt,
+                tabela_screener_fmt.loc[tabela_exibida.index],
                 column_order=COLUNAS_TABELA_SCREENER,
                 column_config={
                     "ticker": "Ticker",
@@ -2831,7 +2963,21 @@ def _rodape_da_barra_lateral() -> None:
     macro = carregar_macro_referencia()
     with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
         if macro is not None:
-            st.caption(TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(macro["data_busca"])))
+            st.caption(
+                TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(macro["data_busca"])),
+                help=None
+                if _rodar_screener_permitido()
+                else _texto_screener_atualizado_pelo_workflow(),
+            )
+            if macro.get("selic_meta") is not None:
+                st.caption(
+                    TEXTO_RODAPE_SELIC.format(selic=_fmt_percentual(macro["selic_meta"] * 100, 2))
+                )
+        elif not _rodar_screener_permitido():
+            st.caption(
+                TEXTO_RODAPE_SCREENER_SEM_DATA,
+                help=_texto_screener_atualizado_pelo_workflow(),
+            )
         st.markdown(f"[{TEXTO_RODAPE_LINK_REPOSITORIO}]({URL_REPOSITORIO})")
 
 
@@ -2871,8 +3017,10 @@ for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_ME
     )
     with _blocos_barra[_chave]:
         st.page_link(_pagina, label=_titulo, icon=_icone)
-# A caixa da ação e o Buscar entram no bloco da análise, só quando a página de análise roda.
+# A caixa da ação e o Buscar entram no bloco da análise, só quando a página de análise roda; os
+# filtros e o botão da rodada, no bloco do Screener, só quando a página do Screener roda.
 _bloco_barra_analisar = _blocos_barra[CHAVE_BARRA_ANALISAR]
+_bloco_barra_screener = _blocos_barra[CHAVE_BARRA_SCREENER]
 pagina_atual.run()
 _rodape_da_barra_lateral()
 

@@ -2775,6 +2775,10 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
 
     at = AppTest.from_file(CAMINHO_APP)
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
+    # Por padrão o filtro esconde as ações sem valor combinado; desligado, elas aparecem no fim.
+    next(c for c in at.sidebar.checkbox if c.label == "Esconder sem valor combinado").uncheck().run(
+        timeout=60
+    )
 
     assert not at.exception
     assert not [e.value for e in at.error if "Nenhum dos três métodos" in e.value]

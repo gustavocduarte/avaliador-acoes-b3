@@ -1440,6 +1440,33 @@ URL_REPOSITORIO = "https://github.com/gustavocduarte/avaliador-acoes-b3"
 TEXTO_RODAPE_SCREENER_ATUALIZADO = "Screener atualizado em {data}"
 TEXTO_LEGENDA_DATA_SCREENER_SETORIAL = "Preços e potenciais do screener de {data}"
 TEXTO_RODAPE_LINK_REPOSITORIO = "Código no GitHub"
+TEXTO_RODAPE_SELIC = "Selic de referência {selic}"
+TEXTO_RODAPE_SCREENER_SEM_DATA = "Screener atualizado pelo workflow"
+
+# Filtros do Screener (bloco da barra lateral): chaves do session_state, rótulos e padrões.
+# `CHAVE_FILTROS_GUARDADOS` guarda uma cópia dos valores: o Streamlit apaga o estado de um widget
+# que não é desenhado numa rodada (ao sair da página).
+CHAVE_FILTRO_SETOR = "filtro_screener_setor"
+CHAVE_FILTRO_POTENCIAL_MINIMO = "filtro_screener_potencial_minimo"
+CHAVE_FILTRO_METODO_PREFIXO = "filtro_screener_metodo_"
+CHAVE_FILTRO_ESCONDER_SEM_COMBINADO = "filtro_screener_esconder_sem_combinado"
+CHAVE_FILTROS_GUARDADOS = "filtros_screener_guardados"
+CHAVE_RODAR_SCREENER_SOLICITADO = "rodar_screener_solicitado"
+ROTULO_FILTRO_SETOR = "Setor"
+OPCAO_TODOS_OS_SETORES = "Todos os setores"
+ROTULO_FILTRO_POTENCIAL_MINIMO = "Potencial mínimo"
+POTENCIAL_MINIMO_FILTRO_DESLIGADO = -100
+POTENCIAL_MINIMO_FILTRO_MAXIMO = 100
+POTENCIAL_MINIMO_FILTRO_PASSO = 5
+ROTULO_FILTRO_METODOS = "Exigir método"
+ROTULO_FILTRO_ESCONDER_SEM_COMBINADO = "Esconder sem valor combinado"
+ROTULO_LIMPAR_FILTROS = "Limpar filtros"
+ROTULO_RODAR_SCREENER = "Rodar screener agora"
+TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO = (
+    "Setor disponível a partir da próxima atualização do screener"
+)
+TEXTO_MOSTRANDO_ACOES = "Mostrando {mostradas} de {total} ações"
+TEXTO_NENHUMA_ACAO_NOS_FILTROS = "Nenhuma ação passa pelos filtros."
 
 # Blocos da barra lateral: o `key` vira a classe `.st-key-<key>` usada pelo CSS; o bloco da
 # página aberta ganha o sufixo de destaque.
