@@ -2283,6 +2283,14 @@ def test_figura_do_valor_justo_poe_o_valor_numa_anotacao_com_fundo_sobre_a_linha
     assert figura.data[0].textposition == "none"
 
 
+def test_template_dos_graficos_usa_virgula_decimal_e_ponto_de_milhar():
+    import plotly.graph_objects as go
+
+    from avaliador_b3.app.main import aplicar_template_grafico
+
+    assert aplicar_template_grafico(go.Figure()).layout.separators == ",."
+
+
 def test_figura_do_valor_justo_aguenta_barra_muito_curta():
     from avaliador_b3.app.main import _figura_valor_justo
 

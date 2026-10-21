@@ -97,6 +97,7 @@ from avaliador_b3.config import (
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
+    SEPARADORES_NUMERICOS_GRAFICO,
     SEQUENCIA_CORES_SERIES,
     SERIES_BCB_SGS,
     SUBTITULO_APP,
@@ -574,6 +575,7 @@ def aplicar_template_grafico(figura: go.Figure) -> go.Figure:
         font={"color": COR_TEXTO},
         colorway=list(SEQUENCIA_CORES_SERIES),
         hoverlabel={"bgcolor": COR_FUNDO_PAINEL, "bordercolor": COR_BORDA},
+        separators=SEPARADORES_NUMERICOS_GRAFICO,
     )
     figura.update_xaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)
     figura.update_yaxes(gridcolor=COR_GRADE, zerolinecolor=COR_GRADE, linecolor=COR_BORDA)

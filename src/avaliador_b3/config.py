@@ -1397,6 +1397,8 @@ ROTULO_JANELA_DIVIDENDOS_COMPLETA = "Desde {ano}"
 OPACIDADE_BARRA_PARCIAL = 0.7
 # Configuração do Plotly em todos os gráficos: sem a barra de ferramentas.
 CONFIG_PLOTLY = {"displayModeBar": False}
+# Decimal e milhar do Plotly (eixos e hover): vírgula e ponto.
+SEPARADORES_NUMERICOS_GRAFICO = ",."
 ROTULO_POTENCIAL = "Potencial"
 TOOLTIP_POTENCIAL_COLUNA = (
     "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "
