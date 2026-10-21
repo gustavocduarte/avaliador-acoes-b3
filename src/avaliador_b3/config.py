@@ -1376,6 +1376,9 @@ TOOLTIP_POTENCIAL_COLUNA = (
     "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "
     "atual (valor justo ÷ preço − 1). Não é prazo nem retorno esperado."
 )
+# Comparação setorial: a barra do potencial é cortada neste valor (pontos percentuais, nos dois
+# sentidos); o número ao lado continua exato.
+LIMITE_BARRA_POTENCIAL = 50.0
 TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço − 1)."
 
 # Divergência entre os métodos no cartão do topo: a partir deste limite (fração do preço), o

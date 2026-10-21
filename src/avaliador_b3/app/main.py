@@ -71,6 +71,7 @@ from avaliador_b3.config import (
     JANELAS_COMPARACAO_PETROLEO,
     LARGURA_CARACTERE_ROTULO_BARRA,
     LEGENDA_REINVESTIMENTO_CAPEX,
+    LIMITE_BARRA_POTENCIAL,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
     LIMITE_SINAL_INDICADOR,
@@ -1020,6 +1021,53 @@ def _fmt_percentual(valor: float | None, casas: int = 1) -> str:
     return _pt_br(f"{valor:,.{casas}f}%")
 
 
+def _fmt_potencial(valor: float | None) -> str:
+    """Potencial com sinal explícito ("+13,5%", "-21,0%"), como no cartão do topo."""
+    texto = _fmt_percentual(valor)
+    if valor is None or pd.isna(valor) or valor <= LIMITE_SINAL_INDICADOR:
+        return texto
+    return f"+{texto}"
+
+
+def _html_barra_potencial(valor: float | None) -> str:
+    """Barra divergente do potencial: verde à direita do centro, rosa à esquerda, cortada em
+    `LIMITE_BARRA_POTENCIAL`; o valor exato fica ao lado."""
+    if valor is None or pd.isna(valor):
+        return (
+            '<div class="ab-div"><span class="ab-div-trilho"></span>'
+            '<span class="ab-div-valor">—</span></div>'
+        )
+    classe = "ab-div-pos" if valor > LIMITE_SINAL_INDICADOR else "ab-div-neg"
+    largura = min(abs(valor), LIMITE_BARRA_POTENCIAL) / LIMITE_BARRA_POTENCIAL * 50
+    return (
+        '<div class="ab-div"><span class="ab-div-trilho">'
+        f'<i class="ab-div-barra {classe}" style="width:{largura:.1f}%"></i></span>'
+        f'<span class="ab-div-valor">{escape(_fmt_potencial(valor))}</span></div>'
+    )
+
+
+def _html_tabela_setorial(tabela: pd.DataFrame, ticker_destacado: str) -> str:
+    """Tabela da comparação setorial (ticker, preço, valor combinado e potencial com barra
+    divergente); a linha de `ticker_destacado` fica em destaque."""
+    linhas = []
+    for linha in tabela.itertuples():
+        classe = ' class="ab-linha-destaque"' if linha.ticker == ticker_destacado else ""
+        linhas.append(
+            f"<tr{classe}><td>{escape(str(linha.ticker))}</td>"
+            f'<td class="ab-num">{escape(_fmt_bilhoes(linha.preco_atual))}</td>'
+            f'<td class="ab-num">{escape(_fmt_bilhoes(linha.valor_combinado))}</td>'
+            f"<td>{_html_barra_potencial(linha.desconto_percentual)}</td></tr>"
+        )
+    ajuda = f'<span class="ab-ajuda" title="{escape(TOOLTIP_POTENCIAL_COLUNA)}">?</span>'
+    return (
+        '<div class="ab-tabela-caixa"><table class="ab-tabela"><thead><tr>'
+        '<th>Ticker</th><th class="ab-num">Preço atual</th>'
+        '<th class="ab-num">Valor combinado</th>'
+        f"<th>{escape(ROTULO_POTENCIAL)}{ajuda}</th></tr></thead>"
+        f"<tbody>{''.join(linhas)}</tbody></table></div>"
+    )
+
+
 def _nomes_dos_metodos(metodos: list[str]) -> str:
     """Nomes dos métodos como aparecem na tela ("Graham, Bazin, FCD"), a partir dos
     identificadores em minúsculas (`resultado_combinado["metodos_utilizados"]`)."""
@@ -1125,9 +1173,9 @@ def _tabela_formatada_pt_br(
     Custo aceito: clicar no cabeçalho de uma coluna formatada por aqui
     pra reordenar ordena como TEXTO (alfabético, ex: "R$ 1.000,00" antes
     de "R$ 618,70"), não numericamente — as demais colunas da tabela
-    (que não passam por aqui) continuam ordenando normal. Usado nas 4
-    tabelas do projeto que mostram R$/%: Comparação Setorial, Screener,
-    Simulador de carteira, Ganho nominal vs. real."""
+    (que não passam por aqui) continuam ordenando normal. Usado nas
+    tabelas do projeto que mostram R$/%: Screener, Simulador de carteira,
+    Ganho nominal vs. real."""
     colunas_percentual = colunas_percentual or {}
     ajudas = ajudas or {}
     df_formatado = df.assign(**{coluna: df[coluna].apply(_fmt_bilhoes) for coluna in colunas_moeda})
@@ -1268,6 +1316,34 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-ind-rotulo { display: block; font-size: .72rem; color: $secundario; }
 .ab-ind-valor { font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums; font-size: 1.2rem; font-weight: 600; white-space: nowrap; }
+/* A tabela da comparação setorial ocupa a altura do painel (que acompanha o vizinho). Se o
+   Streamlit renomear as classes .stElementContainer/.stHtml, só o esticamento se perde: a
+   tabela continua visível, com a altura do conteúdo. */
+.st-key-painel_comparacao_setorial .stElementContainer:has(.ab-tabela-caixa) {
+  flex: 1 1 auto; min-height: 0; }
+.st-key-painel_comparacao_setorial .stHtml,
+.st-key-painel_comparacao_setorial .ab-tabela-caixa,
+.st-key-painel_comparacao_setorial .ab-tabela { height: 100%; }
+.ab-tabela-caixa { overflow-x: auto; }
+.ab-tabela { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.ab-tabela th { padding: .35rem .5rem; text-align: left; font-size: .72rem; font-weight: 400;
+  letter-spacing: .08em; text-transform: uppercase; color: $secundario;
+  border-bottom: 1px solid $borda; }
+.ab-tabela td { padding: .45rem .5rem; border-bottom: 1px solid $borda; }
+.ab-tabela .ab-num { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ab-tabela tr.ab-linha-destaque td { font-weight: 600; background: $borda; }
+.ab-tabela tr.ab-linha-destaque td:first-child { color: $principal;
+  box-shadow: inset 3px 0 $principal; }
+.ab-div { display: flex; align-items: center; gap: .5rem; min-width: 11rem; }
+.ab-div-trilho { position: relative; flex: 1; height: .6rem; }
+.ab-div-trilho::before { content: ""; position: absolute; left: 50%; top: -.15rem;
+  bottom: -.15rem; width: 1px; background: $secundario; }
+.ab-div-barra { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.ab-div-pos { left: 50%; background: $positivo; }
+.ab-div-neg { right: 50%; background: $negativo; }
+.ab-div-valor { min-width: 4.2rem; text-align: right; white-space: nowrap;
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
@@ -2279,27 +2355,7 @@ def pagina_analisar() -> None:
                         else:
                             nome_segmento = _rotulo_segmento_setorial(segmento_setorial)
                             st.caption(f"Segmento setorial (B3): {nome_segmento}")
-                            tabela_pares_fmt, colunas_pares_fmt = _tabela_formatada_pt_br(
-                                tabela_pares,
-                                colunas_moeda={
-                                    "preco_atual": "Preço atual",
-                                    "valor_combinado": "Valor combinado",
-                                },
-                                colunas_percentual={"desconto_percentual": ROTULO_POTENCIAL},
-                                ajudas={"desconto_percentual": TOOLTIP_POTENCIAL_COLUNA},
-                            )
-                            st.dataframe(
-                                tabela_pares_fmt,
-                                column_order=[
-                                    "ticker",
-                                    "preco_atual",
-                                    "valor_combinado",
-                                    "desconto_percentual",
-                                ],
-                                column_config={"ticker": "Ticker", **colunas_pares_fmt},
-                                hide_index=True,
-                                width="stretch",
-                            )
+                            st.html(_html_tabela_setorial(tabela_pares, ticker))
 
 
 def pagina_screener() -> None:
