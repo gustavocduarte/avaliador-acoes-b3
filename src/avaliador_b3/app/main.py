@@ -1851,7 +1851,9 @@ def pagina_analisar() -> None:
             else None
         )
         with espaco_pilulas:
-            st.html(_html_pilulas(segmento_setorial, segmento_listagem))
+            html_pilulas = _html_pilulas(segmento_setorial, segmento_listagem)
+            if html_pilulas:  # st.html não aceita texto vazio
+                st.html(html_pilulas)
 
         proporcao_reinvestimento = None
         selos_valor_justo: list[tuple[str, str]] = []
