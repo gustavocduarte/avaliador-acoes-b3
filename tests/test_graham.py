@@ -84,5 +84,5 @@ def test_motivo_do_graham_mostra_lpa_e_vpa_em_pt_br_com_duas_casas():
     resultado = calcular_valor_justo_graham(lpa=-2.252609355353091, vpa=1.2570364706211445)
 
     assert resultado["motivo_nao_aplicavel"] == (
-        "Fórmula de Graham exige LPA>0 e VPA>0 (LPA = −2,25 e VPA = 1,26)."
+        "Fórmula de Graham exige LPA>0 e VPA>0 (LPA = -2,25 e VPA = 1,26)."
     )

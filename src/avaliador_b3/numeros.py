@@ -44,20 +44,21 @@ def numero_pt_br(valor: float, casas: int) -> str:
 
 
 def decimal_pt_br(valor: float, casas: int = 2) -> str:
-    """ "−2,25" / "1.234,50": vírgula decimal e sinal negativo "−"."""
-    return f"{'−' if valor < 0 else ''}{numero_pt_br(abs(valor), casas)}"
+    """ "-2,25" / "1.234,50": vírgula decimal e sinal negativo "-"."""
+    return f"{'-' if valor < 0 else ''}{numero_pt_br(abs(valor), casas)}"
 
 
 def percentual_pt_br(fracao: float, casas: int = 2) -> str:
-    """ "−0,50%" a partir de uma fração (−0.005)."""
+    """ "-0,50%" a partir de uma fração (-0.005)."""
     return f"{decimal_pt_br(fracao * 100, casas)}%"
 
 
 def reais_abreviado(valor: float) -> str:
-    """ "R$ 3,6 bi" a partir de R$ 1 bilhão, "R$ 420,3 mi" a partir de R$ 1 milhão."""
-    sinal = "−" if valor < 0 else ""
+    """ "R$ 3,6 bi" a partir de R$ 1 bilhão, "R$ 420,3 mi" a partir de R$ 1 milhão; o sinal
+    negativo vem depois do "R$", como nos cartões ("R$ -2,3 bi")."""
+    sinal = "-" if valor < 0 else ""
     if abs(valor) >= 1e9:
-        return f"{sinal}R$ {numero_pt_br(abs(valor) / 1e9, 1)} bi"
+        return f"R$ {sinal}{numero_pt_br(abs(valor) / 1e9, 1)} bi"
     if abs(valor) >= 1e6:
-        return f"{sinal}R$ {numero_pt_br(abs(valor) / 1e6, 1)} mi"
-    return f"{sinal}R$ {numero_pt_br(abs(valor), 2)}"
+        return f"R$ {sinal}{numero_pt_br(abs(valor) / 1e6, 1)} mi"
+    return f"R$ {sinal}{numero_pt_br(abs(valor), 2)}"

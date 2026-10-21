@@ -1529,7 +1529,7 @@ def test_expander_como_ler_tabela_explica_desconto_e_aviso(monkeypatch):
     bloco = blocos[0]
     assert (
         "**Potencial** — quanto o valor justo combinado está acima (+) ou "
-        "abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
+        "abaixo (-) do preço atual (valor justo ÷ preço - 1). O valor "
         "combinado é a média simples de Graham, Bazin e FCD aplicáveis, com "
         "pesos iguais por simplicidade — veja 'Como funciona esse cálculo?' "
         "na página Analisar uma ação. A tabela vem ordenada do maior para o "
@@ -3177,8 +3177,8 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
         == ROTULOS_POTENCIAL_CENARIO["pessimista"]
     )
     assert rotulos_colunas["retorno_base_percentual"]["help"] == (
-        "Quanto o valor justo do cenário está acima (+) ou abaixo (−) do preço atual "
-        "(valor justo ÷ preço − 1). Não é retorno esperado nem tem prazo."
+        "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço atual "
+        "(valor justo ÷ preço - 1). Não é retorno esperado nem tem prazo."
     )
     assert any(
         "NEGA4: cenário(s) Pessimista limitado(s) a perda total" in c.value for c in aba.caption

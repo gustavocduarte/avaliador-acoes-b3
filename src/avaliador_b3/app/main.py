@@ -996,7 +996,7 @@ def _html_indicador(
 
 
 def _html_linha_correlacao(nome: str, resultado: dict, ultimo_gpr: str | None) -> str:
-    """Linha de um fator: nome com "?" (observações, data do GPR ou motivo), mini barra de −1 a
+    """Linha de um fator: nome com "?" (observações, data do GPR ou motivo), mini barra de -1 a
     +1 (do centro para a direita se positiva, para a esquerda se negativa), valor e leitura de
     magnitude (`correlacao.classificar_magnitude_correlacao`); sem dado, "—"."""
     if not resultado["aplicavel"]:
@@ -1938,7 +1938,7 @@ def pagina_analisar() -> None:
                 "ano mais recente e cinco anos antes, limitado ao crescimento da "
                 "receita líquida no mesmo período (um fluxo não cresce mais que a "
                 "receita por cinco anos, o que assume margem constante) e à faixa "
-                "de −20% a +30% ao ano; sem receita utilizável, vale o crescimento "
+                "de -20% a +30% ao ano; sem receita utilizável, vale o crescimento "
                 "do fluxo, e o cartão diz o motivo. Esse crescimento converge "
                 "gradualmente, ano a ano, para o de longo prazo (a inflação, IPCA) "
                 "em vez de saltar no sexto ano. Quando o fluxo de cinco anos atrás "
@@ -2441,7 +2441,7 @@ def pagina_screener() -> None:
     with st.expander("Como ler esta tabela"):
         st.markdown(
             "- **Potencial** — quanto o valor justo combinado está acima (+) "
-            "ou abaixo (−) do preço atual (valor justo ÷ preço − 1). O valor "
+            "ou abaixo (-) do preço atual (valor justo ÷ preço - 1). O valor "
             "combinado é a média simples de Graham, Bazin e FCD aplicáveis, "
             "com pesos iguais por simplicidade — veja 'Como funciona esse "
             "cálculo?' na página Analisar uma ação. A tabela vem ordenada do "

@@ -1065,7 +1065,7 @@ TEXTO_AJUDA_CORRELACAO = (
     "(Brent), câmbio USD/BRL e risco geopolítico (GPR) — numa janela de {anos} anos. Sempre "
     "correlaciona a variação percentual dia a dia de cada série, nunca o nível bruto: "
     "correlacionar séries em tendência infla o número de forma espúria, sem relação real entre "
-    "elas. A barra vai de −1 a +1."
+    "elas. A barra vai de -1 a +1."
 )
 TEXTO_OBSERVACOES_CORRELACAO = "{observacoes} observações"
 TEXTO_ULTIMO_DADO_GPR = "Último dado do GPR: {data}."
@@ -1281,7 +1281,7 @@ AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
     "pode não se repetir). Confira os valores individuais antes de "
     "considerar uma oportunidade real."
 )
-# Reserva para o potencial abaixo de −100%, que hoje é inalcançável: exigiria valor combinado
+# Reserva para o potencial abaixo de -100%, que hoje é inalcançável: exigiria valor combinado
 # negativo, e os métodos só entram no combinado com valor positivo (o FCD ≤ 0 é "não
 # aplicável"; Graham é uma raiz quadrada e Bazin só se aplica com dividendo positivo). Fica
 # um texto genérico, sem inventar causa, para o caso de um modelo novo permitir.
@@ -1334,11 +1334,11 @@ AVISO_FCD_CAUSA_CRESCIMENTO_NO_TETO = (
     "perpetuidade em {anos} anos."
 )
 AVISO_FCD_CAUSA_CRESCIMENTO_PERTO_DO_PISO = (
-    "O crescimento do fluxo começa em −{taxa} ao ano (perto do piso da faixa, −{piso}) e "
+    "O crescimento do fluxo começa em -{taxa} ao ano (perto do piso da faixa, -{piso}) e "
     "converge para o da perpetuidade em {anos} anos."
 )
 AVISO_FCD_CAUSA_CRESCIMENTO_NO_PISO = (
-    "O crescimento do fluxo começa em −{taxa} ao ano (o piso da faixa) e converge para o da "
+    "O crescimento do fluxo começa em -{taxa} ao ano (o piso da faixa) e converge para o da "
     "perpetuidade em {anos} anos."
 )
 AVISO_FCD_CAUSA_WACC_BAIXO = "O WACC é baixo ({wacc}), o que eleva o valor."
@@ -1401,13 +1401,13 @@ CONFIG_PLOTLY = {"displayModeBar": False}
 SEPARADORES_NUMERICOS_GRAFICO = ",."
 ROTULO_POTENCIAL = "Potencial"
 TOOLTIP_POTENCIAL_COLUNA = (
-    "Quanto o valor justo combinado está acima (+) ou abaixo (−) do preço "
-    "atual (valor justo ÷ preço − 1). Não é prazo nem retorno esperado."
+    "Quanto o valor justo combinado está acima (+) ou abaixo (-) do preço "
+    "atual (valor justo ÷ preço - 1). Não é prazo nem retorno esperado."
 )
 # Comparação setorial: a barra do potencial é cortada neste valor (pontos percentuais, nos dois
 # sentidos); o número ao lado continua exato.
 LIMITE_BARRA_POTENCIAL = 50.0
-TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço − 1)."
+TOOLTIP_POTENCIAL_CARTAO = "Diferença entre este valor e o preço atual (valor ÷ preço - 1)."
 
 # Divergência entre os métodos no cartão do topo: a partir deste limite (fração do preço), o
 # número é destacado em amarelo. Critério de apresentação; o cálculo não muda.
@@ -1493,8 +1493,8 @@ ROTULOS_TOTAL_AO_CONVERGIR = {
     "otimista": "Valor ao convergir: otimista",
 }
 TOOLTIP_POTENCIAL_CENARIO = (
-    "Quanto o valor justo do cenário está acima (+) ou abaixo (−) do preço "
-    "atual (valor justo ÷ preço − 1). Não é retorno esperado nem tem prazo."
+    "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço "
+    "atual (valor justo ÷ preço - 1). Não é retorno esperado nem tem prazo."
 )
 FRASE_RESUMO_SIMULADOR = (
     "{investido} investidos hoje equivaleriam a entre {pessimista} "
@@ -1510,7 +1510,7 @@ TEXTO_EXPANDER_SIMULADOR = (
     "valor ao convergir é o valor investido multiplicado por esse valor "
     "justo ÷ preço: quanto o dinheiro valeria se o preço chegasse ao valor "
     "justo, em reais de hoje, sem prazo e sem contar dividendos. Valor "
-    "justo zero ou negativo conta como perda total (−100%).\n\n"
+    "justo zero ou negativo conta como perda total (-100%).\n\n"
     "O cenário base é o valor combinado, a mesma média simples explicada "
     "na página Analisar uma ação. O pessimista e o otimista são o menor e o "
     "maior valor entre os métodos aplicáveis — e o menor pode ser o preço "

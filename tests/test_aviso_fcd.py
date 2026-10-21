@@ -180,7 +180,7 @@ def test_texto_ggbr4_valor_positivo_minusculo():
         "participação dos não controladores R$ 190,2 mi) consomem 97% do valor da empresa "
         "pelo fluxo de caixa (R$ 10,2 bi); sobra pouco para o acionista, e o resultado oscila "
         "muito com pequenas mudanças nas premissas. "
-        "O crescimento do fluxo começa em −17% ao ano (perto do piso da faixa, −20%) e converge "
+        "O crescimento do fluxo começa em -17% ao ano (perto do piso da faixa, -20%) e converge "
         "para o da perpetuidade em 5 anos."
     )
 

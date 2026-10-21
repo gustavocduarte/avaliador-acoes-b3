@@ -36,7 +36,7 @@ TOLERANCIA_LIMITE_DA_FAIXA = 1e-9
 
 
 def _reais(valor: float) -> str:
-    return ("−" if valor < 0 else "") + f"R$ {_numero(abs(valor), 2)}"
+    return ("-" if valor < 0 else "") + f"R$ {_numero(abs(valor), 2)}"
 
 
 def _vezes(razao: float) -> str:

@@ -249,7 +249,7 @@ def _aviso_desconto_extremo(
     - positivo + FCD: taxa de crescimento de 2 pontos do FCD (o caso mais
       comum, mas não mais o único assumido).
     - positivo + sem FCD: risco que Graham/Bazin não captam.
-    - negativo (com ou sem FCD): hoje INALCANÇÁVEL — o potencial abaixo de −100% exige valor
+    - negativo (com ou sem FCD): hoje INALCANÇÁVEL — o potencial abaixo de -100% exige valor
       combinado negativo, e só entram no combinado métodos com valor positivo (ver
       `config.AVISO_DESCONTO_EXTREMO_GENERICO`); fica um texto genérico de reserva.
 
