@@ -5,11 +5,9 @@ valor do FCD nem o valor combinado. Limites e textos em `config.py`."""
 from avaliador_b3.config import (
     AVISO_FCD_ABERTURA_ALTO,
     AVISO_FCD_ABERTURA_BAIXO,
-    AVISO_FCD_ABERTURA_NEGATIVO,
     AVISO_FCD_CAUSA_CRESCIMENTO_NO_PISO,
     AVISO_FCD_CAUSA_CRESCIMENTO_NO_TETO,
     AVISO_FCD_CAUSA_CRESCIMENTO_PERTO_DO_PISO,
-    AVISO_FCD_CAUSA_DEDUCOES_ACIMA_DO_VALOR,
     AVISO_FCD_CAUSA_DEDUCOES_PERTO_DO_VALOR,
     AVISO_FCD_CAUSA_FLUXO_ALTO,
     AVISO_FCD_CAUSA_PERPETUIDADE,
@@ -18,7 +16,6 @@ from avaliador_b3.config import (
     AVISO_FCD_FECHAMENTO_ALTO,
     AVISO_FCD_FECHAMENTO_FLUXO_PONTUAL,
     AVISO_FCD_NOMES_DEDUCOES,
-    AVISO_FCD_NOMES_DEDUCOES_COM_ARTIGO,
     FCD_EXTREMO_CRESCIMENTO_PERTO_DO_PISO,
     FCD_EXTREMO_DEDUCOES_PERTO_DO_VALOR,
     FCD_EXTREMO_FLUXO_SOBRE_VALOR_DE_MERCADO,
@@ -30,27 +27,16 @@ from avaliador_b3.config import (
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
 )
+from avaliador_b3.numeros import numero_pt_br as _numero
+from avaliador_b3.numeros import reais_abreviado as _reais_abreviado
 
 # Ordem em que as causas aparecem no texto.
-ORDEM_CAUSAS = ("K1", "K1b", "K5", "K2a", "K2b", "K6", "K3")
+ORDEM_CAUSAS = ("K1b", "K5", "K2a", "K2b", "K6", "K3")
 TOLERANCIA_LIMITE_DA_FAIXA = 1e-9
-
-
-def _numero(valor: float, casas: int) -> str:
-    return f"{valor:,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
 def _reais(valor: float) -> str:
     return ("−" if valor < 0 else "") + f"R$ {_numero(abs(valor), 2)}"
-
-
-def _reais_abreviado(valor: float) -> str:
-    """ "R$ 3,6 bi" a partir de R$ 1 bilhão, "R$ 420,3 mi" a partir de R$ 1 milhão."""
-    if abs(valor) >= 1e9:
-        return f"R$ {_numero(valor / 1e9, 1)} bi"
-    if abs(valor) >= 1e6:
-        return f"R$ {_numero(valor / 1e6, 1)} mi"
-    return _reais(valor)
 
 
 def _vezes(razao: float) -> str:
@@ -64,8 +50,6 @@ def _pct(fracao: float, casas: int | None = None) -> str:
 
 
 def _gatilho(valor_justo: float, preco: float | None) -> str | None:
-    if valor_justo <= 0:
-        return "negativo"
     if preco is None or preco <= 0:
         return None
     razao = valor_justo / preco
@@ -92,10 +76,7 @@ def _causas(resultado: dict, preco: float | None) -> list[str]:
     deducoes = sum(_deducoes(resultado).values())
     causas = []
     if valor_empresa > 0:
-        razao_deducoes = deducoes / valor_empresa
-        if razao_deducoes >= 1:
-            causas.append("K1")
-        elif razao_deducoes >= FCD_EXTREMO_DEDUCOES_PERTO_DO_VALOR:
+        if deducoes / valor_empresa >= FCD_EXTREMO_DEDUCOES_PERTO_DO_VALOR:
             causas.append("K1b")
         if preco is not None and preco > 0:
             valor_de_mercado = preco * resultado["acoes_utilizadas"]
@@ -132,22 +113,12 @@ def _texto_da_causa(codigo: str, resultado: dict, preco: float | None) -> str:
     valor_empresa = resultado["valor_empresa"]
     deducoes = _deducoes(resultado)
     total_deducoes = sum(deducoes.values())
-    if codigo in ("K1", "K1b"):
-        if codigo == "K1b":
-            return AVISO_FCD_CAUSA_DEDUCOES_PERTO_DO_VALOR.format(
-                deducoes=_reais_abreviado(total_deducoes),
-                lista=_lista_deducoes(resultado),
-                percentual=_pct(total_deducoes / valor_empresa, 0),
-                valor_empresa=_reais_abreviado(valor_empresa),
-            )
-        maior = max(deducoes, key=lambda nome: deducoes[nome])
-        return AVISO_FCD_CAUSA_DEDUCOES_ACIMA_DO_VALOR.format(
+    if codigo == "K1b":
+        return AVISO_FCD_CAUSA_DEDUCOES_PERTO_DO_VALOR.format(
             deducoes=_reais_abreviado(total_deducoes),
             lista=_lista_deducoes(resultado),
-            vezes=_vezes(total_deducoes / valor_empresa),
+            percentual=_pct(total_deducoes / valor_empresa, 0),
             valor_empresa=_reais_abreviado(valor_empresa),
-            maior=AVISO_FCD_NOMES_DEDUCOES_COM_ARTIGO[maior],
-            percentual_maior=_pct(deducoes[maior] / total_deducoes, 0),
         )
     if codigo == "K5":
         assert preco is not None
@@ -182,7 +153,7 @@ def _texto_da_causa(codigo: str, resultado: dict, preco: float | None) -> str:
 
 def avaliar_fcd_extremo(resultado_fcd: dict, preco_atual: float | None) -> dict | None:
     """`None` se o FCD não se aplica ou o valor não é extremo. Senão, um dict com `gatilho`
-    ("negativo", "alto" ou "baixo"), `causas` (códigos, em ordem de aparição no texto) e
+    ("alto" ou "baixo"), `causas` (códigos, em ordem de aparição no texto) e
     `texto` (o aviso completo)."""
     if not resultado_fcd.get("aplicavel"):
         return None
@@ -192,9 +163,7 @@ def avaliar_fcd_extremo(resultado_fcd: dict, preco_atual: float | None) -> dict 
         return None
     causas = _causas(resultado_fcd, preco_atual)
 
-    if gatilho == "negativo":
-        abertura = AVISO_FCD_ABERTURA_NEGATIVO.format(valor=_reais(valor_justo))
-    elif preco_atual is None:  # "alto" e "baixo" só disparam com preço
+    if preco_atual is None:  # "alto" e "baixo" só disparam com preço
         return None
     elif gatilho == "alto":
         abertura = AVISO_FCD_ABERTURA_ALTO.format(

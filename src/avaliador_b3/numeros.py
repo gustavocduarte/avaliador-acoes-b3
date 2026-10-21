@@ -36,3 +36,18 @@ def converter_finito(valor: str | float, descricao: str = "valor") -> float:
 def campos_nao_finitos(valores: dict[str, object]) -> list[str]:
     """Nomes dos campos presentes cujo valor não é número finito."""
     return [nome for nome, valor in valores.items() if nao_finito(valor)]
+
+
+def numero_pt_br(valor: float, casas: int) -> str:
+    """ "1.234,5": ponto de milhar e vírgula decimal, sem depender do locale."""
+    return f"{valor:,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def reais_abreviado(valor: float) -> str:
+    """ "R$ 3,6 bi" a partir de R$ 1 bilhão, "R$ 420,3 mi" a partir de R$ 1 milhão."""
+    sinal = "−" if valor < 0 else ""
+    if abs(valor) >= 1e9:
+        return f"{sinal}R$ {numero_pt_br(abs(valor) / 1e9, 1)} bi"
+    if abs(valor) >= 1e6:
+        return f"{sinal}R$ {numero_pt_br(abs(valor) / 1e6, 1)} mi"
+    return f"{sinal}R$ {numero_pt_br(abs(valor), 2)}"

@@ -61,6 +61,8 @@ from avaliador_b3.config import (
     MOTIVO_DIVIDA_LIQUIDA_INDISPONIVEL,
     MOTIVO_ENTRADA_NAO_FINITA,
     MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
+    MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR,
+    MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR_CURTO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
     MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL,
@@ -69,15 +71,18 @@ from avaliador_b3.config import (
     MOTIVO_RECEITA_NAO_POSITIVA,
     MOTIVO_RESULTADO_NAO_FINITO,
     MOTIVOS_FCD_POR_SEGMENTO,
+    NOMES_PARCELAS_MOTIVO_FCD,
+    NOMES_PARCELAS_MOTIVO_FCD_CURTO,
     PREMIO_RISCO_MERCADO_BRASIL,
     SEGMENTOS_FCD_NAO_APLICAVEL,
     SPREAD_CREDITO_PADRAO,
     SPREAD_DEFAULT_BRASIL,
     TAXA_CRESCIMENTO_FCD_MAXIMA,
     TAXA_CRESCIMENTO_FCD_MINIMA,
+    TEXTO_DEDUCOES_COM_CAIXA_LIQUIDO,
     TICKERS_FCD_NAO_APLICAVEL,
 )
-from avaliador_b3.numeros import campos_nao_finitos, numero_finito
+from avaliador_b3.numeros import campos_nao_finitos, numero_finito, reais_abreviado
 
 
 def calcular_proporcao_capex_caixa_operacional_percentual(
@@ -109,6 +114,11 @@ def calcular_fluxo_caixa_fcd(cfo: float, capex: dict, juros_pagos: dict) -> floa
     if capex["status"] != "identificado":
         return None
     return cfo - capex["valor"] + juros_pagos["valor"] * (1 - ALIQUOTA_IR_CSLL_PADRAO)
+
+
+def _enumerar(itens: list[str]) -> str:
+    """ "a", "a e b", "a, b e c"."""
+    return ", ".join(itens[:-1]) + " e " + itens[-1] if len(itens) > 1 else itens[0]
 
 
 def _receitas_do_fcd(resultado_cvm: dict) -> dict:
@@ -602,6 +612,42 @@ def calcular_valor_justo_fcd(
             "aplicavel": False,
             "valor_justo": None,
             "motivo_nao_aplicavel": MOTIVO_RESULTADO_NAO_FINITO,
+        }
+
+    if valor_justo <= 0:
+        # Deduções acima do valor da empresa: o modelo consolidado não estima o valor da ação.
+        deducoes = {
+            "divida_liquida": deducao_divida_liquida,
+            "arrendamento": deducao_arrendamento,
+            "nao_controladores": deducao_nao_controladores,
+        }
+        positivas = [nome for nome, valor in deducoes.items() if valor > 0] or list(deducoes)
+        brutas = sum(deducoes[nome] for nome in positivas if deducoes[nome] > 0)
+        caixa_liquido = -sum(valor for valor in deducoes.values() if valor < 0)
+        total = reais_abreviado(sum(deducoes.values()))
+        campos = {
+            "deducoes": (
+                TEXTO_DEDUCOES_COM_CAIXA_LIQUIDO.format(
+                    brutas=reais_abreviado(brutas),
+                    caixa=reais_abreviado(caixa_liquido),
+                    total=total,
+                )
+                if brutas > 0 and caixa_liquido > 0
+                else total
+            ),
+            "valor_empresa": reais_abreviado(valor_empresa),
+        }
+        return {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR.format(
+                parcelas=_enumerar([NOMES_PARCELAS_MOTIVO_FCD[nome] for nome in positivas]),
+                **campos,
+            ),
+            "motivo_nao_aplicavel_curto": MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR_CURTO.format(
+                parcelas=_enumerar([NOMES_PARCELAS_MOTIVO_FCD_CURTO[nome] for nome in positivas]),
+                **campos,
+            ),
         }
 
     return {

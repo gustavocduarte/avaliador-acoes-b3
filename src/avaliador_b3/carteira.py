@@ -88,9 +88,10 @@ def simular_investimento_ticker(linha_screener: dict, valor_investido: float) ->
     projetado a partir de um cenário inexistente.
 
     Retorno de cada cenário nunca passa de −100%: o piso econômico de uma
-    ação é zero (responsabilidade limitada), então um valor de método ≤
-    preço atual × 0 (ex: FCD negativo) vira perda total, não uma
-    projeção negativa. `cenarios_limitados_perda_total` lista os nomes
+    ação é zero (responsabilidade limitada), então um valor de método ≤ 0 vira perda total,
+    não uma projeção negativa. Hoje nenhum método grava valor ≤ 0 (o FCD vira "não
+    aplicável"); o piso cobre screener.csv anteriores a essa regra.
+    `cenarios_limitados_perda_total` lista os nomes
     dos cenários (`"otimista"`/`"base"`/`"pessimista"`) que bateram nesse
     piso, pra quem exibe avisar que aquele valor foi limitado.
     """

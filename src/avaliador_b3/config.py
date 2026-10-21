@@ -1015,6 +1015,33 @@ MOTIVO_RESULTADO_NAO_FINITO = "O cálculo não deu um número finito com as entr
 MOTIVO_BAZIN_DIVIDENDO_NAO_FINITO = (
     "O histórico de dividendos tem valor inválido (NaN ou infinito) nos anos usados pelo método."
 )
+# FCD com valor por ação ≤ 0: as deduções (dívida líquida, arrendamento e minoritários) passam
+# o valor da empresa pelo fluxo de caixa. Versão completa (legenda do gráfico) e curta
+# (Screener e tooltips); `{parcelas}` lista só as deduções diferentes de zero.
+MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR = (
+    "O que precisa ser descontado — {parcelas}, {deducoes} — supera o valor da empresa pelo "
+    "fluxo de caixa, {valor_empresa}. O modelo olha a empresa consolidada e, nesse caso, não "
+    "consegue estimar o valor por ação; isso é comum em holdings e empresas muito endividadas."
+)
+MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR_CURTO = (
+    "FCD não aplicável: {parcelas} ({deducoes}) superam o valor da empresa pelo caixa que ela "
+    "gera ({valor_empresa})."
+)
+# Total das deduções quando há caixa líquido (dívida líquida negativa) abatendo as demais.
+TEXTO_DEDUCOES_COM_CAIXA_LIQUIDO = (
+    "{brutas}, descontado o caixa líquido de {caixa} — total de {total}"
+)
+NOMES_PARCELAS_MOTIVO_FCD = {
+    "divida_liquida": "dívida líquida",
+    "arrendamento": "arrendamento",
+    "nao_controladores": "participação de sócios minoritários",
+}
+NOMES_PARCELAS_MOTIVO_FCD_CURTO = {
+    "divida_liquida": "dívida líquida",
+    "arrendamento": "arrendamento",
+    "nao_controladores": "sócios minoritários",
+}
+TEXTO_NENHUM_METODO_SE_APLICA = "Nenhum método se aplica a esta empresa"
 MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
     "O fluxo de caixa livre do último ano foi zero ou negativo; projetá-lo "
     "para o futuro não dá uma estimativa de valor confiável, então o "
@@ -1226,37 +1253,21 @@ AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD = (
     "pode não se repetir). Confira os valores individuais antes de "
     "considerar uma oportunidade real."
 )
-AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD = (
-    "Valor justo zero ou negativo — o FCD saiu negativo, o que acontece "
-    "quando a dívida líquida, somada à parte dos sócios não controladores, "
-    "supera o valor do fluxo de caixa projetado. "
-    "Não quer dizer que a ação "
-    "valha menos que zero, mas indica que, pelas premissas do modelo, a "
-    "geração de caixa não sustenta o preço atual. Confira o "
-    "endividamento em 'Saúde financeira'."
-)
-# Reserva pra qualquer combinação não coberta acima — hoje, na prática,
-# só "potencial negativo extremo SEM FCD entre os métodos". Essa
-# combinação é INALCANÇÁVEL com os modelos atuais: Graham é uma raiz
-# quadrada (`modelos.graham`, sempre ≥ 0 quando calculável) e Bazin só
-# fica "aplicável" quando o dividendo dos últimos 12 meses é positivo
-# (`modelos.bazin`, preco_teto sempre > 0 nesse caso) — sem o FCD (o
-# único dos três que pode dar negativo), a média de Graham e/ou Bazin
-# nunca é negativa, então potencial ≤ LIMITE_INFERIOR (que exige
-# valor_combinado ≤ 0) não pode acontecer. Existe mesmo assim, sem
-# inventar uma explicação específica, pra não deixar essa combinação sem
-# texto nenhum se um dos dois modelos mudar no futuro e passar a
-# permitir valor negativo.
+# Reserva para o potencial abaixo de −100%, que hoje é inalcançável: exigiria valor combinado
+# negativo, e os métodos só entram no combinado com valor positivo (o FCD ≤ 0 é "não
+# aplicável"; Graham é uma raiz quadrada e Bazin só se aplica com dividendo positivo). Fica
+# um texto genérico, sem inventar causa, para o caso de um modelo novo permitir.
 AVISO_DESCONTO_EXTREMO_GENERICO = (
     "Potencial fora do comum — confira os valores individuais de cada "
     "método antes de tirar qualquer conclusão."
 )
 
 # Aviso do cartão do FCD quando o valor é extremo (ver `modelos.aviso_fcd`). Dispara com o FCD
-# zero ou negativo, com o FCD a partir de 3 vezes o preço (os mesmos +200% do aviso do
-# Screener) ou positivo mas até 10% do preço. A causa vem só das entradas do modelo; as
-# comparações com o preço servem para disparar o aviso e para o texto do fluxo, e nunca mudam
-# o cálculo. Limites escolhidos olhando as 53 ações com FCD de 04/10/2026: as deduções
+# a partir de 3 vezes o preço (os mesmos +200% do aviso do Screener) ou positivo mas até 10% do
+# preço; o FCD ≤ 0 não chega aqui, é "não aplicável" (`MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR`). A
+# causa vem só das entradas do modelo; as comparações com o preço servem para disparar o aviso
+# e para o texto do fluxo, e nunca mudam o cálculo. Limites escolhidos olhando as 53 ações com
+# FCD de 04/10/2026: as deduções
 # (dívida líquida, arrendamento e não controladores) pesam 75% ou mais do valor da empresa
 # nas ações com FCD positivo minúsculo; crescimento a 5 p.p. ou menos do piso de −20% marca
 # as cíclicas; perpetuidade a partir de 70% do valor e WACC até 12% marcam os valores muito
@@ -1274,15 +1285,6 @@ AVISO_FCD_NOMES_DEDUCOES = {
     "arrendamento": "arrendamento",
     "nao_controladores": "participação dos não controladores",
 }
-AVISO_FCD_NOMES_DEDUCOES_COM_ARTIGO = {
-    "divida_liquida": "a dívida líquida",
-    "arrendamento": "o arrendamento",
-    "nao_controladores": "a participação dos não controladores",
-}
-AVISO_FCD_ABERTURA_NEGATIVO = (
-    "Valor negativo. O FCD de {valor} não quer dizer que a ação valha menos que zero. "
-    "Causa provável, nas entradas do modelo."
-)
 AVISO_FCD_ABERTURA_ALTO = (
     "Valor muito acima do preço. O FCD de {valor} é {vezes} vezes o preço de {preco}. "
     "Causa provável, nas entradas do modelo."
@@ -1290,10 +1292,6 @@ AVISO_FCD_ABERTURA_ALTO = (
 AVISO_FCD_ABERTURA_BAIXO = (
     "Valor muito abaixo do preço. O FCD de {valor} é {percentual} do preço de {preco}. "
     "Causa provável, nas entradas do modelo."
-)
-AVISO_FCD_CAUSA_DEDUCOES_ACIMA_DO_VALOR = (
-    "As deduções somam {deducoes} ({lista}), {vezes} vezes o valor da empresa pelo fluxo de "
-    "caixa ({valor_empresa}). O maior peso é {maior} ({percentual_maior} das deduções)."
 )
 AVISO_FCD_CAUSA_DEDUCOES_PERTO_DO_VALOR = (
     "As deduções ({deducoes}: {lista}) consomem {percentual} do valor da empresa pelo fluxo "

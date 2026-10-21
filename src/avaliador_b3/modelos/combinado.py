@@ -10,6 +10,7 @@ método vale ou não.
 
 from __future__ import annotations
 
+from avaliador_b3.config import ROTULOS_METODOS_GRAFICO
 from avaliador_b3.numeros import numero_finito
 
 # Cada método guarda o valor calculado numa chave diferente — Bazin chama
@@ -37,9 +38,9 @@ def calcular_valor_combinado(
     None), `metodos_utilizados` (lista dos nomes que entraram na média —
     importante pra mostrar de forma transparente por que o combinado saiu
     daquele jeito, nunca como caixa-preta) e `valores_por_metodo` (dict
-    nome->valor, só dos métodos aplicáveis e com valor finito: um método que
-    diga aplicável com NaN ou infinito fica fora da média). Quando nenhum método é
-    aplicável, devolve isso explicitamente (`aplicavel=False`), nunca um
+    nome->valor, só dos métodos aplicáveis e com valor finito e positivo: um
+    método que diga aplicável com NaN, infinito, zero ou negativo fica fora da média).
+    Quando nenhum método é aplicável, devolve isso explicitamente (`aplicavel=False`), nunca um
     valor None silencioso ou erro.
     """
     resultados_por_metodo = {
@@ -48,10 +49,14 @@ def calcular_valor_combinado(
         "fcd": resultado_fcd,
     }
 
+    # Valor ≤ 0 não é estimativa de valor: cada modelo já o trata como não aplicável, e este
+    # filtro garante o mesmo se um modelo novo deixar passar.
     valores_por_metodo = {
         nome: resultado[CHAVE_VALOR_POR_METODO[nome]]
         for nome, resultado in resultados_por_metodo.items()
-        if resultado.get("aplicavel") and numero_finito(resultado[CHAVE_VALOR_POR_METODO[nome]])
+        if resultado.get("aplicavel")
+        and numero_finito(resultado[CHAVE_VALOR_POR_METODO[nome]])
+        and resultado[CHAVE_VALOR_POR_METODO[nome]] > 0
     }
 
     if not valores_por_metodo:
@@ -73,6 +78,26 @@ def calcular_valor_combinado(
         "valores_por_metodo": valores_por_metodo,
         "motivo_nao_aplicavel": None,
     }
+
+
+def linhas_motivos_metodos(
+    resultado_graham: dict, resultado_bazin: dict, resultado_fcd: dict
+) -> list[str]:
+    """Uma linha por método não aplicável ("Graham não aplicável: motivo"); o FCD usa a
+    versão curta do motivo quando existe."""
+    linhas = []
+    for nome, resultado in (
+        ("graham", resultado_graham),
+        ("bazin", resultado_bazin),
+        ("fcd", resultado_fcd),
+    ):
+        if resultado.get("aplicavel"):
+            continue
+        curto = resultado.get("motivo_nao_aplicavel_curto")
+        motivo = str(resultado.get("motivo_nao_aplicavel") or "motivo indisponível").rstrip(".")
+        rotulo = ROTULOS_METODOS_GRAFICO[nome].split(" (")[0]
+        linhas.append(curto or f"{rotulo} não aplicável: {motivo}.")
+    return linhas
 
 
 def calcular_divergencia_metodos(

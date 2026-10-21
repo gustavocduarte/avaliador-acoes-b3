@@ -1123,7 +1123,9 @@ def test_acoes_sem_nenhum_metodo_aplicavel_nao_contam_como_falha_de_fonte(
 
     oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
 
-    assert resultado["erro"].str.startswith("Nenhum dos três métodos").all()
+    assert resultado["erro"].str.startswith("Nenhum método se aplica a esta empresa. ").all()
+    for metodo in ("Graham", "Bazin", "FCD"):
+        assert resultado["erro"].str.contains(f"{metodo} não aplicável: ").all()
     assert resultado["sucesso"].all()
     assert resultado.attrs["falhas_de_fonte"] == {}
     assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
@@ -1383,22 +1385,12 @@ def test_aviso_desconto_extremo_positivo_sem_fcd():
     assert aviso == screener.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
 
 
-def test_aviso_desconto_extremo_negativo_com_fcd():
-    # Caso real da validação: AURE3 (só FCD, que é o único método capaz
-    # de produzir valor combinado negativo).
-    aviso = screener._aviso_desconto_extremo(-405.6, ["fcd"])
-    assert aviso == screener.AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD
-
-
-def test_aviso_desconto_extremo_negativo_sem_fcd_usa_texto_generico():
-    # Combinação hoje INALCANÇÁVEL na prática (Graham é raiz quadrada,
-    # Bazin só fica aplicável com dividendo positivo — nenhum dos dois
-    # produz valor combinado negativo sem o FCD) — mas a função não pode
-    # quebrar nem inventar uma causa específica se isso um dia acontecer
-    # (ex: um dos dois modelos mudar). Cai no texto de reserva genérico,
-    # ver AVISO_DESCONTO_EXTREMO_GENERICO em config.py.
-    aviso = screener._aviso_desconto_extremo(-150.0, ["graham"])
-    assert aviso == screener.AVISO_DESCONTO_EXTREMO_GENERICO
+def test_aviso_desconto_extremo_negativo_usa_texto_generico():
+    # Combinação hoje inalcançável (só entram no combinado métodos com valor positivo), mas a
+    # função não pode quebrar nem inventar uma causa: cai no texto de reserva genérico.
+    for metodos in (["graham"], ["fcd"]):
+        aviso = screener._aviso_desconto_extremo(-150.0, metodos)
+        assert aviso == screener.AVISO_DESCONTO_EXTREMO_GENERICO
 
 
 def test_calcular_linha_ticker_sinaliza_desconto_extremo_positivo(
@@ -1460,7 +1452,75 @@ def test_calcular_linha_ticker_sinaliza_desconto_extremo_negativo(
     )
 
     assert linha["desconto_percentual"] == pytest.approx(-300.0)
-    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD
+    assert linha["aviso_desconto_extremo"] == screener.AVISO_DESCONTO_EXTREMO_GENERICO
+
+
+MOTIVO_CURTO_FCD = "FCD não aplicável: dívida líquida (R$ 9,0 bi) supera o valor (R$ 5,0 bi)."
+
+
+def _fcd_com_deducoes_acima_do_valor(monkeypatch):
+    monkeypatch.setattr(
+        screener,
+        "calcular_valor_justo_fcd",
+        lambda **kw: {
+            "aplicavel": False,
+            "valor_justo": None,
+            "motivo_nao_aplicavel": "motivo completo",
+            "motivo_nao_aplicavel_curto": MOTIVO_CURTO_FCD,
+        },
+    )
+
+
+def test_observacao_traz_o_motivo_curto_do_fcd_quando_ele_fica_de_fora_do_combinado(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _fcd_com_deducoes_acima_do_valor(monkeypatch)
+
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["erro"] == MOTIVO_CURTO_FCD
+    assert linha["fcd_valor_justo"] is None
+    assert linha["valor_combinado"] is not None
+    assert "fcd" not in linha["metodos_utilizados"]
+
+
+def test_observacao_fica_vazia_quando_o_fcd_aplica(ambiente_feliz, tmp_path):
+    linha = screener._calcular_linha_ticker(
+        "AAAA4",
+        catalogo_emissores=pd.DataFrame(),
+        historico_ibovespa_beta=_historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        selic_meta=0.10,
+        ipca_12m=0.04,
+        ano_mais_recente_fcd=ANO_FCD_MOCK,
+        erro_deteccao_ano_fcd=None,
+        diretorio_cache=tmp_path,
+    )
+
+    assert linha["erro"] is None
+
+
+def test_rodada_com_fcd_vazio_por_deducoes_acima_do_valor_e_aceita(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _fcd_com_deducoes_acima_do_valor(monkeypatch)
+
+    oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert (resultado["erro"] == MOTIVO_CURTO_FCD).all()
+    assert resultado["fcd_valor_justo"].isna().all()
+    gravado = pd.read_csv(oficial)
+    assert gravado["fcd_valor_justo"].isna().all()
+    assert (gravado["erro"] == MOTIVO_CURTO_FCD).all()
+    assert resultado["valor_combinado"].notna().all()
 
 
 def test_calcular_linha_ticker_nao_sinaliza_desconto_normal(ambiente_feliz, tmp_path, monkeypatch):

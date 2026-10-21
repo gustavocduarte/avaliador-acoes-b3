@@ -112,6 +112,7 @@ from avaliador_b3.config import (
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_RODAPE_LINK_REPOSITORIO,
@@ -194,7 +195,11 @@ from avaliador_b3.ingest.precos import (
 )
 from avaliador_b3.modelos.aviso_fcd import avaliar_fcd_extremo
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
-from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
+from avaliador_b3.modelos.combinado import (
+    calcular_divergencia_metodos,
+    calcular_valor_combinado,
+    linhas_motivos_metodos,
+)
 from avaliador_b3.modelos.fcd import (
     calcular_caixa_operacional_fcd,
     calcular_proporcao_capex_caixa_operacional_percentual,
@@ -1670,6 +1675,23 @@ def pagina_analisar() -> None:
                         ajuda=TOOLTIP_POTENCIAL_CARTAO,
                     )
                 )
+        else:
+            motivos_metodos = "\n".join(
+                linhas_motivos_metodos(resultado_graham, resultado_bazin, resultado_fcd)
+            )
+            rotulos_sem_valor = ["Valor combinado"]
+            if preco_atual is not None:
+                rotulos_sem_valor.append(ROTULO_POTENCIAL)
+            for rotulo_cartao in rotulos_sem_valor:
+                cartoes_destaque.append(
+                    _html_kpi(
+                        rotulo_cartao,
+                        "—",
+                        "ab-cor-secundario",
+                        TEXTO_NENHUM_METODO_SE_APLICA,
+                        ajuda=motivos_metodos,
+                    )
+                )
         cartoes_destaque.append(
             _html_kpi(
                 "Divergência entre métodos",
@@ -1744,7 +1766,8 @@ def pagina_analisar() -> None:
             for chave, resultado in metodos_painel:
                 nome = ROTULOS_METODOS_GRAFICO[chave]
                 if not resultado["aplicavel"]:
-                    st.caption(f"{nome} — Não aplicável: {resultado['motivo_nao_aplicavel']}")
+                    motivo = resultado["motivo_nao_aplicavel"].replace("$", "\\$")
+                    st.caption(f"{nome} — Não aplicável: {motivo}")
                 elif chave not in resultado_combinado["valores_por_metodo"]:
                     st.caption(f"{nome} — Valor indisponível.")
 

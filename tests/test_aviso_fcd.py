@@ -42,8 +42,6 @@ def test_fcd_nao_aplicavel_nao_gera_aviso():
 @pytest.mark.parametrize(
     ("valor_justo", "gatilho"),
     [
-        (-0.01, "negativo"),
-        (0.0, "negativo"),
         (60.0, "alto"),
         (2.0, "baixo"),
         (2.01, None),
@@ -57,17 +55,13 @@ def test_gatilhos_pela_razao_ao_preco(valor_justo, gatilho):
     assert (resultado["gatilho"] if resultado else None) == gatilho
 
 
-def test_sem_preco_so_o_valor_negativo_dispara():
+def test_sem_preco_nenhum_valor_dispara():
     assert avaliar_fcd_extremo(_resultado(valor_justo=500.0), None) is None
-    assert avaliar_fcd_extremo(_resultado(valor_justo=-1.0), None)["gatilho"] == "negativo"
+    assert avaliar_fcd_extremo(_resultado(valor_justo=0.5), None) is None
 
 
 def _causas(**ajustes):
     return avaliar_fcd_extremo(_resultado(valor_justo=60.0, **ajustes), PRECO)["causas"]
-
-
-def test_causa_deducoes_acima_do_valor_da_empresa():
-    assert _causas(deducao_divida_liquida=10e9) == ["K1"]
 
 
 def test_causa_deducoes_perto_do_valor_da_empresa():
@@ -161,34 +155,6 @@ def test_texto_beef3_valor_muito_acima_do_preco():
     )
 
 
-def test_texto_goau4_valor_negativo():
-    resultado = _resultado(
-        valor_justo=-24.839465,
-        valor_empresa=11401864102.06,
-        valor_presente_perpetuidade=5935383243.6,
-        deducao_divida_liquida=8086870000.0,
-        deducao_arrendamento=1612345000.0,
-        deducao_nao_controladores=34562145000.0,
-        fluxo_base=2095239020.0,
-        acoes_utilizadas=1322874548.0,
-        wacc=0.176901,
-        taxa_crescimento_explicita=-0.113887,
-    )
-
-    aviso = avaliar_fcd_extremo(resultado, 11.75)
-
-    assert aviso["gatilho"] == "negativo"
-    assert aviso["causas"] == ["K1"]
-    assert aviso["texto"] == (
-        "Valor negativo. O FCD de −R$ 24,84 não quer dizer que a ação valha menos que zero. "
-        "Causa provável, nas entradas do modelo. "
-        "As deduções somam R$ 44,3 bi (dívida líquida R$ 8,1 bi, arrendamento R$ 1,6 bi e "
-        "participação dos não controladores R$ 34,6 bi), 3,9 vezes o valor da empresa pelo "
-        "fluxo de caixa (R$ 11,4 bi). O maior peso é a participação dos não controladores "
-        "(78% das deduções)."
-    )
-
-
 def test_texto_ggbr4_valor_positivo_minusculo():
     resultado = _resultado(
         valor_justo=0.138728,
@@ -216,35 +182,6 @@ def test_texto_ggbr4_valor_positivo_minusculo():
         "muito com pequenas mudanças nas premissas. "
         "O crescimento do fluxo começa em −17% ao ano (perto do piso da faixa, −20%) e converge "
         "para o da perpetuidade em 5 anos."
-    )
-
-
-def test_texto_engi11_valor_negativo_com_crescimento_no_piso():
-    resultado = _resultado(
-        valor_justo=-68.696355,
-        valor_empresa=2306222503.01,
-        valor_presente_perpetuidade=1330191948.76,
-        deducao_divida_liquida=33228800000.0,
-        deducao_arrendamento=151365000.0,
-        deducao_nao_controladores=3484877000.0,
-        fluxo_base=421394000.0,
-        acoes_utilizadas=503066277.0,
-        wacc=0.149139,
-        taxa_crescimento_explicita=-0.2,
-    )
-
-    aviso = avaliar_fcd_extremo(resultado, 55.15)
-
-    assert aviso["gatilho"] == "negativo"
-    assert aviso["causas"] == ["K1", "K2b"]
-    assert aviso["texto"] == (
-        "Valor negativo. O FCD de −R$ 68,70 não quer dizer que a ação valha menos que zero. "
-        "Causa provável, nas entradas do modelo. "
-        "As deduções somam R$ 36,9 bi (dívida líquida R$ 33,2 bi, arrendamento R$ 151,4 mi e "
-        "participação dos não controladores R$ 3,5 bi), 16 vezes o valor da empresa pelo "
-        "fluxo de caixa (R$ 2,3 bi). O maior peso é a dívida líquida (90% das deduções). "
-        "O crescimento do fluxo começa em −20% ao ano (o piso da faixa) e converge para o da "
-        "perpetuidade em 5 anos."
     )
 
 

@@ -133,11 +133,11 @@ do redesenho.
 - **Não aplicável:** bancos, seguradoras e a Itaúsa (a dívida e os depósitos são a própria
   operação, ou a empresa vive de dividendos de participações); capex não identificado; fluxo
   de caixa livre do ano de referência zero ou negativo; empresa sem dados de fluxo de caixa na
-  CVM; número de ações indisponível; WACC não positivo. Valor justo zero ou negativo é mostrado
-  com aviso, não zerado.
-- **Aviso de valor extremo:** quando o FCD é zero ou negativo, a partir de 3 vezes o preço ou
-  positivo mas até 10% do preço, o cartão do FCD mostra a causa provável nas entradas do modelo
-  (deduções acima do valor da empresa, crescimento no teto ou no piso da faixa, perpetuidade
+  CVM; número de ações indisponível; WACC não positivo; valor por ação zero ou negativo (as
+  deduções passam o valor da empresa), com o motivo na tela e no Screener, sem zerar o valor.
+- **Aviso de valor extremo:** quando o FCD é a partir de 3 vezes o preço ou positivo mas até
+  10% do preço, o cartão do FCD mostra a causa provável nas entradas do modelo
+  (deduções perto do valor da empresa, crescimento no teto ou no piso da faixa, perpetuidade
   pesada, WACC baixo). É só informativo: não altera o valor.
 
 A justificativa de cada constante está em `src/avaliador_b3/config.py`.

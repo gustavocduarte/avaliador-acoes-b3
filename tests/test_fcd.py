@@ -18,6 +18,7 @@ from avaliador_b3.config import (
     TAXA_CRESCIMENTO_FCD_MINIMA,
 )
 from avaliador_b3.modelos import fcd
+from avaliador_b3.numeros import reais_abreviado
 
 
 def _capex(valor):
@@ -758,14 +759,62 @@ def test_fcd_sem_leitura_do_balanco_mantem_o_calculo_e_traz_o_motivo():
     assert resultado["motivo_sem_nao_controladores"] == "A empresa não tem balanço."
 
 
-def test_fcd_negativo_depois_do_ajuste_nao_e_limitado_a_zero():
+def test_fcd_com_deducoes_acima_do_valor_da_empresa_e_nao_aplicavel_com_o_motivo():
     resultado = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE, nao_controladores=1e9)
 
-    assert resultado["aplicavel"] is True
-    assert resultado["valor_justo"] < 0
-    assert resultado["valor_justo"] == pytest.approx(
-        fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)["valor_justo"] - 1e9 / 100.0
+    assert resultado["aplicavel"] is False
+    assert resultado["valor_justo"] is None
+    motivo = resultado["motivo_nao_aplicavel"]
+    assert "supera o valor da empresa pelo fluxo de caixa" in motivo
+    assert "holdings e empresas muito endividadas" in motivo
+    curto = resultado["motivo_nao_aplicavel_curto"]
+    assert curto.startswith("FCD não aplicável: ")
+    assert "valor da empresa pelo caixa que ela gera" in curto
+
+
+def test_motivo_do_fcd_lista_so_as_deducoes_diferentes_de_zero_e_os_valores():
+    valor_empresa = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)["valor_empresa"]
+
+    so_divida = fcd.calcular_valor_justo_fcd(
+        **{**PARAMETROS_FCD_BASE, "divida_liquida": valor_empresa * 2}
     )
+    tres = fcd.calcular_valor_justo_fcd(
+        **{**PARAMETROS_FCD_BASE, "divida_liquida": valor_empresa / 2},
+        arrendamento_fora_da_divida=valor_empresa,
+        nao_controladores=valor_empresa / 4,
+    )
+
+    assert "— dívida líquida," in so_divida["motivo_nao_aplicavel"]
+    assert "arrendamento" not in so_divida["motivo_nao_aplicavel"]
+    assert "minoritários" not in so_divida["motivo_nao_aplicavel_curto"]
+    assert (
+        "dívida líquida, arrendamento e participação de sócios minoritários,"
+        in tres["motivo_nao_aplicavel"]
+    )
+    assert (
+        "dívida líquida, arrendamento e sócios minoritários ("
+        in (tres["motivo_nao_aplicavel_curto"])
+    )
+    assert "R$ " in tres["motivo_nao_aplicavel_curto"]
+
+
+def test_motivo_do_fcd_com_caixa_liquido_mostra_o_abatimento_para_a_conta_bater():
+    valor_empresa = fcd.calcular_valor_justo_fcd(**PARAMETROS_FCD_BASE)["valor_empresa"]
+
+    resultado = fcd.calcular_valor_justo_fcd(
+        **{**PARAMETROS_FCD_BASE, "divida_liquida": -valor_empresa / 4},
+        nao_controladores=valor_empresa * 2,
+    )
+
+    assert resultado["aplicavel"] is False
+    brutas = reais_abreviado(valor_empresa * 2)
+    caixa = reais_abreviado(valor_empresa / 4)
+    total = reais_abreviado(valor_empresa * 1.75)
+    esperado = f"{brutas}, descontado o caixa líquido de {caixa} — total de {total}"
+    for motivo in (resultado["motivo_nao_aplicavel"], resultado["motivo_nao_aplicavel_curto"]):
+        assert esperado in motivo
+        assert "dívida líquida" not in motivo
+    assert "participação de sócios minoritários, " + esperado in resultado["motivo_nao_aplicavel"]
 
 
 def test_ajustes_do_balanco_com_leitura_disponivel_trazem_nao_controladores_e_patrimonio_total():
@@ -838,14 +887,14 @@ def test_arrendamento_nao_entra_nos_pesos_do_wacc():
     base = {**PARAMETROS_FCD_BASE, "divida_liquida_sobre_patrimonio": 1.0}
     sem_arrendamento = fcd.calcular_valor_justo_fcd(**base, patrimonio_liquido_total=25_000.0)
     com_arrendamento = fcd.calcular_valor_justo_fcd(
-        **base, patrimonio_liquido_total=25_000.0, arrendamento_fora_da_divida=5_000.0
+        **base, patrimonio_liquido_total=25_000.0, arrendamento_fora_da_divida=2_000.0
     )
 
     # Só a dívida líquida (5.000) ÷ patrimônio total (25.000): arrendamento não pesa.
     assert com_arrendamento["divida_liquida_sobre_patrimonio_utilizada"] == pytest.approx(0.2)
     assert com_arrendamento["wacc"] == pytest.approx(sem_arrendamento["wacc"])
     assert com_arrendamento["valor_justo"] == pytest.approx(
-        sem_arrendamento["valor_justo"] - 5_000.0 / 100.0
+        sem_arrendamento["valor_justo"] - 2_000.0 / 100.0
     )
 
 

@@ -3,6 +3,7 @@ import pytest
 from avaliador_b3.modelos.combinado import (
     calcular_divergencia_metodos,
     calcular_valor_combinado,
+    linhas_motivos_metodos,
 )
 from avaliador_b3.modelos.fcd import calcular_valor_justo_fcd
 
@@ -113,19 +114,27 @@ def test_nao_confunde_a_chave_de_valor_entre_metodos():
     assert resultado["valores_por_metodo"] == {"bazin": 42.0}
 
 
-def test_soma_valor_negativo_normalmente_sem_filtro_de_sinal():
-    # Um método aplicável pode dar valor negativo (ex: FCD de empresa com
-    # projeção de fluxo de caixa ruim — ver test_fcd.py). A média precisa
-    # somar isso normalmente, sem nenhum filtro acidental tipo "só conta
-    # se for positivo".
+@pytest.mark.parametrize("valor", [-20.0, 0.0])
+def test_metodo_com_valor_nao_positivo_fica_fora_da_media(valor):
+    # Cada modelo já trata valor ≤ 0 como não aplicável; o combinador não confia nisso.
     resultado = calcular_valor_combinado(
-        _graham(valor_justo=100.0), _bazin(aplicavel=False), _fcd(valor_justo=-20.0)
+        _graham(valor_justo=100.0), _bazin(aplicavel=False), _fcd(valor_justo=valor)
     )
 
     assert resultado["aplicavel"] is True
-    assert resultado["valor_combinado"] == pytest.approx((100.0 + -20.0) / 2)
-    assert sorted(resultado["metodos_utilizados"]) == ["fcd", "graham"]
-    assert resultado["valores_por_metodo"] == {"graham": 100.0, "fcd": -20.0}
+    assert resultado["valor_combinado"] == pytest.approx(100.0)
+    assert resultado["metodos_utilizados"] == ["graham"]
+    assert resultado["valores_por_metodo"] == {"graham": 100.0}
+
+
+def test_so_metodos_com_valor_nao_positivo_nao_deixam_combinado():
+    resultado = calcular_valor_combinado(
+        _graham(aplicavel=False), _bazin(aplicavel=False), _fcd(valor_justo=-5.0)
+    )
+
+    assert resultado["aplicavel"] is False
+    assert resultado["valor_combinado"] is None
+    assert resultado["valores_por_metodo"] == {}
 
 
 # --- calcular_divergencia_metodos --------------------------------------
@@ -212,3 +221,30 @@ def test_divergencia_sem_preco_atual_valido_fica_sem_percentual_mas_nao_quebra(p
     assert resultado["maior"] == 100.0
     assert resultado["diferenca"] == pytest.approx(10.0)
     assert resultado["divergencia_percentual"] is None
+
+
+def test_linhas_de_motivo_trazem_uma_por_metodo_nao_aplicavel_e_o_fcd_usa_o_texto_curto():
+    graham = {"aplicavel": False, "motivo_nao_aplicavel": "LPA negativo."}
+    bazin = {"aplicavel": False, "motivo_nao_aplicavel": "Sem dividendos"}
+    fcd = {
+        "aplicavel": False,
+        "motivo_nao_aplicavel": "completo",
+        "motivo_nao_aplicavel_curto": "FCD não aplicável: curto.",
+    }
+
+    assert linhas_motivos_metodos(graham, bazin, fcd) == [
+        "Graham não aplicável: LPA negativo.",
+        "Bazin não aplicável: Sem dividendos.",
+        "FCD não aplicável: curto.",
+    ]
+    assert linhas_motivos_metodos({"aplicavel": True}, bazin, {"aplicavel": True}) == [
+        "Bazin não aplicável: Sem dividendos."
+    ]
+
+
+def test_fcd_sem_texto_curto_usa_o_motivo_comum_na_linha():
+    fcd = {"aplicavel": False, "motivo_nao_aplicavel": "Fluxo negativo."}
+
+    assert linhas_motivos_metodos({"aplicavel": True}, {"aplicavel": True}, fcd) == [
+        "FCD não aplicável: Fluxo negativo."
+    ]

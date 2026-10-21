@@ -48,7 +48,6 @@ import requests
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     AVISO_DESCONTO_EXTREMO_GENERICO,
-    AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD,
     AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
     AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
     COLUNAS_VALOR_FINITO_SCREENER,
@@ -74,6 +73,7 @@ from avaliador_b3.config import (
     NOME_ARQUIVO_MACRO_REFERENCIA,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
+    TEXTO_NENHUM_METODO_SE_APLICA,
 )
 from avaliador_b3.empresa.comportamento import calcular_beta
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
@@ -104,7 +104,11 @@ from avaliador_b3.ingest.precos import (
     preco_valido,
 )
 from avaliador_b3.modelos.bazin import calcular_preco_teto_bazin
-from avaliador_b3.modelos.combinado import calcular_divergencia_metodos, calcular_valor_combinado
+from avaliador_b3.modelos.combinado import (
+    calcular_divergencia_metodos,
+    calcular_valor_combinado,
+    linhas_motivos_metodos,
+)
 from avaliador_b3.modelos.fcd import (
     calcular_caixa_operacional_fcd,
     calcular_proporcao_capex_caixa_operacional_percentual,
@@ -240,19 +244,14 @@ def _aviso_desconto_extremo(
     mudam aqui). O TEXTO do aviso, por outro lado, depende de quais
     métodos entraram no valor combinado daquela ação específica: um texto
     único que sempre citasse o FCD estaria errado pra ações como COGN3, onde
-    só Graham dispara o limiar positivo, sem FCD nenhum na conta. Quatro
-    casos, por sinal do
+    só Graham dispara o limiar positivo, sem FCD nenhum na conta. Por sinal do
     potencial × presença de "fcd" em `metodos_utilizados`:
     - positivo + FCD: taxa de crescimento de 2 pontos do FCD (o caso mais
       comum, mas não mais o único assumido).
     - positivo + sem FCD: risco que Graham/Bazin não captam.
-    - negativo + FCD: FCD saiu negativo (único dos três que pode).
-    - negativo + sem FCD: combinação hoje INALCANÇÁVEL — ver comentário
-      completo em `config.AVISO_DESCONTO_EXTREMO_GENERICO` pro porquê
-      (Graham é raiz quadrada, Bazin só aplicável com dividendo
-      positivo) — mantido como reserva genérica, não uma explicação
-      inventada, pra não deixar essa combinação muda se algum dos dois
-      modelos mudar no futuro e passar a permitir negativo.
+    - negativo (com ou sem FCD): hoje INALCANÇÁVEL — o potencial abaixo de −100% exige valor
+      combinado negativo, e só entram no combinado métodos com valor positivo (ver
+      `config.AVISO_DESCONTO_EXTREMO_GENERICO`); fica um texto genérico de reserva.
 
     A linha continua na tabela normalmente, só ganha esse aviso textual.
     """
@@ -268,10 +267,19 @@ def _aviso_desconto_extremo(
             else AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD
         )
     if desconto_percentual < DESCONTO_EXTREMO_LIMITE_INFERIOR:
-        return (
-            AVISO_DESCONTO_EXTREMO_NEGATIVO_COM_FCD if tem_fcd else AVISO_DESCONTO_EXTREMO_GENERICO
-        )
+        return AVISO_DESCONTO_EXTREMO_GENERICO
     return ""
+
+
+def _observacao_da_linha(
+    resultado_graham: dict, resultado_bazin: dict, resultado_fcd: dict, tem_combinado: bool
+) -> str | None:
+    """Coluna "erro" ("Observação" na tela): sem nenhum método, uma linha por método; com
+    combinado, só o motivo curto do FCD quando ele ficou de fora por deduções acima do valor."""
+    if tem_combinado:
+        return resultado_fcd.get("motivo_nao_aplicavel_curto")
+    linhas = linhas_motivos_metodos(resultado_graham, resultado_bazin, resultado_fcd)
+    return " ".join([f"{TEXTO_NENHUM_METODO_SE_APLICA}.", *linhas])
 
 
 def _linha_erro(ticker: str, mensagem: str) -> dict:
@@ -528,8 +536,8 @@ def _calcular_linha_ticker(
         resultado_combinado["valores_por_metodo"], preco_atual
     )
 
-    motivo_erro = (
-        None if resultado_combinado["aplicavel"] else resultado_combinado["motivo_nao_aplicavel"]
+    motivo_erro = _observacao_da_linha(
+        resultado_graham, resultado_bazin, resultado_fcd, resultado_combinado["aplicavel"]
     )
     razao_dividendos_bazin = resultado_bazin.get("razao_dividendos_12m_vs_mediana_5a")
     return {

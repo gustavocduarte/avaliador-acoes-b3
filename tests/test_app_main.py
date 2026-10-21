@@ -192,12 +192,15 @@ def _kpi_por_rotulo(at, rotulo: str) -> dict | None:
     `linha` pequena; `None` se não houver. Levanta `AssertionError` se houver mais de um."""
     cartoes = []
     for elemento in at.get("html"):
-        for cartao in re.findall(r'<div class="ab-kpi">.*?</div></div>', elemento.proto.body):
+        for cartao in re.findall(
+            r'<div class="ab-kpi">.*?</div></div>', elemento.proto.body, re.DOTALL
+        ):
             partes = re.fullmatch(
                 r'<div class="ab-kpi"><div class="ab-titulo">(.*?)(?:<span.*?</span>)?</div>'
                 r'<div class="ab-valor (.*?)">(.*?)</div>'
                 r'<div class="ab-linha (.*?)">(.*?)</div></div>',
                 cartao,
+                re.DOTALL,
             )
             if partes and partes.group(1) == rotulo:
                 cartoes.append(
@@ -1276,7 +1279,11 @@ def test_caption_reinvestimento_caso_normal(monkeypatch):
 def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada_metodo(
     monkeypatch,
 ):
-    from avaliador_b3.config import MOTIVO_FCD_FLUXO_NAO_POSITIVO, TEXTO_COMPLEMENTO_SEM_METODO
+    from avaliador_b3.config import (
+        MOTIVO_FCD_FLUXO_NAO_POSITIVO,
+        TEXTO_COMPLEMENTO_SEM_METODO,
+        TEXTO_NENHUM_METODO_SE_APLICA,
+    )
 
     # FCD não aplicável (fluxo negativo), Graham sem LPA/VPA e Bazin sem dividendos.
     _preparar_fcd_com_cfo_cfi(monkeypatch, cfo_atual=-500_000.0, cfi_atual=-100_000.0)
@@ -1305,7 +1312,15 @@ def test_pagina_da_acao_sem_nenhum_metodo_mostra_aviso_neutro_e_o_motivo_de_cada
     avisos = [i.value for i in at.info if i.value.startswith("Valor combinado:")]
     assert len(avisos) == 1
     assert avisos[0].endswith(TEXTO_COMPLEMENTO_SEM_METODO)
-    assert _kpi_por_rotulo(at, "Valor combinado") is None
+    corpo_cartoes = "".join(e.proto.body for e in at.get("html") if "ab-kpis" in e.proto.body)
+    for rotulo in ("Valor combinado", "Potencial"):
+        cartao = _kpi_por_rotulo(at, rotulo)
+        assert cartao["valor"] == "—"
+        assert cartao["linha"] == TEXTO_NENHUM_METODO_SE_APLICA
+    # O "?" resume o motivo de cada método, uma linha cada.
+    assert "Graham não aplicável: " in corpo_cartoes
+    assert "Bazin não aplicável: " in corpo_cartoes
+    assert "FCD não aplicável: " in corpo_cartoes
     divergencia = _kpi_por_rotulo(at, "Divergência entre métodos")
     assert divergencia["valor"] == "—"
     assert divergencia["linha"] == "Nenhum método aplicável"
@@ -3128,7 +3143,7 @@ def test_cartao_do_fcd_nao_menciona_risco_sacado_quando_nao_ha_ajuste(monkeypatc
 
 
 def _avisos_de_valor_extremo(at):
-    aberturas = ("Valor muito acima do preço", "Valor negativo", "Valor muito abaixo do preço")
+    aberturas = ("Valor muito acima do preço", "Valor muito abaixo do preço")
     return [w.value for w in at.warning if w.value.startswith(aberturas)]
 
 
@@ -3146,18 +3161,21 @@ def test_cartao_do_fcd_avisa_quando_o_valor_e_muito_acima_do_preco(monkeypatch):
     assert avisos[0].endswith("Não é necessariamente uma oportunidade.")
 
 
-def test_cartao_do_fcd_avisa_quando_o_valor_e_negativo(monkeypatch):
+def test_fcd_com_deducoes_acima_do_valor_da_empresa_fica_nao_aplicavel_sem_aviso_amarelo(
+    monkeypatch,
+):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000_000.0)
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
-    avisos = _avisos_de_valor_extremo(at)
-    assert len(avisos) == 1
-    assert avisos[0].startswith("Valor negativo. O FCD de −R\\$ ")
-    assert "não quer dizer que a ação valha menos que zero" in avisos[0]
-    assert "As deduções somam R\\$ 50,0 mi" in avisos[0]
+    assert _avisos_de_valor_extremo(at) == []
+    legendas = [c.value for c in at.caption if c.value.startswith("FCD — Não aplicável")]
+    assert len(legendas) == 1
+    # O "$" sai escapado para o markdown da legenda não tratá-lo como fórmula.
+    assert "O que precisa ser descontado — dívida líquida, R\\$ 50,0 mi — supera" in legendas[0]
+    assert "holdings e empresas muito endividadas" in legendas[0]
 
 
 def test_cartao_do_fcd_avisa_quando_o_valor_e_minusculo_frente_ao_preco(monkeypatch):
