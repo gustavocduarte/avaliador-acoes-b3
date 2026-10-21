@@ -137,6 +137,9 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tinha FCD acima de 3 vezes o preç
   Em 04/10/2026, a API do Banco Central estava fora do ar, e a Selic de 13,75% e o IPCA de 4,2235% (referência 08/2026) vieram do serviço SOAP.
   - *Efeito:* com o valor guardado ou o de referência, a Selic pode estar desatualizada se o Copom mudou a meta nesse intervalo.
   - *Na tela:* quando o dado não vem da API do Banco Central, a página informa a fonte, e quando vem do valor guardado ou do arquivo de referência, mostra um aviso com a data. Se nenhuma fonte responde e não há valor aceitável, o FCD não é calculado.
+- **A página "Analisar uma ação" espera cerca de 1 minuto pelo catálogo de emissores da B3 quando o app acorda no Cloud.** O catálogo (`data/raw/b3/catalogo_emissores.csv`, 36 páginas da API) não é versionado, e o disco do Cloud é apagado quando o app dorme; sem ele, a página não acha o CNPJ nem o segmento da ação. Medido em 21/10/2026: 62 s sem cache e 0,17 s com cache.
+  - *Na tela:* a busca fica em "Buscando dados…" por cerca de 1 minuto no primeiro acesso depois de o app acordar.
+  - *Melhoria futura:* o workflow do screener gravar um catálogo enxuto (ticker, CNPJ e segmento) em `data/processed`, versionado, para o app ler sem buscar as 36 páginas. A página do Screener já não depende do catálogo: lê o segmento da coluna `segmento_setorial` do `screener.csv`.
 
 ## Screener e Simulador de carteira
 

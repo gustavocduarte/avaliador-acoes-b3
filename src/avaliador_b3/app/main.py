@@ -105,6 +105,10 @@ from avaliador_b3.config import (
     ROTULO_FILTRO_SETOR,
     ROTULO_JANELA_DIVIDENDOS_COMPLETA,
     ROTULO_JANELA_DIVIDENDOS_CURTA,
+    ROTULO_KPI_ABAIXO_DO_VALOR_JUSTO,
+    ROTULO_KPI_COM_COMBINADO,
+    ROTULO_KPI_COM_FCD,
+    ROTULO_KPI_MEDIANA_POTENCIAL,
     ROTULO_LIMPAR_FILTROS,
     ROTULO_POTENCIAL,
     ROTULO_RODAR_SCREENER,
@@ -132,7 +136,12 @@ from avaliador_b3.config import (
     TEXTO_DIVERGENCIA_UM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
+    TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
+    TEXTO_KPI_COM_COMBINADO,
+    TEXTO_KPI_COM_FCD,
+    TEXTO_KPI_SEM_METODO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_METODO_SE_APLICA,
@@ -163,6 +172,7 @@ from avaliador_b3.config import (
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
     TOOLTIP_DIVERGENCIA_METODOS,
+    TOOLTIP_MEDIANA_POTENCIAL,
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
@@ -1378,6 +1388,8 @@ _CSS_DA_PAGINA = Template("""<style>
   color: $principal; }
 [class*="st-key-barra_"] label, [class*="st-key-barra_"] label p { font-size: 14px; }
 .st-key-barra_rodape { background-color: transparent; }
+/* Rótulo de um grupo de filtros, igual ao dos widgets nativos do bloco. */
+.ab-rotulo-filtro { font-size: 14px; margin-bottom: .25rem; }
 .st-key-barra_rodape p, .st-key-barra_rodape a { font-size: 14px; }
 /* Classes `.ab-*`: números de destaque, títulos e pílulas. Se o Streamlit deixar de aceitar
    este bloco, o conteúdo continua na tela, só sem o estilo. */
@@ -2522,6 +2534,13 @@ def _padroes_filtros_screener() -> dict[str, object]:
     }
 
 
+def _texto_potencial_minimo(valor: int) -> str:
+    """Valor do slider do potencial mínimo; na posição que desliga o filtro, "Sem filtro"."""
+    if valor == POTENCIAL_MINIMO_FILTRO_DESLIGADO:
+        return TEXTO_FILTRO_SEM_FILTRO
+    return f"{valor}%"
+
+
 def _limpar_filtros_screener() -> None:
     padroes = _padroes_filtros_screener()
     st.session_state.update(padroes)
@@ -2530,6 +2549,50 @@ def _limpar_filtros_screener() -> None:
 
 def _solicitar_rodada_screener() -> None:
     st.session_state[CHAVE_RODAR_SCREENER_SOLICITADO] = True
+
+
+def _html_kpis_screener(tabela: pd.DataFrame) -> str:
+    """Cartões do topo do Screener, sobre o universo inteiro: ações com valor combinado, mediana
+    do potencial (verde se positiva, rosa se negativa), ações abaixo do valor justo (potencial
+    acima de zero) e ações com FCD aplicável."""
+    total = len(tabela)
+    com_combinado = int(tabela["valor_combinado"].notna().sum())
+    potencial = tabela["desconto_percentual"]
+    mediana = potencial.median()
+    cor_mediana = (
+        "ab-cor-secundario"
+        if pd.isna(mediana)
+        else "ab-cor-positivo"
+        if mediana > LIMITE_SINAL_INDICADOR
+        else "ab-cor-negativo"
+    )
+    cartoes = [
+        _html_kpi(
+            ROTULO_KPI_COM_COMBINADO,
+            TEXTO_KPI_COM_COMBINADO.format(com=com_combinado, total=total),
+            "ab-cor-texto",
+            TEXTO_KPI_SEM_METODO.format(sem=total - com_combinado),
+        ),
+        _html_kpi(
+            ROTULO_KPI_MEDIANA_POTENCIAL,
+            "—" if pd.isna(mediana) else _fmt_potencial(mediana),
+            cor_mediana,
+            ajuda=TOOLTIP_MEDIANA_POTENCIAL,
+        ),
+        _html_kpi(
+            ROTULO_KPI_ABAIXO_DO_VALOR_JUSTO,
+            str(int((potencial > LIMITE_SINAL_INDICADOR).sum())),
+            "ab-cor-positivo",
+            TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
+        ),
+        _html_kpi(
+            ROTULO_KPI_COM_FCD,
+            str(int(tabela["fcd_valor_justo"].notna().sum())),
+            "ab-cor-principal",
+            TEXTO_KPI_COM_FCD,
+        ),
+    ]
+    return f'<div class="ab-kpis">{"".join(cartoes)}</div>'
 
 
 def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
@@ -2559,15 +2622,19 @@ def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
             st.session_state[CHAVE_FILTRO_SETOR] = OPCAO_TODOS_OS_SETORES
         st.selectbox(ROTULO_FILTRO_SETOR, opcoes, key=CHAVE_FILTRO_SETOR)
 
-    st.slider(
+    st.select_slider(
         ROTULO_FILTRO_POTENCIAL_MINIMO,
-        min_value=POTENCIAL_MINIMO_FILTRO_DESLIGADO,
-        max_value=POTENCIAL_MINIMO_FILTRO_MAXIMO,
-        step=POTENCIAL_MINIMO_FILTRO_PASSO,
-        format="%d%%",
+        options=list(
+            range(
+                POTENCIAL_MINIMO_FILTRO_DESLIGADO,
+                POTENCIAL_MINIMO_FILTRO_MAXIMO + 1,
+                POTENCIAL_MINIMO_FILTRO_PASSO,
+            )
+        ),
+        format_func=_texto_potencial_minimo,
         key=CHAVE_FILTRO_POTENCIAL_MINIMO,
     )
-    st.markdown(f"**{ROTULO_FILTRO_METODOS}**")
+    st.html(f'<div class="ab-rotulo-filtro">{escape(ROTULO_FILTRO_METODOS)}</div>')
     for metodo, nome in NOMES_METODOS.items():
         st.checkbox(nome, key=CHAVE_FILTRO_METODO_PREFIXO + metodo)
     st.checkbox(ROTULO_FILTRO_ESCONDER_SEM_COMBINADO, key=CHAVE_FILTRO_ESCONDER_SEM_COMBINADO)
@@ -2719,20 +2786,8 @@ def pagina_screener() -> None:
                 "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
             )
 
-        macro_referencia = carregar_macro_referencia()
         with st.container(border=True, key="painel_destaque_screener"):
-            col_universo, col_fcd, col_mediana, col_selic, col_data = st.columns(5)
-            col_universo.metric("Ações no universo", len(tabela_screener))
-            col_fcd.metric("Ações com FCD", int(tabela_screener["fcd_valor_justo"].notna().sum()))
-            col_mediana.metric(
-                "Mediana do potencial",
-                _fmt_percentual(tabela_screener["desconto_percentual"].median()),
-                help=TOOLTIP_POTENCIAL_COLUNA,
-            )
-            selic = macro_referencia.get("selic_meta") if macro_referencia else None
-            col_selic.metric("Selic", "N/D" if selic is None else _fmt_percentual(selic * 100, 2))
-            data_busca = macro_referencia.get("data_busca") if macro_referencia else None
-            col_data.metric("Atualizado em", _fmt_data(data_busca))
+            st.html(_html_kpis_screener(tabela_screener))
 
         linhas_com_aviso = (tabela_screener["aviso_desconto_extremo"] != "").sum()
         if linhas_com_aviso:

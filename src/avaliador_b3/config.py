@@ -1458,6 +1458,7 @@ ROTULO_FILTRO_POTENCIAL_MINIMO = "Potencial mínimo"
 POTENCIAL_MINIMO_FILTRO_DESLIGADO = -100
 POTENCIAL_MINIMO_FILTRO_MAXIMO = 100
 POTENCIAL_MINIMO_FILTRO_PASSO = 5
+TEXTO_FILTRO_SEM_FILTRO = "Sem filtro"
 ROTULO_FILTRO_METODOS = "Exigir método"
 ROTULO_FILTRO_ESCONDER_SEM_COMBINADO = "Esconder sem valor combinado"
 ROTULO_LIMPAR_FILTROS = "Limpar filtros"
@@ -1466,6 +1467,19 @@ TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO = (
     "Setor disponível a partir da próxima atualização do screener"
 )
 TEXTO_MOSTRANDO_ACOES = "Mostrando {mostradas} de {total} ações"
+# Cartões do topo do Screener (descrevem o universo inteiro, não as ações filtradas).
+ROTULO_KPI_COM_COMBINADO = "Ações com valor combinado"
+TEXTO_KPI_COM_COMBINADO = "{com} de {total}"
+TEXTO_KPI_SEM_METODO = "{sem} sem nenhum método aplicável"
+ROTULO_KPI_MEDIANA_POTENCIAL = "Mediana do potencial"
+TOOLTIP_MEDIANA_POTENCIAL = (
+    "O potencial do meio da fila: metade das ações com valor combinado está acima dele e metade "
+    "abaixo. Diferente da média, uma ação com potencial muito alto ou muito baixo não o puxa."
+)
+ROTULO_KPI_ABAIXO_DO_VALOR_JUSTO = "Abaixo do valor justo"
+TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO = "ações com potencial acima de zero"
+ROTULO_KPI_COM_FCD = "Com FCD aplicável"
+TEXTO_KPI_COM_FCD = "Os demais usam Graham e/ou Bazin"
 TEXTO_NENHUMA_ACAO_NOS_FILTROS = "Nenhuma ação passa pelos filtros."
 
 # Blocos da barra lateral: o `key` vira a classe `.st-key-<key>` usada pelo CSS; o bloco da

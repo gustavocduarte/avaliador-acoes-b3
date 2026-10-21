@@ -2794,7 +2794,7 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
     assert rotulos["erro"]["label"] == "Observação"
 
 
-def test_linha_de_destaque_do_screener(monkeypatch, tmp_path):
+def test_cartoes_do_topo_do_screener_descrevem_o_universo_inteiro(monkeypatch, tmp_path):
     import avaliador_b3.screener as screener_mod
     from avaliador_b3.screener import COLUNAS_RESULTADO
 
@@ -2814,15 +2814,21 @@ def test_linha_de_destaque_do_screener(monkeypatch, tmp_path):
         "metodos_utilizados": "graham",
     }
     linhas = [
-        base | {"ticker": "AAA3", "preco_atual": 10.0, "desconto_percentual": 10.0},
+        base
+        | {"ticker": "AAA3", "preco_atual": 10.0, "valor_combinado": 11.0}
+        | {"desconto_percentual": 10.0},
         base
         | {
             "ticker": "BBB4",
             "preco_atual": 10.0,
+            "valor_combinado": 13.0,
             "desconto_percentual": 30.0,
             "fcd_valor_justo": 15.0,
         },
-        base | {"ticker": "CCC3", "preco_atual": 10.0, "desconto_percentual": 20.0},
+        base
+        | {"ticker": "CCC3", "preco_atual": 10.0, "valor_combinado": 12.0}
+        | {"desconto_percentual": 20.0},
+        base | {"ticker": "DDD3", "preco_atual": 10.0},
     ]
     caminho = tmp_path / "screener.csv"
     pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
@@ -2832,11 +2838,20 @@ def test_linha_de_destaque_do_screener(monkeypatch, tmp_path):
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert not at.exception
-    assert _metrica_por_label(at, "Ações no universo").value == "3"
-    assert _metrica_por_label(at, "Ações com FCD").value == "1"
-    assert _metrica_por_label(at, "Mediana do potencial").value == "20,0%"
-    assert _metrica_por_label(at, "Selic").value == "14,75%"
-    assert _metrica_por_label(at, "Atualizado em").value == "19/10/2026"
+    com_combinado = _kpi_por_rotulo(at, "Ações com valor combinado")
+    assert com_combinado["valor"] == "3 de 4"
+    assert com_combinado["linha"] == "1 sem nenhum método aplicável"
+    mediana = _kpi_por_rotulo(at, "Mediana do potencial")
+    assert (mediana["valor"], mediana["classe"]) == ("+20,0%", "ab-cor-positivo")
+    abaixo = _kpi_por_rotulo(at, "Abaixo do valor justo")
+    assert (abaixo["valor"], abaixo["classe"]) == ("3", "ab-cor-positivo")
+    com_fcd = _kpi_por_rotulo(at, "Com FCD aplicável")
+    assert (com_fcd["valor"], com_fcd["classe"]) == ("1", "ab-cor-principal")
+    assert com_fcd["linha"] == "Os demais usam Graham e/ou Bazin"
+    # A data e a Selic saíram dos cartões (estão no rodapé da barra lateral).
+    for antigo in ("Ações no universo", "Ações com FCD", "Selic", "Atualizado em"):
+        assert _kpi_por_rotulo(at, antigo) is None
+        assert not [m for m in at.metric if m.label == antigo]
 
 
 def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs):

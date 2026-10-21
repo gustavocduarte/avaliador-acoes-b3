@@ -147,7 +147,11 @@ def test_filtros_ficam_no_bloco_da_barra_lateral_so_na_pagina_do_screener(monkey
 
     barra = at.sidebar
     assert _por_rotulo(barra.selectbox, ROTULO_FILTRO_SETOR).value == OPCAO_TODOS_OS_SETORES
-    assert _por_rotulo(barra.slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -100
+    assert _por_rotulo(barra.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -100
+    assert (
+        _por_rotulo(barra.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).format_func(-100)
+        == "Sem filtro"
+    )
     assert [c.label for c in barra.checkbox] == [
         "Graham",
         "Bazin",
@@ -155,11 +159,11 @@ def test_filtros_ficam_no_bloco_da_barra_lateral_so_na_pagina_do_screener(monkey
         ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
     ]
     assert [c.value for c in barra.checkbox] == [False, False, False, True]
-    assert any(ROTULO_FILTRO_METODOS in m.value for m in barra.markdown)
+    assert any(ROTULO_FILTRO_METODOS in h.proto.body for h in barra.get("html"))
     assert ROTULO_LIMPAR_FILTROS in [b.label for b in barra.button]
 
     abrir_pagina(at, TITULO_PAGINA_ANALISAR)
-    assert not at.sidebar.slider
+    assert not at.sidebar.select_slider
     assert ROTULO_LIMPAR_FILTROS not in [b.label for b in at.sidebar.button]
 
 
@@ -187,13 +191,15 @@ def test_exigir_metodo_e_setor_reduzem_a_tabela(monkeypatch, tmp_path):
 def test_filtros_continuam_ao_trocar_de_pagina_e_voltar(monkeypatch, tmp_path):
     at = _abrir_screener(monkeypatch, tmp_path)
     _por_rotulo(at.sidebar.checkbox, "Graham").check().run(timeout=60)
-    _por_rotulo(at.sidebar.slider, ROTULO_FILTRO_POTENCIAL_MINIMO).set_value(-25).run(timeout=60)
+    _por_rotulo(at.sidebar.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).set_value(-25).run(
+        timeout=60
+    )
 
     abrir_pagina(at, TITULO_PAGINA_ANALISAR)
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
 
     assert _por_rotulo(at.sidebar.checkbox, "Graham").value is True
-    assert _por_rotulo(at.sidebar.slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -25
+    assert _por_rotulo(at.sidebar.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -25
     assert _linhas_mostradas(at) == "Mostrando 2 de 4 ações"
 
 
@@ -201,12 +207,14 @@ def test_limpar_filtros_volta_tudo_ao_padrao(monkeypatch, tmp_path):
     at = _abrir_screener(monkeypatch, tmp_path)
     _por_rotulo(at.sidebar.checkbox, "FCD").check().run(timeout=60)
     _por_rotulo(at.sidebar.checkbox, ROTULO_FILTRO_ESCONDER_SEM_COMBINADO).uncheck().run(timeout=60)
-    _por_rotulo(at.sidebar.slider, ROTULO_FILTRO_POTENCIAL_MINIMO).set_value(0).run(timeout=60)
+    _por_rotulo(at.sidebar.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).set_value(0).run(
+        timeout=60
+    )
 
     _por_rotulo(at.sidebar.button, ROTULO_LIMPAR_FILTROS).click().run(timeout=60)
 
     assert [c.value for c in at.sidebar.checkbox] == [False, False, False, True]
-    assert _por_rotulo(at.sidebar.slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -100
+    assert _por_rotulo(at.sidebar.select_slider, ROTULO_FILTRO_POTENCIAL_MINIMO).value == -100
     assert _por_rotulo(at.sidebar.selectbox, ROTULO_FILTRO_SETOR).value == OPCAO_TODOS_OS_SETORES
     assert _linhas_mostradas(at) == "Mostrando 3 de 4 ações"
 
@@ -243,3 +251,22 @@ def test_botao_da_rodada_so_aparece_com_opt_in_e_fica_no_fim_do_bloco(monkeypatc
     assert rotulos[-1] == ROTULO_RODAR_SCREENER
     assert rotulos.count(ROTULO_RODAR_SCREENER) == 1
     assert rotulos.index(ROTULO_LIMPAR_FILTROS) < rotulos.index(ROTULO_RODAR_SCREENER)
+
+
+def test_mediana_negativa_fica_rosa_e_sem_potencial_nenhum_fica_cinza_com_traco():
+    from avaliador_b3.app.main import _html_kpis_screener
+
+    tabela = pd.DataFrame(
+        {
+            "valor_combinado": [10.0, 5.0, None],
+            "desconto_percentual": [-10.0, -30.0, None],
+            "fcd_valor_justo": [None, None, None],
+        }
+    )
+    html = _html_kpis_screener(tabela)
+    assert 'ab-valor ab-cor-negativo">-20,0%' in html
+    assert 'ab-valor ab-cor-positivo">0<' in html
+    assert "2 de 3" in html and "1 sem nenhum método aplicável" in html
+
+    vazia = _html_kpis_screener(tabela.assign(valor_combinado=None, desconto_percentual=None))
+    assert 'ab-valor ab-cor-secundario">—<' in vazia
