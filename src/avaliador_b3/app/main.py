@@ -1498,7 +1498,7 @@ def pagina_analisar() -> None:
     # Dispara a busca automaticamente só na primeira abertura da sessão,
     # equivalente a já ter clicado em "Buscar" uma vez — marca a flag em
     # session_state antes de qualquer coisa pra garantir que isso não se
-    # repete em nenhum rerun futuro (troca de aba, outra busca, etc.).
+    # repete em nenhum rerun futuro (troca de página, outra busca, etc.).
     busca_automatica_primeira_abertura = (
         usando_dropdown and not busca_inicial_ja_feita and ticker == TICKER_PADRAO_PRIMEIRA_ABERTURA
     )
@@ -1955,7 +1955,7 @@ def pagina_analisar() -> None:
                 "(risco sacado ou similar) e registra o pagamento ao banco no caixa "
                 "de financiamento, esse valor é tratado como operacional, porque "
                 "substitui o pagamento ao fornecedor; sem isso o caixa operacional "
-                "pareceria maior do que a geração de caixa, e o cartão avisa quando "
+                "pareceria maior do que a geração de caixa, e a página avisa quando "
                 "o ajuste é aplicado.\n\n"
                 "Ficam de fora as aplicações financeiras, a compra e venda de "
                 "participações e de ativos e o pagamento de arrendamentos (aluguéis "
@@ -1966,18 +1966,18 @@ def pagina_analisar() -> None:
                 "receita líquida no mesmo período (um fluxo não cresce mais que a "
                 "receita por cinco anos, o que assume margem constante) e à faixa "
                 "de -20% a +30% ao ano; sem receita utilizável, vale o crescimento "
-                "do fluxo, e o cartão diz o motivo. Esse crescimento converge "
+                "do fluxo, e a página diz o motivo. Esse crescimento converge "
                 "gradualmente, ano a ano, para o de longo prazo (a inflação, IPCA) "
                 "em vez de saltar no sexto ano. Quando o fluxo de cinco anos atrás "
                 "não pode ser usado, o crescimento passa a ser a inflação (IPCA) e "
-                "o cartão avisa.\n\n"
+                "a página avisa.\n\n"
                 "Por isso, empresas em fase de investimento pesado (comuns em "
                 "energia e saneamento) ou com dívida muito alta tendem a ter FCD "
                 "bem abaixo dos outros métodos, mesmo quando são saudáveis. Separar "
                 "o investimento que só mantém a empresa do que a faz crescer "
-                "exigiria um dado que a fonte não informa de forma padronizada. No "
-                "cartão do FCD, a porcentagem reinvestida no ano aparece logo abaixo "
-                "do valor.\n\n"
+                "exigiria um dado que a fonte não informa de forma padronizada. A "
+                'porcentagem reinvestida no ano aparece no selo "Reinvestimento", no '
+                "topo do painel de valor justo.\n\n"
                 "*Do valor da empresa ao valor por ação*\n\n"
                 "Esse valor presente é o da empresa como um todo, dívida incluída — "
                 "por isso a dívida líquida é deduzida antes de dividir pelo número "
@@ -1992,8 +1992,12 @@ def pagina_analisar() -> None:
                 "e à Itaúsa, cujo caixa vem de prêmios e de dividendos de "
                 "participações; nesses casos a lógica de custo de capital do FCD "
                 "não tem interpretação econômica válida (Graham e Bazin continuam "
-                "funcionando normalmente). Também não é calculado quando o caixa "
-                "livre do último ano foi zero ou negativo: projetar um fluxo assim "
+                "funcionando normalmente). Também não é calculado quando a dívida "
+                "líquida, o arrendamento e os sócios minoritários somam mais que o "
+                "valor da empresa pelo fluxo de caixa (o valor por ação ficaria zero "
+                "ou negativo; é comum em holdings e empresas muito endividadas), nem "
+                "quando o caixa livre do último ano foi zero ou negativo: projetar "
+                "um fluxo assim "
                 "não estima valor. Se o gasto em imobilizado e intangível não puder "
                 "ser identificado na demonstração da empresa, o FCD não é "
                 "calculado, e o mesmo vale quando o fluxo do último ano é zero ou "
@@ -2811,7 +2815,7 @@ def pagina_carteira() -> None:
                     st.markdown(TEXTO_EXPANDER_SIMULADOR)
 
 
-# Nota de rodapé, fora de qualquer aba (aparece nas três) — Streamlit
+# Nota de rodapé, fora de qualquer página (aparece nas três) — Streamlit
 # Community Cloud "adormece" apps sem acesso recente. Diferente do que se
 # poderia supor, não é uma tela em branco automática: a plataforma mostra
 # sua própria página de "app dormindo", com um botão que o visitante

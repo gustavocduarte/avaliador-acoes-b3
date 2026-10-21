@@ -1,15 +1,15 @@
 """Testes do dashboard Streamlit (app/main.py) via `streamlit.testing.v1.AppTest`
 — roda o script de verdade (mesmo runner que `streamlit run` usa por baixo),
 sem precisar de navegador. Cobre a degradação graciosa do dropdown de ticker
-na aba "Analisar uma ação" e a pré-seleção + busca automática de PETR4 só na
+na página "Analisar uma ação" e a pré-seleção + busca automática de PETR4 só na
 primeira abertura da sessão (ver `TICKER_PADRAO_PRIMEIRA_ABERTURA` em
 app/main.py).
 
 Como a busca automática da primeira abertura dispara o mesmo fluxo de
 "Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro e, como a
-Correlação com fatores externos vive dentro desta aba,
+Correlação com fatores externos vive dentro desta página,
 também petróleo/câmbio/GPR), os testes que passam pelo carregamento
-inicial da aba com o universo disponível também mockam essas fontes pra
+inicial da página com o universo disponível também mockam essas fontes pra
 continuarem rápidos e determinísticos, sem rede de verdade — ver
 `_bloquear_buscas_de_rede_por_ticker`.
 """
@@ -304,7 +304,7 @@ def test_dropdown_lista_acoes_do_ibovespa_quando_universo_disponivel(monkeypatch
 
 def test_cai_pro_campo_de_texto_livre_quando_universo_falha(monkeypatch):
     # Reproduz o cenário confirmado manualmente no navegador (API da B3 fora
-    # do ar): a aba não pode travar, tem que degradar pro texto livre com um
+    # do ar): a página não pode travar, tem que degradar pro texto livre com um
     # aviso claro nomeando o motivo.
     def falha(**kwargs):
         raise RuntimeError("falha simulada de rede")
@@ -518,11 +518,11 @@ def test_preco_atual_usa_periodo_separado_do_historico_de_3_meses(monkeypatch):
 
 
 # --- Correlação com fatores externos, movida pra dentro de "Analisar uma ---
-# --- ação" (não é mais uma aba separada) -------------------------------------
+# --- ação" (não é mais uma página separada) -------------------------------------
 
 
 def test_correlacao_nao_e_mais_uma_aba_separada_e_aparece_sem_clique_extra(monkeypatch):
-    # A correlação com fatores externos não é uma aba separada: mora dentro de
+    # A correlação com fatores externos não é uma página separada: mora dentro de
     # "Analisar uma ação" e aparece junto do
     # resto, reaproveitando o ticker já buscado ali. Confirmado logo no
     # primeiro carregamento da sessão (busca automática de PETR4), sem
@@ -1465,7 +1465,8 @@ def test_expander_fcd_menciona_investimento_pesado(monkeypatch):
         "outros métodos" in bloco
     )
     assert (
-        "No cartão do FCD, a porcentagem reinvestida no ano aparece logo abaixo do valor." in bloco
+        'A porcentagem reinvestida no ano aparece no selo "Reinvestimento", no topo do painel '
+        "de valor justo." in bloco
     )
 
 
@@ -3443,3 +3444,28 @@ def test_nota_de_lpa_e_vpa_ajustados_sem_graham_nao_aparece():
     from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
 
     assert _ajuda_lpa_vpa_ajustados(None, 1.0, None, None) == {"lpa": "", "vpa": ""}
+
+
+def test_como_funciona_aponta_para_onde_as_informacoes_estao_hoje(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    textos = [m.value for m in at.markdown if "Graham** — fórmula de Benjamin Graham" in m.value]
+    assert len(textos) == 1
+    texto = textos[0]
+    assert 'selo "Reinvestimento", no topo do painel de valor justo' in texto
+    assert "cartão do FCD" not in texto
+    assert "o cartão avisa" not in texto and "o cartão diz" not in texto
+    assert "somam mais que o valor da empresa pelo fluxo de caixa" in texto
+
+
+def test_aviso_sem_metodo_aponta_para_as_legendas_e_para_o_ponto_de_interrogacao():
+    from avaliador_b3.config import TEXTO_COMPLEMENTO_SEM_METODO
+
+    assert TEXTO_COMPLEMENTO_SEM_METODO == (
+        'Veja o motivo de cada método nas legendas logo abaixo e no "?" dos cartões do topo.'
+    )
+    assert "ao lado" not in TEXTO_COMPLEMENTO_SEM_METODO

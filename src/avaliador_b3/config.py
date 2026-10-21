@@ -630,8 +630,9 @@ TEXTO_FCD_AJUSTES_DO_BALANCO = (
     "ofertas, bonificações e cancelamentos de ações depois dessa data só entram no "
     "balanço seguinte, e a página avisa quando o número de ações do Fundamentus "
     "difere do da CVM. Se a CVM não trouxer o balanço, o FCD segue sem esses "
-    "ajustes e o cartão diz o motivo. O resultado pode ser negativo (aviso 'Valor "
-    "justo zero ou negativo') e não é limitado a zero."
+    "ajustes e a página diz o motivo. Se as deduções passarem o valor da empresa, o "
+    "valor por ação sai zero ou negativo e o FCD fica 'não aplicável', com o motivo; "
+    "o valor nunca é limitado a zero."
 )
 TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA = (
     "Sem o desconto do passivo de arrendamento que está fora da dívida: {motivo}"
@@ -895,7 +896,9 @@ MOTIVO_FCD_HOLDING_FINANCEIRA = (
     "operação própria, então o fluxo de caixa descontado não mede o valor "
     "dessas participações. Os outros métodos continuam sendo calculados quando se aplicam."
 )
-TEXTO_COMPLEMENTO_SEM_METODO = "Veja o motivo de cada método nos cartões ao lado."
+TEXTO_COMPLEMENTO_SEM_METODO = (
+    'Veja o motivo de cada método nas legendas logo abaixo e no "?" dos cartões do topo.'
+)
 # Preço atual vazio, zero ou negativo (a fonte não trouxe um preço válido).
 MENSAGEM_PRECO_INDISPONIVEL_SCREENER = "Preço atual indisponível"
 AVISO_PRECO_INDISPONIVEL = (
@@ -1556,7 +1559,7 @@ MINIMO_OBSERVACOES_CORRELACAO = 30
 LIMIAR_CORRELACAO_FRACA = 0.3
 LIMIAR_CORRELACAO_FORTE = 0.6
 
-# --- Aba "Analisar uma ação" (app/main.py) — 2026-09-18 ---
+# --- Página "Analisar uma ação" (app/main.py) — 2026-09-18 ---
 #
 # Meses de acumulação do IPCA: "IPCA acumulado em 12 meses" é o indicador
 # padrão de inflação anual usado no Brasil (mesma convenção do IBGE/BCB)

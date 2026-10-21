@@ -141,7 +141,7 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tinha FCD acima de 3 vezes o preç
 ## Screener e Simulador de carteira
 
 - **O Screener mostra dados salvos, não ao vivo.** No app publicado, o resultado só muda quando uma nova rodada é feita e publicada pelo workflow (o botão "Rodar screener agora" só aparece com o opt-in `AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), então os preços podem estar defasados.
-  - *Na tela:* a aba mostra a data da última atualização.
+  - *Na tela:* a página mostra a data da última atualização.
 - **A "Última atualização" do app publicado pode ficar mais antiga que a da rodada.** Essa data vem do arquivo de referência (`macro_referencia.json`), que só é regravado quando a Selic e o IPCA são buscados ao vivo. Se todas as fontes falharem numa rodada que mesmo assim foi aceita (a Selic e o IPCA vêm do valor guardado ou do próprio arquivo de referência), o arquivo não é regravado, o `screener.csv` é publicado com os preços novos e a data mostrada continua a da última busca ao vivo.
   - *Na tela:* não há sinal de que a data está atrás; o commit do workflow no `master` e o resumo da execução na aba Actions mostram a data real da rodada.
 - **A rodada é protegida por uma checagem.** Se a rodada vier sem linhas ou com linhas faltando, se o universo do Ibovespa tiver menos de 60 ações, se mais de 5 ações ficarem sem preço, se mais de 5 tiverem falha de fonte ou se algum valor não for finito, a rodada é rejeitada, o resultado anterior é mantido e o motivo é mostrado. Isso evita dados quebrados, mas deixa o Screener desatualizado em vez de errado, e até 5 ações com falha ainda passam.
