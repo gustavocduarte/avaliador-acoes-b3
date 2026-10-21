@@ -1894,59 +1894,6 @@ def pagina_analisar() -> None:
                 "venda, apenas uma referência de estudo."
             )
 
-        with st.expander("Datas de referência dos dados usados"):
-            # Preço/Beta vêm da coluna "data" que obter_historico já traz
-            # (ver ingest.precos) — só não era extraída até aqui. Balanço
-            # vem de indicadores (Fundamentus, "Últ balanço processado",
-            # ver ingest.fundamentus). FCD reaproveita ano_fcd_utilizado,
-            # já calculado acima pro cartão do FCD. IPCA reaproveita
-            # data_ipca de _buscar_macro. Selic normalmente não tem uma
-            # data própria pra mostrar — é recalculada com a data de hoje
-            # a cada busca — exceto
-            # quando o Banco Central está fora do ar e o valor guardado
-            # entra em uso: aí a data que importa é a da última busca com
-            # sucesso, não a de hoje. Dividendos do Bazin continuam
-            # sempre com a data de hoje.
-            texto_selic_referencia = (
-                f"último valor obtido em {_fmt_data(macro_data_busca)} "
-                "(Banco Central indisponível agora)"
-                if macro_usou_valor_guardado
-                else "calculada com a data de hoje"
-            )
-            data_preco_referencia = None
-            if not erro_preco_atual:
-                assert historico_preco_atual is not None, "sem erro de preço, o histórico existe"
-                data_preco_referencia = historico_preco_atual["data"].iloc[-1]
-            data_beta_referencia = None
-            if not erro_historico_beta:
-                assert historico_beta is not None, "sem erro de Beta, o histórico existe"
-                data_beta_referencia = historico_beta["data"].iloc[-1]
-            data_balanco_referencia = (
-                indicadores["data_balanco_fundamentus"] if indicadores else None
-            )
-            texto_fcd_referencia = (
-                f"demonstração financeira anual de {ano_fcd_utilizado} (CVM)"
-                if resultado_fcd["aplicavel"]
-                else "não aplicável"
-            )
-            st.markdown(
-                "Comparar o preço de hoje com o último balanço disponível é o "
-                "padrão de mercado — cada dado abaixo tem uma data-base "
-                "diferente por natureza (o balanço de uma empresa sempre sai "
-                "com atraso), não por inconsistência:\n\n"
-                f"- **Preço** — último fechamento: {_fmt_data(data_preco_referencia)}.\n"
-                "- **Indicadores fundamentalistas** (Fundamentus) — balanço de "
-                f"{_fmt_data(data_balanco_referencia)}: lucro, receita e margens "
-                "somam os 12 meses até essa data; patrimônio, dívida e número "
-                "de ações são a posição nessa data.\n"
-                f"- **FCD** — {texto_fcd_referencia}.\n"
-                f"- **Beta** — 1 ano de pregões até {_fmt_data(data_beta_referencia)}.\n"
-                f"- **IPCA (12 meses)** — acumulado até {_fmt_data(data_ipca, '%m/%Y')}.\n"
-                f"- **Selic** — {texto_selic_referencia}.\n"
-                "- **Dividendos do método Bazin** (últimos 12 meses) — sempre "
-                "calculados com a data de hoje."
-            )
-
         with st.expander("Como funciona esse cálculo?"):
             st.markdown(
                 "**Graham** — fórmula de Benjamin Graham (mentor de Warren Buffett): "
@@ -2420,6 +2367,59 @@ def pagina_analisar() -> None:
                             nome_segmento = _rotulo_segmento_setorial(segmento_setorial)
                             st.caption(f"Segmento setorial (B3): {nome_segmento}")
                             st.html(_html_tabela_setorial(tabela_pares, ticker))
+
+        with st.expander("Datas de referência dos dados usados"):
+            # Preço/Beta vêm da coluna "data" que obter_historico já traz
+            # (ver ingest.precos) — só não era extraída até aqui. Balanço
+            # vem de indicadores (Fundamentus, "Últ balanço processado",
+            # ver ingest.fundamentus). FCD reaproveita ano_fcd_utilizado,
+            # já calculado acima pro cartão do FCD. IPCA reaproveita
+            # data_ipca de _buscar_macro. Selic normalmente não tem uma
+            # data própria pra mostrar — é recalculada com a data de hoje
+            # a cada busca — exceto
+            # quando o Banco Central está fora do ar e o valor guardado
+            # entra em uso: aí a data que importa é a da última busca com
+            # sucesso, não a de hoje. Dividendos do Bazin continuam
+            # sempre com a data de hoje.
+            texto_selic_referencia = (
+                f"último valor obtido em {_fmt_data(macro_data_busca)} "
+                "(Banco Central indisponível agora)"
+                if macro_usou_valor_guardado
+                else "calculada com a data de hoje"
+            )
+            data_preco_referencia = None
+            if not erro_preco_atual:
+                assert historico_preco_atual is not None, "sem erro de preço, o histórico existe"
+                data_preco_referencia = historico_preco_atual["data"].iloc[-1]
+            data_beta_referencia = None
+            if not erro_historico_beta:
+                assert historico_beta is not None, "sem erro de Beta, o histórico existe"
+                data_beta_referencia = historico_beta["data"].iloc[-1]
+            data_balanco_referencia = (
+                indicadores["data_balanco_fundamentus"] if indicadores else None
+            )
+            texto_fcd_referencia = (
+                f"demonstração financeira anual de {ano_fcd_utilizado} (CVM)"
+                if resultado_fcd["aplicavel"]
+                else "não aplicável"
+            )
+            st.markdown(
+                "Comparar o preço de hoje com o último balanço disponível é o "
+                "padrão de mercado — cada dado abaixo tem uma data-base "
+                "diferente por natureza (o balanço de uma empresa sempre sai "
+                "com atraso), não por inconsistência:\n\n"
+                f"- **Preço** — último fechamento: {_fmt_data(data_preco_referencia)}.\n"
+                "- **Indicadores fundamentalistas** (Fundamentus) — balanço de "
+                f"{_fmt_data(data_balanco_referencia)}: lucro, receita e margens "
+                "somam os 12 meses até essa data; patrimônio, dívida e número "
+                "de ações são a posição nessa data.\n"
+                f"- **FCD** — {texto_fcd_referencia}.\n"
+                f"- **Beta** — 1 ano de pregões até {_fmt_data(data_beta_referencia)}.\n"
+                f"- **IPCA (12 meses)** — acumulado até {_fmt_data(data_ipca, '%m/%Y')}.\n"
+                f"- **Selic** — {texto_selic_referencia}.\n"
+                "- **Dividendos do método Bazin** (últimos 12 meses) — sempre "
+                "calculados com a data de hoje."
+            )
 
 
 def pagina_screener() -> None:

@@ -1595,6 +1595,18 @@ def test_bloco_datas_referencia_mostra_as_datas_certas(monkeypatch):
     assert "sempre calculados com a data de hoje." in bloco
 
 
+def test_bloco_datas_referencia_e_o_ultimo_expander_da_pagina(monkeypatch):
+    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    rotulos = [e.label for e in at.expander]
+    assert rotulos[-1] == "Datas de referência dos dados usados"
+    assert rotulos.index("Como funciona esse cálculo?") < len(rotulos) - 1
+
+
 def test_bloco_datas_referencia_mostra_nd_quando_fundamentus_falha(monkeypatch):
     _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
 
