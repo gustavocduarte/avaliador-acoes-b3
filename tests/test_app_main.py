@@ -2779,7 +2779,7 @@ def test_screener_mostra_acao_sem_nenhum_metodo_no_fim_sem_potencial_e_sem_erro(
     assert not [e.value for e in at.error if "Nenhum dos três métodos" in e.value]
     tabelas = [df for df in at.dataframe if "desconto_percentual" in df.value.columns]
     assert len(tabelas) == 1
-    tabela = tabelas[0].value
+    tabela = tabelas[0].value.assign(ticker=lambda d: d["ticker"].str.removeprefix("/?acao="))
     # No fim da tabela, com potencial indisponível e o motivo na coluna de observação.
     assert list(tabela["ticker"]) == ["NORM4", "SEMM3"]
     linha_sem_metodo = tabela.loc[tabela["ticker"] == "SEMM3"].iloc[0]
@@ -2884,7 +2884,7 @@ def test_tabela_screener_traz_os_numeros_de_verdade_para_ordenar(monkeypatch, tm
 
     tabelas_com_preco = [df.value for df in at.dataframe if "preco_atual" in df.value.columns]
     assert len(tabelas_com_preco) == 1
-    tabela = tabelas_com_preco[0]
+    tabela = tabelas_com_preco[0].assign(ticker=lambda d: d["ticker"].str.removeprefix("/?acao="))
 
     # Números de verdade (a ordenação do cabeçalho é numérica); o "R$ 40,00" e o "+100,0%" vêm da
     # formatação do Styler (ver tests/test_app_screener_tabela.py).
@@ -3403,7 +3403,8 @@ def test_tabela_do_screener_mostra_os_metodos_com_os_nomes_da_tela(monkeypatch, 
 
     assert not at.exception
     tabela = [df.value for df in at.dataframe if "desconto_percentual" in df.value.columns][0]
-    metodos = dict(zip(tabela["ticker"], tabela["metodos_utilizados"], strict=True))
+    tickers = tabela["ticker"].str.removeprefix("/?acao=")
+    metodos = dict(zip(tickers, tabela["metodos_utilizados"], strict=True))
     assert metodos == {"TRES3": "Graham, Bazin, FCD", "UM3": "Graham", "NENHUM3": ""}
 
 

@@ -78,6 +78,7 @@ from avaliador_b3.config import (
     ICONE_PAGINA_SCREENER,
     JANELAS_COMPARACAO_PETROLEO,
     LARGURA_CARACTERE_ROTULO_BARRA,
+    LARGURA_COLUNA_OBSERVACAO_RANKING,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_BARRA_POTENCIAL,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
@@ -91,6 +92,7 @@ from avaliador_b3.config import (
     OPACIDADE_BARRA_PARCIAL,
     OPCAO_TODOS_OS_SETORES,
     PADRAO_TICKER_B3,
+    PARAMETRO_URL_ACAO,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
@@ -120,6 +122,7 @@ from avaliador_b3.config import (
     ROTULOS_POTENCIAL_CENARIO,
     ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
+    SEPARADOR_OBSERVACAO_RANKING,
     SEPARADORES_NUMERICOS_GRAFICO,
     SEQUENCIA_CORES_SERIES,
     SERIES_BCB_SGS,
@@ -127,6 +130,7 @@ from avaliador_b3.config import (
     SUBTITULO_POTENCIAL_CARTEIRA,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_ACAO_DA_URL_INVALIDA,
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
@@ -149,6 +153,7 @@ from avaliador_b3.config import (
     TEXTO_KPI_COM_FCD,
     TEXTO_KPI_SEM_METODO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
+    TEXTO_LINK_ACAO_REGEX,
     TEXTO_MEDIANA_NO_GRAFICO,
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_ALERTA,
@@ -195,6 +200,7 @@ from avaliador_b3.config import (
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
     TOOLTIP_VALOR_FIRMA,
+    URL_LINK_ACAO,
     URL_PAGINA_ANALISAR,
     URL_PAGINA_CARTEIRA,
     URL_PAGINA_SCREENER,
@@ -277,6 +283,13 @@ from avaliador_b3.screener import (
 
 MENSAGEM_MACRO_INDISPONIVEL_CURTA = "Selic/IPCA indisponíveis agora — veja o aviso no topo."
 
+# Colunas do ranking mostradas como texto ("12%" ou "—").
+COLUNAS_PERCENTUAL_EM_TEXTO_RANKING = [
+    "divergencia_percentual_metodos",
+    "bazin_razao_dividendos_percentual",
+    "proporcao_reinvestimento_percentual",
+]
+
 COLUNAS_TABELA_SCREENER = [
     "ticker",
     "segmento_setorial",
@@ -288,7 +301,6 @@ COLUNAS_TABELA_SCREENER = [
     "bazin_razao_dividendos_percentual",
     "proporcao_reinvestimento_percentual",
     "metodos_utilizados",
-    "aviso_desconto_extremo",
 ]
 
 COLUNAS_TABELA_CARTEIRA = [
@@ -1506,6 +1518,31 @@ st.html(f'<div class="ab-app-titulo">{escape(TITULO_APP)}</div>')
 st.caption(SUBTITULO_APP)
 
 
+def _ler_acao_da_url() -> str | None:
+    """Ticker do parâmetro `?acao=` do endereço, em maiúsculas e sem espaços (o parâmetro é
+    retirado da URL); `None` se não houver o parâmetro."""
+    if PARAMETRO_URL_ACAO not in st.query_params:
+        return None
+    acao = st.query_params[PARAMETRO_URL_ACAO]
+    del st.query_params[PARAMETRO_URL_ACAO]
+    return acao.strip().upper()
+
+
+def _acao_da_url_e_valida(acao: str, opcoes_validas: set[str] | None) -> bool:
+    """Com a lista do Ibovespa, só vale ticker dela; sem a lista, vale o formato de ticker da
+    B3."""
+    if opcoes_validas is not None:
+        return acao in opcoes_validas
+    return re.fullmatch(PADRAO_TICKER_B3, acao) is not None
+
+
+def _acao_da_url_para_exibir(acao: str) -> str:
+    """O pedido da URL para a mensagem de erro: só letras e números, no máximo 12, para o texto
+    do endereço nunca virar formatação na tela."""
+    limpo = re.sub(r"[^A-Z0-9]", "", acao)[:12]
+    return f"“{limpo}”" if limpo else "pedida"
+
+
 def pagina_analisar() -> None:
     # Buscado aqui em cima (não só depois de "Buscar") porque o dropdown
     # abaixo precisa da lista de opções pra se desenhar — reaproveitado
@@ -1514,6 +1551,28 @@ def pagina_analisar() -> None:
     usando_dropdown = not (erro_universo or universo_ibovespa is None or universo_ibovespa.empty)
 
     busca_inicial_ja_feita = st.session_state.get("busca_inicial_automatica_feita", False)
+
+    # Ação pedida pelo endereço (?acao=PETR4, o link do ticker no Screener); o parâmetro é
+    # retirado da URL depois de lido, para não ficar desatualizado quando a ação mudar.
+    acao_da_url = _ler_acao_da_url()
+    opcoes_validas = (
+        set(universo_ibovespa["ticker"])
+        if usando_dropdown and universo_ibovespa is not None
+        else None
+    )
+    ticker_da_url = None
+    if acao_da_url is not None:
+        if _acao_da_url_e_valida(acao_da_url, opcoes_validas):
+            ticker_da_url = acao_da_url
+            st.session_state["busca_inicial_automatica_feita"] = True
+            busca_inicial_ja_feita = True
+            st.session_state[CHAVE_TICKER_GUARDADO] = ticker_da_url
+            st.session_state.pop(CHAVE_DROPDOWN_TICKER, None)
+            st.session_state.pop(CHAVE_TEXTO_TICKER, None)
+        else:
+            st.warning(
+                TEXTO_ACAO_DA_URL_INVALIDA.format(acao=_acao_da_url_para_exibir(acao_da_url))
+            )
 
     # A ação escolhida fica guardada à parte: o Streamlit apaga o estado de um widget que não é
     # desenhado numa rodada (ao sair da página), e a seleção é restaurada ao voltar.
@@ -1569,7 +1628,11 @@ def pagina_analisar() -> None:
     )
     if busca_automatica_primeira_abertura:
         st.session_state["busca_inicial_automatica_feita"] = True
-    buscar = buscar_clicado or busca_automatica_primeira_abertura
+    buscar = (
+        buscar_clicado
+        or busca_automatica_primeira_abertura
+        or (ticker_da_url is not None and ticker == ticker_da_url)
+    )
 
     if buscar and not ticker:
         st.warning("Selecione uma ação." if usando_dropdown else "Digite um ticker.")
@@ -2811,16 +2874,38 @@ def _cor_do_potencial(valor: float) -> str:
     return f"color: {COR_POSITIVO if valor > LIMITE_SINAL_INDICADOR else COR_NEGATIVO}"
 
 
+def _observacao_do_ranking(aviso: str, observacao: str) -> str:
+    """Texto da coluna Observação: a linha curta do aviso de potencial extremo (a mesma dos cartões
+    "Atenção") e a observação da rodada, juntas por " · " quando há as duas."""
+    partes = [_resumo_do_aviso(aviso) if aviso else "", observacao]
+    return SEPARADOR_OBSERVACAO_RANKING.join(parte for parte in partes if parte)
+
+
+def _percentual_ou_traco(valor: float) -> str:
+    return TEXTO_SEM_DADO_NA_TABELA if pd.isna(valor) else f"{valor:.0f}%"
+
+
 def _tabela_ranking_screener(tabela: pd.DataFrame) -> tuple[pd.io.formats.style.Styler, list[str]]:
-    """Tabela do ranking: ordenada por potencial (as sem valor combinado no fim), com os números de
-    verdade (a ordenação do cabeçalho continua numérica) e a apresentação em pt-BR feita pelo
-    Styler; o potencial leva sinal e cor. Devolve o Styler e as colunas a mostrar, na ordem; a do
-    setor só existe se o arquivo do screener a trouxer."""
+    """Tabela do ranking: ordenada por potencial (as sem valor combinado no fim). Preço, valor
+    combinado e potencial são números de verdade (a ordenação do cabeçalho continua numérica),
+    apresentados em pt-BR pelo Styler, e o potencial leva sinal e cor. Divergência, dividendos e
+    reinvestimento são texto ("12%" ou "—"), sem ordenação numérica, para o vazio não aparecer
+    como "None". Aviso e observação formam uma coluna só. Devolve o Styler e as colunas a mostrar,
+    na ordem; a do setor só existe se o arquivo do screener a trouxer."""
     colunas = [c for c in COLUNAS_TABELA_SCREENER if c in tabela.columns]
-    dados = tabela.sort_values("desconto_percentual", ascending=False, na_position="last")[colunas]
-    dados = dados.assign(
-        metodos_utilizados=dados["metodos_utilizados"].map(_nomes_dos_metodos_do_csv)
+    ordenada = tabela.sort_values("desconto_percentual", ascending=False, na_position="last")
+    dados = ordenada[colunas].assign(
+        ticker=ordenada["ticker"].map(lambda t: URL_LINK_ACAO.format(acao=t)),
+        erro=[
+            _observacao_do_ranking(aviso, observacao)
+            for aviso, observacao in zip(
+                ordenada["aviso_desconto_extremo"], ordenada["erro"], strict=True
+            )
+        ],
+        metodos_utilizados=ordenada["metodos_utilizados"].map(_nomes_dos_metodos_do_csv),
     )
+    for coluna in COLUNAS_PERCENTUAL_EM_TEXTO_RANKING:
+        dados[coluna] = dados[coluna].map(_percentual_ou_traco)
     if "segmento_setorial" in dados.columns:
         dados = dados.assign(
             segmento_setorial=dados["segmento_setorial"].map(
@@ -2828,34 +2913,38 @@ def _tabela_ranking_screener(tabela: pd.DataFrame) -> tuple[pd.io.formats.style.
             )
         )
     # No Streamlit 1.63 a célula nula de coluna numérica aparece como "None" (cinza), mesmo com
-    # `na_rep` do Styler ou `NumberColumn`; o "—" só vale para as células de texto.
+    # `na_rep` do Styler ou `NumberColumn`; aqui só pode aparecer em preço, valor combinado e
+    # potencial (ações sem método). As outras colunas vazias saem como texto "—".
     sem_dado = TEXTO_SEM_DADO_NA_TABELA
     estilo = (
         dados.style.format(na_rep=sem_dado)
         .format(_fmt_bilhoes, subset=["preco_atual", "valor_combinado"], na_rep=sem_dado)
         .format(_fmt_potencial, subset=["desconto_percentual"], na_rep=sem_dado)
-        .format(
-            "{:.0f}%",
-            subset=[
-                "divergencia_percentual_metodos",
-                "bazin_razao_dividendos_percentual",
-                "proporcao_reinvestimento_percentual",
-            ],
-            na_rep=sem_dado,
-        )
         .map(_cor_do_potencial, subset=["desconto_percentual"])
     )
     return estilo, colunas
 
 
 def _configuracao_colunas_ranking(colunas: list[str]) -> dict:
-    """`column_config` do ranking: rótulo de cada coluna e a explicação do potencial."""
+    """`column_config` do ranking: rótulo de cada coluna, o link do ticker, a explicação do
+    potencial, a largura da Observação e o alinhamento à direita dos percentuais em texto."""
     configuracao: dict = {}
     for coluna in colunas:
-        ajuda = TOOLTIP_POTENCIAL_COLUNA if coluna == "desconto_percentual" else None
-        configuracao[coluna] = st.column_config.Column(
-            ROTULO_COLUNAS_RANKING_SCREENER[coluna], help=ajuda
-        )
+        rotulo = ROTULO_COLUNAS_RANKING_SCREENER[coluna]
+        if coluna == "ticker":
+            # O link abre a análise da ação em outra aba; o texto mostrado é só o ticker.
+            configuracao[coluna] = st.column_config.LinkColumn(
+                rotulo, display_text=TEXTO_LINK_ACAO_REGEX
+            )
+        elif coluna == "erro":
+            configuracao[coluna] = st.column_config.Column(
+                rotulo, width=LARGURA_COLUNA_OBSERVACAO_RANKING
+            )
+        elif coluna in COLUNAS_PERCENTUAL_EM_TEXTO_RANKING:
+            configuracao[coluna] = st.column_config.TextColumn(rotulo, alignment="right")
+        else:
+            ajuda = TOOLTIP_POTENCIAL_COLUNA if coluna == "desconto_percentual" else None
+            configuracao[coluna] = st.column_config.Column(rotulo, help=ajuda)
     return configuracao
 
 

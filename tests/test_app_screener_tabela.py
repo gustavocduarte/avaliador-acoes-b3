@@ -5,6 +5,7 @@ import json
 import re
 
 import pandas as pd
+import pytest
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
@@ -44,6 +45,11 @@ def _tabela(**extras) -> pd.DataFrame:
     )
 
 
+def _ticker(url: str) -> str:
+    """Ticker de dentro do link da coluna (`/?acao=PETR4`)."""
+    return url.removeprefix("/?acao=")
+
+
 def _celulas(estilo) -> list[list[str]]:
     """Valores exibidos (já formatados pelo Styler), linha a linha."""
     html = estilo.to_html()
@@ -51,7 +57,7 @@ def _celulas(estilo) -> list[list[str]]:
     return [re.findall(r'class="data row\d+ col\d+ *" *>(.*?)</td>', linha) for linha in linhas]
 
 
-def test_colunas_na_ordem_pedida_sem_graham_bazin_e_fcd_separados():
+def test_colunas_na_ordem_pedida_com_aviso_e_observacao_numa_coluna_so():
     _, colunas = _tabela_ranking_screener(_tabela())
 
     assert colunas == [
@@ -65,10 +71,10 @@ def test_colunas_na_ordem_pedida_sem_graham_bazin_e_fcd_separados():
         "bazin_razao_dividendos_percentual",
         "proporcao_reinvestimento_percentual",
         "metodos_utilizados",
-        "aviso_desconto_extremo",
     ]
     assert colunas == COLUNAS_TABELA_SCREENER
     assert not {"graham_valor_justo", "bazin_preco_teto", "fcd_valor_justo"} & set(colunas)
+    assert "aviso_desconto_extremo" not in colunas
 
 
 def test_coluna_de_setor_so_existe_se_o_arquivo_trouxer():
@@ -81,13 +87,13 @@ def test_coluna_de_setor_so_existe_se_o_arquivo_trouxer():
 def test_ordena_por_potencial_decrescente_e_deixa_as_sem_combinado_no_fim():
     estilo, _ = _tabela_ranking_screener(_tabela())
 
-    assert list(estilo.data["ticker"]) == ["EEE3", "AAA3", "DDD3", "BBB4", "CCC3"]
+    assert [_ticker(t) for t in estilo.data["ticker"]] == ["EEE3", "AAA3", "DDD3", "BBB4", "CCC3"]
 
 
 def test_mostra_os_numeros_em_pt_br_com_sinal_e_traco_para_o_que_falta():
     estilo, _ = _tabela_ranking_screener(_tabela())
 
-    celulas = {linha[0]: linha for linha in _celulas(estilo)}
+    celulas = {_ticker(linha[0]): linha for linha in _celulas(estilo)}
     # ticker, setor, preço, combinado, potencial, observação, divergência, dividendos, reinvest.
     assert celulas["AAA3"][1:5] == ["Bancos", "R$ 10,00", "R$ 11,00", "+10,0%"]
     assert celulas["BBB4"][1:5] == [
@@ -110,7 +116,7 @@ def test_o_potencial_leva_cor_so_quando_positivo_ou_negativo():
     cores = {}
     for seletores, cor in re.findall(r"([^{}]+)\{\s*color: (#\w+);", estilo.to_html()):
         for linha in re.findall(r"row(\d+)_col4", seletores):
-            cores[estilo.data["ticker"].iloc[int(linha)]] = cor
+            cores[_ticker(estilo.data["ticker"].iloc[int(linha)])] = cor
     # Ordem das linhas: EEE3, AAA3, DDD3, BBB4, CCC3; zero e vazio ficam sem cor.
     assert cores == {
         "EEE3": config.COR_POSITIVO,
@@ -174,7 +180,7 @@ def test_pagina_mostra_o_ranking_ordenado_com_as_sem_combinado_no_fim(monkeypatc
 
     tabelas = [df for df in at.dataframe if "desconto_percentual" in df.value.columns]
     assert len(tabelas) == 1
-    assert list(tabelas[0].value["ticker"]) == ["ALTO4", "BAIXO3", "SEMM3"]
+    assert [_ticker(t) for t in tabelas[0].value["ticker"]] == ["ALTO4", "BAIXO3", "SEMM3"]
     colunas = json.loads(tabelas[0].proto.columns)
     assert colunas["desconto_percentual"]["label"] == "Potencial"
     assert colunas["segmento_setorial"]["label"] == "Setor"
@@ -190,3 +196,78 @@ def test_pagina_comeca_nos_cartoes_e_deixa_o_expander_de_leitura_depois_da_tabel
     assert set(antes_dos_cartoes) <= {"html", "caption"}  # só o cabeçalho do app
     assert tipos.index("expander") > tipos.index("dataframe")
     assert [c for c in at.caption if c.value.startswith("Ranking pelo potencial")] == []
+
+
+def test_ticker_vira_link_para_a_analise_com_o_texto_so_do_ticker():
+    estilo, _ = _tabela_ranking_screener(_tabela())
+    assert list(estilo.data["ticker"])[:2] == ["/?acao=EEE3", "/?acao=AAA3"]
+
+    configuracao = _configuracao_colunas_ranking(COLUNAS_TABELA_SCREENER)
+
+    assert configuracao["ticker"]["label"] == "Ticker"
+    assert configuracao["ticker"]["type_config"]["type"] == "link"
+    assert configuracao["ticker"]["type_config"]["display_text"] == "acao=(.*)"
+
+
+AVISO_FCD = config.AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD
+RESUMO_AVISO_FCD = "Potencial extremo: confira as premissas do FCD"
+
+
+@pytest.mark.parametrize(
+    ("aviso", "observacao", "esperado"),
+    [
+        (AVISO_FCD, "", RESUMO_AVISO_FCD),
+        ("", "Nenhum método se aplica.", "Nenhum método se aplica."),
+        (AVISO_FCD, "FCD não aplicável.", f"{RESUMO_AVISO_FCD} · FCD não aplicável."),
+        ("", "", ""),
+    ],
+)
+def test_observacao_junta_o_resumo_do_aviso_e_a_observacao_com_ponto_medio(
+    aviso, observacao, esperado
+):
+    tabela = _tabela().iloc[[0]].assign(aviso_desconto_extremo=[aviso], erro=[observacao])
+
+    estilo, _ = _tabela_ranking_screener(tabela)
+
+    assert list(estilo.data["erro"]) == [esperado]
+
+
+def test_observacao_tem_largura_para_o_texto_curto_do_aviso_sem_corte():
+    configuracao = _configuracao_colunas_ranking(COLUNAS_TABELA_SCREENER)
+
+    assert configuracao["erro"]["label"] == "Observação"
+    # ~7,5 px por caractere nos 14 px da tabela.
+    assert configuracao["erro"]["width"] >= len(RESUMO_AVISO_FCD) * 7.5
+    assert configuracao["erro"]["width"] == config.LARGURA_COLUNA_OBSERVACAO_RANKING
+
+
+def test_divergencia_dividendos_e_reinvestimento_mostram_traco_no_lugar_do_vazio():
+    estilo, _ = _tabela_ranking_screener(_tabela())
+
+    celulas = {_ticker(linha[0]): linha for linha in _celulas(estilo)}
+    # divergência, dividendos, reinvestimento
+    assert celulas["AAA3"][6:9] == ["12%", "—", "20%"]
+    assert celulas["CCC3"][6:9] == ["—", "—", "—"]
+    assert "None" not in estilo.to_html()
+    configuracao = _configuracao_colunas_ranking(COLUNAS_TABELA_SCREENER)
+    for coluna in (
+        "divergencia_percentual_metodos",
+        "bazin_razao_dividendos_percentual",
+        "proporcao_reinvestimento_percentual",
+    ):
+        assert estilo.data[coluna].map(lambda v: isinstance(v, str)).all()
+        assert configuracao[coluna]["type_config"]["type"] == "text"
+        assert configuracao[coluna]["alignment"] == "right"
+
+
+def test_preco_valor_combinado_e_potencial_continuam_numericos_para_ordenar():
+    estilo, _ = _tabela_ranking_screener(_tabela())
+
+    for coluna in ("preco_atual", "valor_combinado", "desconto_percentual"):
+        assert pd.api.types.is_float_dtype(estilo.data[coluna])
+
+
+def test_ponto_de_interrogacao_do_titulo_ensina_a_abrir_a_analise():
+    assert "Clique duas vezes no ticker para abrir a análise da ação numa nova aba." in (
+        config.TEXTO_AJUDA_RANKING_SCREENER
+    )

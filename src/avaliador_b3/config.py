@@ -1501,11 +1501,23 @@ TITULO_EIXO_POTENCIAL = "Potencial (%)"
 TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO = "Nenhuma ação com potencial para mostrar."
 TITULO_ATENCAO = "Atenção"
 TITULO_RANKING_SCREENER = "Ranking por potencial"
+# Link do ticker na tabela do Screener: abre a página de análise (na raiz) já com a ação buscada,
+# por este parâmetro da URL; `{acao}` é o ticker e o texto do link é só o ticker.
+PARAMETRO_URL_ACAO = "acao"
+URL_LINK_ACAO = "/?" + PARAMETRO_URL_ACAO + "={acao}"
+TEXTO_LINK_ACAO_REGEX = PARAMETRO_URL_ACAO + r"=(.*)"
+TEXTO_ACAO_DA_URL_INVALIDA = (
+    "A ação {acao} do endereço não foi encontrada no Ibovespa; escolha uma na barra lateral."
+)
 TEXTO_AJUDA_RANKING_SCREENER = (
     "Ranking pelo potencial de valorização até o valor combinado (média simples dos métodos "
     "aplicáveis a cada ação), do maior para o menor; as sem valor combinado ficam no fim. Veja "
-    '"Como ler esta tabela", abaixo da tabela.'
+    '"Como ler esta tabela", abaixo da tabela. Clique duas vezes no ticker para abrir a '
+    "análise da ação numa nova aba."
 )
+# Largura (px) da coluna Observação do ranking: cabe o texto curto do aviso sem corte.
+LARGURA_COLUNA_OBSERVACAO_RANKING = 360
+SEPARADOR_OBSERVACAO_RANKING = " · "
 TEXTO_SEM_DADO_NA_TABELA = "—"
 ROTULO_COLUNAS_RANKING_SCREENER = {
     "ticker": "Ticker",
@@ -1518,7 +1530,6 @@ ROTULO_COLUNAS_RANKING_SCREENER = {
     "bazin_razao_dividendos_percentual": "Dividendos vs. histórico",
     "proporcao_reinvestimento_percentual": "Reinvestimento",
     "metodos_utilizados": "Métodos utilizados",
-    "aviso_desconto_extremo": "Aviso",
 }
 TITULO_CARTAO_SEM_METODO = "Sem método aplicável"
 TEXTO_CARTAO_SEM_METODO = "{quantidade} ações sem nenhum método aplicável: {tickers}."
