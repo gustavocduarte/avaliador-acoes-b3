@@ -1016,6 +1016,10 @@ MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA = (
     "o fluxo de caixa livre do ano-base foi zero ou negativo"
 )
 # Entrada que veio como NaN ou infinito (dado corrompido, não ausente): o método não se aplica.
+TEXTO_AJUDA_LPA_VPA_AJUSTADOS = (
+    "Valor do Fundamentus. O Graham usa LPA e VPA ajustados às ações em circulação da CVM "
+    "(sem as ações em tesouraria): LPA {lpa} e VPA {vpa}."
+)
 MOTIVO_GRAHAM_LPA_VPA_NAO_POSITIVOS = (
     "Fórmula de Graham exige LPA>0 e VPA>0 (LPA = {lpa} e VPA = {vpa})."
 )

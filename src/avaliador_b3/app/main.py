@@ -106,6 +106,7 @@ from avaliador_b3.config import (
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
+    TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
     TEXTO_AJUDA_TRADINGVIEW,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
@@ -215,6 +216,7 @@ from avaliador_b3.modelos.fcd import (
     montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
+from avaliador_b3.numeros import decimal_pt_br
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
@@ -1025,6 +1027,29 @@ def _html_linha_correlacao(nome: str, resultado: dict, ultimo_gpr: str | None) -
     )
 
 
+def _ajuda_lpa_vpa_ajustados(
+    lpa: float | None,
+    vpa: float | None,
+    lpa_graham: float | None,
+    vpa_graham: float | None,
+) -> dict[str, str]:
+    """Nota do "?" de LPA e de VPA: o Graham usa os dois reescalados para as ações em circulação;
+    a nota só aparece no indicador cujo valor ajustado, em 2 casas, difere do mostrado."""
+    if lpa_graham is None or vpa_graham is None:
+        return {"lpa": "", "vpa": ""}
+    nota = TEXTO_AJUDA_LPA_VPA_AJUSTADOS.format(
+        lpa=decimal_pt_br(lpa_graham), vpa=decimal_pt_br(vpa_graham)
+    )
+
+    def diferente(mostrado: float | None, ajustado: float) -> bool:
+        return mostrado is not None and round(mostrado, 2) != round(ajustado, 2)
+
+    return {
+        "lpa": nota if diferente(lpa, lpa_graham) else "",
+        "vpa": nota if diferente(vpa, vpa_graham) else "",
+    }
+
+
 def _html_correlacoes(resultados: dict, ultimo_gpr: str | None) -> str:
     """As linhas dos três fatores; `ultimo_gpr` (data já formatada) entra na dica do GPR."""
     return "".join(
@@ -1659,9 +1684,11 @@ def pagina_analisar() -> None:
         # internamente pros parâmetros que aceitam None, só que aqui pros
         # que não aceitam.
         ajustes_balanco = montar_ajustes_balanco(leitura_balanco)
-        resultado_graham = calcular_valor_justo_graham(
-            *reescalar_lpa_vpa(lpa, vpa, numero_acoes, ajustes_balanco["acoes_em_circulacao"])
+        lpa_graham, vpa_graham = reescalar_lpa_vpa(
+            lpa, vpa, numero_acoes, ajustes_balanco["acoes_em_circulacao"]
         )
+        resultado_graham = calcular_valor_justo_graham(lpa_graham, vpa_graham)
+        ajuda_lpa_vpa = _ajuda_lpa_vpa_ajustados(lpa, vpa, lpa_graham, vpa_graham)
         resultado_bazin: dict = (
             calcular_preco_teto_bazin(dividendos)
             if dividendos is not None
@@ -2024,8 +2051,12 @@ def pagina_analisar() -> None:
                         _fmt(indicadores["margem_liquida_percentual"], "{:.1f}%"),
                         _cor_indicador(indicadores["margem_liquida_percentual"], "sinal"),
                     )
-                    + _html_indicador("LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"))
-                    + _html_indicador("VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"))
+                    + _html_indicador(
+                        "LPA", _fmt(indicadores["lpa"], "R$ {:.2f}"), ajuda=ajuda_lpa_vpa["lpa"]
+                    )
+                    + _html_indicador(
+                        "VPA", _fmt(indicadores["vpa"], "R$ {:.2f}"), ajuda=ajuda_lpa_vpa["vpa"]
+                    )
                     + _html_indicador(
                         "Liquidez corrente",
                         _fmt(indicadores["liquidez_corrente"]),

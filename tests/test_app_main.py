@@ -3402,3 +3402,44 @@ def _valores_plotly(serie):
     if isinstance(serie, dict):
         return list(np.frombuffer(base64.b64decode(serie["bdata"]), dtype=serie["dtype"]))
     return list(serie)
+
+
+def test_nota_de_lpa_e_vpa_ajustados_aparece_quando_o_arredondamento_muda():
+    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.modelos.graham import reescalar_lpa_vpa
+
+    # CSAN3: ações do Fundamentus 3.966.570.000, em circulação 3.944.366.465.
+    lpa_g, vpa_g = reescalar_lpa_vpa(-2.24, 1.25, 3_966_570_000.0, 3_944_366_465.0)
+    ajuda = _ajuda_lpa_vpa_ajustados(-2.24, 1.25, lpa_g, vpa_g)
+
+    esperada = (
+        "Valor do Fundamentus. O Graham usa LPA e VPA ajustados às ações em circulação da CVM "
+        "(sem as ações em tesouraria): LPA -2,25 e VPA 1,26."
+    )
+    assert ajuda == {"lpa": esperada, "vpa": esperada}
+
+
+def test_nota_de_lpa_e_vpa_ajustados_some_quando_o_arredondamento_nao_muda():
+    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.modelos.graham import reescalar_lpa_vpa
+
+    lpa_g, vpa_g = reescalar_lpa_vpa(10.35, 37.32, 1_000_000.0, 999_990.0)  # razão 1,00001
+
+    assert _ajuda_lpa_vpa_ajustados(10.35, 37.32, lpa_g, vpa_g) == {"lpa": "", "vpa": ""}
+
+
+def test_nota_de_lpa_e_vpa_ajustados_aparece_so_no_indicador_que_muda():
+    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.modelos.graham import reescalar_lpa_vpa
+
+    lpa_g, vpa_g = reescalar_lpa_vpa(10.35, 37.32, 1_000_000.0, 999_600.0)  # razão 1,0004
+
+    ajuda = _ajuda_lpa_vpa_ajustados(10.35, 37.32, lpa_g, vpa_g)
+    assert ajuda["lpa"] == ""
+    assert "LPA 10,35 e VPA 37,33." in ajuda["vpa"]
+
+
+def test_nota_de_lpa_e_vpa_ajustados_sem_graham_nao_aparece():
+    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+
+    assert _ajuda_lpa_vpa_ajustados(None, 1.0, None, None) == {"lpa": "", "vpa": ""}
