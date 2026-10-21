@@ -2195,6 +2195,28 @@ def test_figura_do_valor_justo_poe_o_nome_na_barra_e_no_eixo_so_o_que_nao_cabe()
     assert figura.layout.yaxis.automargin is True
 
 
+def test_figura_do_valor_justo_poe_o_valor_numa_anotacao_com_fundo_sobre_a_linha_do_preco():
+    from avaliador_b3 import config
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    # O rótulo do Graham termina perto do preço: o fundo da anotação cobre a linha tracejada.
+    figura = _figura_valor_justo({"graham": 98.0, "fcd": 40.0}, 69.0, 100.0)
+    rotulos = {a.y: a for a in figura.layout.annotations if a.text and a.bgcolor}
+    assert set(rotulos) == {"Graham", "FCD", "Combinado"}
+    assert rotulos["Graham"].text == "98,00  -2,0%"
+    assert rotulos["Graham"].x == 98.0
+    assert all(a.bgcolor == config.COR_FUNDO_PAINEL for a in rotulos.values())
+    assert figura.data[0].textposition == "none"
+
+
+def test_figura_do_valor_justo_aguenta_barra_muito_curta():
+    from avaliador_b3.app.main import _figura_valor_justo
+
+    figura = _figura_valor_justo({"graham": 0.01, "fcd": 200.0}, 100.0, 50.0)
+    assert list(figura.layout.yaxis.ticktext) == ["Graham"]
+    assert any(a.text == "0,01  -100,0%" for a in figura.layout.annotations)
+
+
 def test_figura_do_valor_justo_sem_nome_no_eixo_quando_todas_as_barras_comportam():
     from avaliador_b3.app.main import _figura_valor_justo
 

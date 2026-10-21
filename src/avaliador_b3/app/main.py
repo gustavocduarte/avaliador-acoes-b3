@@ -877,9 +877,7 @@ def _figura_valor_justo(
             orientation="h",
             marker={"color": cores},
             text=[_rotulo_barra_valor_justo(valor, preco_atual) for valor in valores],
-            textposition="outside",
-            textfont={"color": COR_TEXTO},
-            cliponaxis=False,
+            textposition="none",
             hovertemplate="%{y}: %{text}<extra></extra>",
         )
     )
@@ -892,7 +890,19 @@ def _figura_valor_justo(
     )
     limite_x = maior + 0.4 * amplitude
     fora_da_barra = []
-    for rotulo, valor in zip(rotulos, valores, strict=True):
+    for rotulo, valor, texto in zip(rotulos, valores, figura.data[0].text, strict=True):
+        # O valor vai numa anotação com fundo, que cobre a linha do preço quando ela passa por trás.
+        figura.add_annotation(
+            x=valor,
+            y=rotulo,
+            text=texto,
+            showarrow=False,
+            xanchor="left",
+            xshift=6,
+            bgcolor=COR_FUNDO_PAINEL,
+            borderpad=2,
+            font={"color": COR_TEXTO},
+        )
         largura_necessaria = len(rotulo) * LARGURA_CARACTERE_ROTULO_BARRA + FOLGA_ROTULO_BARRA
         if valor > 0 and valor / limite_x >= largura_necessaria:
             figura.add_annotation(
