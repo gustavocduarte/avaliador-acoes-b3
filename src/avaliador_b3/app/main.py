@@ -105,6 +105,7 @@ from avaliador_b3.config import (
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
+    TEXTO_AJUDA_TRADINGVIEW,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
@@ -2280,14 +2281,7 @@ def pagina_analisar() -> None:
                         exibir_grafico(figura_petroleo)
 
         with st.container(border=True, key="painel_tradingview"):
-            _titulo_painel("Gráfico avançado (TradingView)")
-            st.caption(
-                "Widget ao vivo do TradingView — dado direto deles, sem nenhum "
-                "processamento nosso (diferente do gráfico acima, calculado por "
-                "aqui a partir do histórico buscado via yfinance). Em ambientes "
-                "com JavaScript bloqueado/restrito, o gráfico ao vivo pode não "
-                "carregar."
-            )
+            _titulo_painel("Gráfico avançado (TradingView)", TEXTO_AJUDA_TRADINGVIEW)
             html_tradingview = _widget_avancado_tradingview(ticker)
             if html_tradingview is None:
                 st.info(MENSAGEM_TRADINGVIEW_TICKER_INVALIDO)

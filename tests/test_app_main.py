@@ -2066,6 +2066,25 @@ def test_correlacao_sem_serie_gpr_nao_mostra_data_do_ultimo_dado(monkeypatch):
     assert not any("Último dado do GPR" in h.proto.body for h in at.get("html"))
 
 
+def test_tradingview_tem_o_texto_explicativo_no_ponto_de_interrogacao_do_titulo(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    cabecalho = next(
+        h.proto.body for h in at.get("html") if "Gráfico avançado (TradingView)" in h.proto.body
+    )
+    assert "Widget ao vivo do TradingView" in cabecalho
+    assert 'class="ab-ajuda"' in cabecalho
+    assert not any("Widget ao vivo" in c.value for c in at.caption)
+
+
 def test_correlacao_tem_o_texto_explicativo_no_ponto_de_interrogacao_do_titulo(monkeypatch):
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",

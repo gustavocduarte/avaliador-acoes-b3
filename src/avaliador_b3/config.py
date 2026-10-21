@@ -44,6 +44,12 @@ SUFIXO_TICKER_B3 = ".SA"
 # Formato de ticker da B3: quatro caracteres (o nome da empresa, que pode ter dígito,
 # como em B3SA3) e o número da classe, de um ou dois dígitos (PETR4, BPAC11).
 PADRAO_TICKER_B3 = r"[A-Z][A-Z0-9]{3}[0-9]{1,2}"
+TEXTO_AJUDA_TRADINGVIEW = (
+    "Widget ao vivo do TradingView — dado direto deles, sem nenhum processamento nosso "
+    "(diferente dos gráficos de comparação, calculados aqui a partir do histórico buscado via "
+    "yfinance). Em ambientes com JavaScript bloqueado ou restrito, o gráfico ao vivo pode não "
+    "carregar."
+)
 MENSAGEM_TRADINGVIEW_TICKER_INVALIDO = (
     "Gráfico avançado indisponível: o ticker não está no formato de ticker da B3 (ex.: PETR4)."
 )
