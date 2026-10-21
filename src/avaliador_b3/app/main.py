@@ -964,10 +964,10 @@ def _titulo_painel(titulo: str, ajuda: str | None = None) -> None:
 def _html_indicador(
     rotulo: str, valor: str, classe_cor: str = "ab-cor-texto", ajuda: str = ""
 ) -> str:
-    """Um indicador da grade: rótulo pequeno e valor monoespaçado; `ajuda` vira tooltip."""
-    dica = f' title="{escape(ajuda)}"' if ajuda else ""
+    """Um indicador da grade: rótulo pequeno e valor monoespaçado; `ajuda` vira o "?" do rótulo."""
+    marca_ajuda = f'<span class="ab-ajuda" title="{escape(ajuda)}">?</span>' if ajuda else ""
     return (
-        f'<div class="ab-ind"{dica}><span class="ab-ind-rotulo">{escape(rotulo)}</span>'
+        f'<div class="ab-ind"><span class="ab-ind-rotulo">{escape(rotulo)}{marca_ajuda}</span>'
         f'<span class="ab-ind-valor {classe_cor}">{escape(valor)}</span></div>'
     )
 
@@ -2080,21 +2080,30 @@ def pagina_analisar() -> None:
                 if universo_ibovespa is not None
                 else None
             )
-            col_segmento, col_free_float = st.columns(2)
-            with col_segmento:
-                if erro_universo:
-                    st.warning(f"Segmento de listagem: {erro_universo}")
-                elif linha_universo is not None and not linha_universo.empty:
-                    st.metric("Segmento de listagem", linha_universo.iloc[0]["segmento_listagem"])
-                else:
-                    st.metric("Segmento de listagem", "—")
-                    st.caption(
-                        f"{ticker!r} não está na carteira teórica atual do Ibovespa — essa é "
-                        "a única fonte de segmento de listagem que já temos."
+            indicadores_governanca = []
+            if erro_universo:
+                st.warning(f"Segmento de listagem: {erro_universo}")
+            elif linha_universo is not None and not linha_universo.empty:
+                indicadores_governanca.append(
+                    _html_indicador(
+                        "Segmento de listagem", str(linha_universo.iloc[0]["segmento_listagem"])
                     )
-            with col_free_float:
-                st.metric("Free float", "—")
-                st.caption("Dado não disponível nas fontes usadas.")
+                )
+            else:
+                indicadores_governanca.append(
+                    _html_indicador(
+                        "Segmento de listagem",
+                        "—",
+                        ajuda=(
+                            f"{ticker!r} não está na carteira teórica atual do Ibovespa — essa é "
+                            "a única fonte de segmento de listagem que já temos."
+                        ),
+                    )
+                )
+            indicadores_governanca.append(
+                _html_indicador("Free float", "—", ajuda="Dado não disponível nas fontes usadas.")
+            )
+            st.html('<div class="ab-grade">' + "".join(indicadores_governanca) + "</div>")
 
         coluna_comportamento, coluna_correlacao = st.columns(2)
         with (
@@ -2102,33 +2111,37 @@ def pagina_analisar() -> None:
             st.container(border=True, key="painel_comportamento", height="stretch"),
         ):
             _titulo_painel("Comportamento da ação")
+            indicadores_comportamento = []
             if erro_historico:
                 st.info("Volume/volatilidade indisponíveis — ver aviso de preço acima.")
             else:
-                volume_medio = calcular_volume_medio(historico)
-                volatilidade = calcular_volatilidade_anualizada(historico)
-                # calcular_volume_medio pode devolver None (histórico
-                # vazio) — _fmt já trata isso como "N/D" no resto do
-                # arquivo; sem essa checagem, f"{None:,.0f}" levantaria
-                # TypeError. _fmt já converte pro padrão brasileiro
-                # (milhar com ponto), sem replace() extra aqui.
-                st.metric("Volume médio (3m)", _fmt(volume_medio, "{:,.0f}"))
-                st.metric("Volatilidade anualizada", _fmt(volatilidade, "{:.1%}"))
+                indicadores_comportamento += [
+                    _html_indicador(
+                        "Volume médio (3m)", _fmt(calcular_volume_medio(historico), "{:,.0f}")
+                    ),
+                    _html_indicador(
+                        "Volatilidade anualizada",
+                        _fmt(calcular_volatilidade_anualizada(historico), "{:.1%}"),
+                    ),
+                ]
 
-            # Beta usa uma janela própria mais longa (PERIODO_BETA) que
-            # volume/volatilidade, de propósito — ver comentário em config.py.
-            # Reaproveita o `beta` já calculado acima (mesmo valor usado no
-            # WACC do FCD), não recalcula.
+            # Beta usa uma janela própria mais longa (PERIODO_BETA) que volume/volatilidade, de
+            # propósito (ver config.py); reaproveita o `beta` já calculado para o WACC do FCD.
+            motivo_beta = ""
             if erro_historico_beta:
-                st.metric("Beta (vs. Ibovespa, 1a)", "—")
-                st.caption(f"Preço indisponível: {erro_historico_beta}")
+                motivo_beta = f"Preço indisponível: {erro_historico_beta}"
             elif erro_historico_ibovespa_beta:
-                st.metric("Beta (vs. Ibovespa, 1a)", "—")
-                st.caption(f"Ibovespa indisponível: {erro_historico_ibovespa_beta}")
-            else:
-                st.metric("Beta (vs. Ibovespa, 1a)", _fmt(beta))
-                if beta is None:
-                    st.caption("Histórico curto demais pra calcular (poucas datas em comum).")
+                motivo_beta = f"Ibovespa indisponível: {erro_historico_ibovespa_beta}"
+            elif beta is None:
+                motivo_beta = "Histórico curto demais pra calcular (poucas datas em comum)."
+            indicadores_comportamento.append(
+                _html_indicador(
+                    "Beta (vs. Ibovespa, 1a)",
+                    "—" if motivo_beta else _fmt(beta),
+                    ajuda=motivo_beta,
+                )
+            )
+            st.html('<div class="ab-grade">' + "".join(indicadores_comportamento) + "</div>")
 
         with (
             coluna_correlacao,

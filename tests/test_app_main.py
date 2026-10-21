@@ -255,7 +255,8 @@ def _indicador_saude(at, rotulo: str):
     achados = []
     for elemento in at.get("html"):
         for nome, valor in re.findall(
-            r'ab-ind-rotulo">(.*?)</span><span class="ab-ind-valor [^"]*">(.*?)</span>',
+            r'ab-ind-rotulo">([^<]*)(?:<span class="ab-ajuda"[^>]*>\?</span>)?</span>'
+            r'<span class="ab-ind-valor [^"]*">(.*?)</span>',
             elemento.proto.body,
         ):
             if nome == rotulo:
