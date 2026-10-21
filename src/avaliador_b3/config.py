@@ -1041,6 +1041,22 @@ NOMES_PARCELAS_MOTIVO_FCD_CURTO = {
     "arrendamento": "arrendamento",
     "nao_controladores": "sócios minoritários",
 }
+# Painel "Correlação com fatores externos": fatores na ordem de `FATORES_CORRELACAO`, o "?" do
+# título e as dicas de cada linha.
+NOMES_FATORES_CORRELACAO = {
+    "petroleo": "Petróleo (Brent)",
+    "cambio": "Câmbio USD/BRL",
+    "gpr": "Risco geopolítico (GPR)",
+}
+TEXTO_AJUDA_CORRELACAO = (
+    "Correlação (Pearson) entre o retorno diário da ação e três fatores externos — petróleo "
+    "(Brent), câmbio USD/BRL e risco geopolítico (GPR) — numa janela de {anos} anos. Sempre "
+    "correlaciona a variação percentual dia a dia de cada série, nunca o nível bruto: "
+    "correlacionar séries em tendência infla o número de forma espúria, sem relação real entre "
+    "elas. A barra vai de −1 a +1."
+)
+TEXTO_OBSERVACOES_CORRELACAO = "{observacoes} observações"
+TEXTO_ULTIMO_DADO_GPR = "Último dado do GPR: {data}."
 TEXTO_NENHUM_METODO_SE_APLICA = "Nenhum método se aplica a esta empresa"
 MOTIVO_FCD_FLUXO_NAO_POSITIVO = (
     "O fluxo de caixa livre do último ano foi zero ou negativo; projetá-lo "

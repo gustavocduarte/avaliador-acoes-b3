@@ -76,6 +76,7 @@ from avaliador_b3.config import (
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
     LIMITE_SINAL_INDICADOR,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
+    NOMES_FATORES_CORRELACAO,
     NOMES_METODOS,
     NOTA_DIVIDEND_YIELD_SUBESTIMADO,
     NOTA_DIVIDENDOS_ANO_PARCIAL,
@@ -102,6 +103,7 @@ from avaliador_b3.config import (
     SUBTITULO_POTENCIAL_CARTEIRA,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
@@ -113,6 +115,7 @@ from avaliador_b3.config import (
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_NENHUM_METODO_SE_APLICA,
+    TEXTO_OBSERVACOES_CORRELACAO,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_RODAPE_LINK_REPOSITORIO,
@@ -127,6 +130,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
+    TEXTO_ULTIMO_DADO_GPR,
     TICKER_PETROLEO_BRENT,
     TITULO_EXPANDER_SIMULADOR,
     TITULO_PAGINA_ANALISAR,
@@ -987,20 +991,42 @@ def _html_indicador(
     )
 
 
-def _cartao_correlacao(nome: str, resultado: dict) -> None:
-    """Renderiza um cartão de correlação (petróleo/câmbio/GPR):
-    `st.metric` com o coeficiente e a leitura de magnitude
-    (`correlacao.classificar_magnitude_correlacao`) quando
-    `resultado["aplicavel"]`, ou "—" com o motivo quando não — mesmo
-    formato de dict que `correlacao.calcular_correlacao` devolve."""
+def _html_linha_correlacao(nome: str, resultado: dict, ultimo_gpr: str | None) -> str:
+    """Linha de um fator: nome com "?" (observações, data do GPR ou motivo), mini barra de −1 a
+    +1 (do centro para a direita se positiva, para a esquerda se negativa), valor e leitura de
+    magnitude (`correlacao.classificar_magnitude_correlacao`); sem dado, "—"."""
     if not resultado["aplicavel"]:
-        st.metric(nome, "—")
-        st.caption(f"Indisponível: {resultado['motivo_nao_aplicavel']}")
-        return
+        ajuda = f"Indisponível: {resultado['motivo_nao_aplicavel']}"
+        trilho = '<span class="ab-div-trilho"></span>'
+        valor, classe = "—", ""
+    else:
+        coeficiente = resultado["correlacao"]
+        ajuda = TEXTO_OBSERVACOES_CORRELACAO.format(observacoes=resultado["observacoes"])
+        lado = "ab-corr-pos" if coeficiente >= 0 else "ab-corr-neg"
+        largura = min(abs(coeficiente), 1.0) * 50
+        trilho = (
+            '<span class="ab-div-trilho">'
+            f'<i class="ab-div-barra {lado}" style="width:{largura:.1f}%"></i></span>'
+        )
+        valor = _fmt(coeficiente)
+        classe = classificar_magnitude_correlacao(coeficiente)
+    if ultimo_gpr:
+        ajuda += f" · {ultimo_gpr}"
+    return (
+        '<div class="ab-corr">'
+        f'<span class="ab-corr-nome">{escape(nome)}'
+        f'<span class="ab-ajuda" title="{escape(ajuda)}">?</span></span>'
+        f'{trilho}<span class="ab-div-valor">{escape(valor)}</span>'
+        f'<span class="ab-corr-classe">{escape(classe)}</span></div>'
+    )
 
-    magnitude = classificar_magnitude_correlacao(resultado["correlacao"])
-    st.metric(nome, _fmt(resultado["correlacao"]))
-    st.caption(f"Correlação {magnitude} ({resultado['observacoes']} observações)")
+
+def _html_correlacoes(resultados: dict, ultimo_gpr: str | None) -> str:
+    """As linhas dos três fatores; `ultimo_gpr` (data já formatada) entra na dica do GPR."""
+    return "".join(
+        _html_linha_correlacao(nome, resultados[chave], ultimo_gpr if chave == "gpr" else None)
+        for chave, nome in NOMES_FATORES_CORRELACAO.items()
+    )
 
 
 def _pt_br(texto: str) -> str:
@@ -1359,6 +1385,12 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-div-neg { right: 50%; background: $negativo; }
 .ab-div-valor { min-width: 4.2rem; text-align: right; white-space: nowrap;
   font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.ab-corr { display: grid; grid-template-columns: 8.5rem minmax(3rem, 1fr) 4.2rem 5.2rem;
+  align-items: center; gap: .6rem; padding: .45rem 0; }
+.ab-corr-nome { font-size: .85rem; }
+.ab-corr-classe { font-size: .75rem; color: $secundario; }
+.ab-corr-pos { left: 50%; background: $principal; }
+.ab-corr-neg { right: 50%; background: $principal; }
 .ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
@@ -2180,14 +2212,9 @@ def pagina_analisar() -> None:
             coluna_correlacao,
             st.container(border=True, key="painel_correlacao", height="stretch"),
         ):
-            _titulo_painel("Correlação com fatores externos")
-            st.caption(
-                "Correlação (Pearson) entre o retorno diário da ação e três fatores "
-                f"externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico (GPR) — "
-                f"numa janela de {ANOS_JANELA_CORRELACAO} anos. Sempre correlaciona a "
-                "variação percentual dia a dia de cada série, nunca o nível bruto — "
-                "correlacionar séries em tendência infla o número de forma espúria, "
-                "sem relação real entre elas."
+            _titulo_painel(
+                "Correlação com fatores externos",
+                TEXTO_AJUDA_CORRELACAO.format(anos=ANOS_JANELA_CORRELACAO),
             )
             if erro_acao_correlacao:
                 st.error(f"Preço de {ticker} (janela de correlação): {erro_acao_correlacao}")
@@ -2206,15 +2233,12 @@ def pagina_analisar() -> None:
                     serie_gpr=serie_gpr,
                 )
 
-                col_petroleo, col_cambio, col_gpr = st.columns(3)
-                with col_petroleo:
-                    _cartao_correlacao("Petróleo (Brent)", resultados_correlacao["petroleo"])
-                with col_cambio:
-                    _cartao_correlacao("Câmbio USD/BRL", resultados_correlacao["cambio"])
-                with col_gpr:
-                    _cartao_correlacao("Risco geopolítico (GPR)", resultados_correlacao["gpr"])
-                    if serie_gpr is not None and not serie_gpr.empty:
-                        st.caption(f"Último dado do GPR: {_fmt_data(serie_gpr['data'].max())}.")
+                ultimo_gpr = None
+                if serie_gpr is not None and not serie_gpr.empty:
+                    ultimo_gpr = TEXTO_ULTIMO_DADO_GPR.format(
+                        data=_fmt_data(serie_gpr["data"].max())
+                    )
+                st.html(_html_correlacoes(resultados_correlacao, ultimo_gpr))
 
         with st.container(border=True, key="painel_petroleo"):
             _titulo_painel("Comparando com Petróleo (Brent) · base 100")

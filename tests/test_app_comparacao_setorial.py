@@ -8,7 +8,12 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import _fmt_potencial, _html_barra_potencial, _html_tabela_setorial
+from avaliador_b3.app.main import (
+    _fmt_potencial,
+    _html_barra_potencial,
+    _html_linha_correlacao,
+    _html_tabela_setorial,
+)
 from avaliador_b3.config import LIMITE_BARRA_POTENCIAL
 from avaliador_b3.screener import COLUNAS_RESULTADO
 from tests import test_app_main as app
@@ -138,3 +143,54 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
     assert "+13,5%" in html and "-30,0%" in html
     # A tabela antiga (st.dataframe) saiu do painel.
     assert not any("desconto_percentual" in df.value.columns for df in at.dataframe)
+
+
+def _resultado_corr(valor, observacoes=500):
+    return {"aplicavel": True, "correlacao": valor, "observacoes": observacoes}
+
+
+def test_barra_de_correlacao_vai_de_menos_um_a_mais_um_com_valor_e_classificacao():
+    html = _html_linha_correlacao("Câmbio USD/BRL", _resultado_corr(-0.5), None)
+
+    assert "ab-corr-neg" in html and "ab-corr-pos" not in html
+    assert _largura(html) == 25.0  # metade do semi-eixo
+    assert "-0,50" in html and ">moderada<" in html
+    assert "500 observações" in html
+
+
+def test_barra_de_correlacao_positiva_cresce_para_a_direita_e_corta_em_um():
+    html = _html_linha_correlacao("Petróleo (Brent)", _resultado_corr(1.0), None)
+
+    assert "ab-corr-pos" in html
+    assert _largura(html) == 50.0
+    assert ">forte<" in html
+
+
+def test_correlacao_indisponivel_mostra_traco_com_o_motivo_na_dica():
+    html = _html_linha_correlacao(
+        "Risco geopolítico (GPR)",
+        {"aplicavel": False, "motivo_nao_aplicavel": "Série indisponível."},
+        None,
+    )
+
+    assert "ab-div-barra" not in html
+    assert 'ab-div-valor">—<' in html
+    assert "Indisponível: Série indisponível." in html
+
+
+def test_dica_do_gpr_traz_a_data_do_ultimo_dado_junto_das_observacoes():
+    html = _html_linha_correlacao(
+        "Risco geopolítico (GPR)", _resultado_corr(0.1, 120), "Último dado do GPR: 25/09/2026."
+    )
+
+    assert "120 observações · Último dado do GPR: 25/09/2026." in html
+
+
+def test_dica_do_gpr_indisponivel_tambem_traz_a_data_do_ultimo_dado():
+    html = _html_linha_correlacao(
+        "Risco geopolítico (GPR)",
+        {"aplicavel": False, "motivo_nao_aplicavel": "Sem sobreposição."},
+        "Último dado do GPR: 25/09/2026.",
+    )
+
+    assert "Indisponível: Sem sobreposição. · Último dado do GPR: 25/09/2026." in html

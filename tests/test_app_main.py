@@ -1951,6 +1951,15 @@ def test_saude_financeira_mostra_numeros_com_virgula_brasileira(monkeypatch):
     assert _indicador_saude(at, "Liquidez corrente").value == "1,20"
 
 
+def _linha_de_correlacao(at, nome: str) -> str:
+    """HTML da linha do fator `nome` no painel de correlação (pelo nome, não pela posição)."""
+    for elemento in at.get("html"):
+        for linha in elemento.proto.body.split('<div class="ab-corr">')[1:]:
+            if linha.startswith(f'<span class="ab-corr-nome">{nome}'):
+                return linha
+    raise AssertionError(f"linha de correlação {nome!r} não encontrada")
+
+
 def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
     # _cartao_correlacao converte o ponto decimal em vírgula (ex: "1,00", não "1.00").
     # Petróleo em queda constante e ação em alta constante -> correlação
@@ -1994,13 +2003,15 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
     # bruto — não vale a pena prever o coeficiente exato aqui (não é -1,00
     # só porque os níveis são lineares opostos); o que importa é o formato:
     # vírgula decimal, não ponto.
-    valor_petroleo = _metrica_por_label(at, "Petróleo (Brent)").value
+    linha = _linha_de_correlacao(at, "Petróleo (Brent)")
+    valor_petroleo = re.search(r'ab-div-valor">([^<]*)<', linha).group(1)
     assert re.fullmatch(r"-?\d,\d\d", valor_petroleo), (
         f"correlação não está no formato brasileiro esperado: {valor_petroleo!r}"
     )
+    assert "40 observações" in linha or re.search(r"\d+ observações", linha)
 
 
-def test_correlacao_mostra_data_do_ultimo_dado_do_gpr(monkeypatch):
+def test_correlacao_mostra_data_do_ultimo_dado_do_gpr_na_dica_da_linha(monkeypatch):
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -2024,11 +2035,38 @@ def test_correlacao_mostra_data_do_ultimo_dado_do_gpr(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    legendas = [c.value for c in at.caption]
-    assert "Último dado do GPR: 25/09/2026." in legendas
+    assert "Último dado do GPR: 25/09/2026." in _linha_de_correlacao(at, "Risco geopolítico (GPR)")
+    assert "Último dado do GPR" not in _linha_de_correlacao(at, "Petróleo (Brent)")
 
 
 def test_correlacao_sem_serie_gpr_nao_mostra_data_do_ultimo_dado(monkeypatch):
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
+        lambda **kwargs: _universo_falso(),
+    )
+    _bloquear_buscas_de_rede_por_ticker(monkeypatch)
+
+    def _gpr_fora_do_ar(*args, **kwargs):
+        raise RuntimeError("GPR fora do ar (simulado)")
+
+    monkeypatch.setattr("avaliador_b3.ingest.gpr.obter_gpr", _gpr_fora_do_ar)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.precos.obter_historico",
+        _historico_por_periodo(
+            {"1d": 50.0, "3mo": 50.0, "1y": 50.0, f"{ANOS_JANELA_CORRELACAO}y": 50.0}
+        ),
+    )
+
+    at = AppTest.from_file(CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    # O painel renderiza as três linhas (o preço da ação existe); só falta a data do GPR.
+    assert "Indisponível" in _linha_de_correlacao(at, "Risco geopolítico (GPR)")
+    assert not any("Último dado do GPR" in h.proto.body for h in at.get("html"))
+
+
+def test_correlacao_tem_o_texto_explicativo_no_ponto_de_interrogacao_do_titulo(monkeypatch):
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),
@@ -2039,7 +2077,12 @@ def test_correlacao_sem_serie_gpr_nao_mostra_data_do_ultimo_dado(monkeypatch):
     at.run(timeout=60)
 
     assert not at.exception
-    assert not any(c.value.startswith("Último dado do GPR") for c in at.caption)
+    cabecalho = next(
+        h.proto.body for h in at.get("html") if "Correlação com fatores externos" in h.proto.body
+    )
+    assert "variação percentual dia a dia" in cabecalho
+    assert 'class="ab-ajuda"' in cabecalho
+    assert not any("Pearson" in c.value for c in at.caption)
 
 
 @pytest.mark.parametrize(
