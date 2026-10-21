@@ -131,10 +131,16 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
         ),
     )
 
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.bcb_sgs.carregar_macro_referencia",
+        lambda: {"selic_meta": 0.1475, "data_busca": pd.Timestamp("2026-10-19")},
+    )
+
     at = AppTest.from_file(app.CAMINHO_APP)
     at.run(timeout=60)
 
     assert not at.exception
+    assert "Preços e potenciais do screener de 19/10/2026" in [c.value for c in at.caption]
     tabelas = [e.proto.body for e in at.get("html") if "<table" in e.proto.body]
     assert len(tabelas) == 1
     html = tabelas[0]

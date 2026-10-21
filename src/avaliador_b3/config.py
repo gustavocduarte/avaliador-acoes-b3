@@ -1431,6 +1431,7 @@ URL_PAGINA_SCREENER = "screener"
 URL_PAGINA_CARTEIRA = "simulador"
 URL_REPOSITORIO = "https://github.com/gustavocduarte/avaliador-acoes-b3"
 TEXTO_RODAPE_SCREENER_ATUALIZADO = "Screener atualizado em {data}"
+TEXTO_LEGENDA_DATA_SCREENER_SETORIAL = "Preços e potenciais do screener de {data}"
 TEXTO_RODAPE_LINK_REPOSITORIO = "Código no GitHub"
 
 # Blocos da barra lateral: o `key` vira a classe `.st-key-<key>` usada pelo CSS; o bloco da

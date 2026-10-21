@@ -116,6 +116,7 @@ from avaliador_b3.config import (
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
     TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_OBSERVACOES_CORRELACAO,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
@@ -2369,6 +2370,13 @@ def pagina_analisar() -> None:
                             nome_segmento = _rotulo_segmento_setorial(segmento_setorial)
                             st.caption(f"Segmento setorial (B3): {nome_segmento}")
                             st.html(_html_tabela_setorial(tabela_pares, ticker))
+                            macro_screener = carregar_macro_referencia()
+                            if macro_screener is not None:
+                                st.caption(
+                                    TEXTO_LEGENDA_DATA_SCREENER_SETORIAL.format(
+                                        data=_fmt_data(macro_screener["data_busca"])
+                                    )
+                                )
 
         with st.expander("Datas de referência dos dados usados"):
             # Preço/Beta vêm da coluna "data" que obter_historico já traz
