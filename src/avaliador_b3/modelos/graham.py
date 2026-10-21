@@ -14,8 +14,13 @@ from __future__ import annotations
 
 import math
 
-from avaliador_b3.config import FATOR_GRAHAM, MOTIVO_ENTRADA_NAO_FINITA, MOTIVO_RESULTADO_NAO_FINITO
-from avaliador_b3.numeros import campos_nao_finitos, numero_finito
+from avaliador_b3.config import (
+    FATOR_GRAHAM,
+    MOTIVO_ENTRADA_NAO_FINITA,
+    MOTIVO_GRAHAM_LPA_VPA_NAO_POSITIVOS,
+    MOTIVO_RESULTADO_NAO_FINITO,
+)
+from avaliador_b3.numeros import campos_nao_finitos, decimal_pt_br, numero_finito
 
 
 def reescalar_lpa_vpa(
@@ -66,8 +71,8 @@ def calcular_valor_justo_graham(lpa: float | None, vpa: float | None) -> dict:
         return {
             "aplicavel": False,
             "valor_justo": None,
-            "motivo_nao_aplicavel": (
-                f"Fórmula de Graham exige LPA>0 e VPA>0 (LPA={lpa}, VPA={vpa})."
+            "motivo_nao_aplicavel": MOTIVO_GRAHAM_LPA_VPA_NAO_POSITIVOS.format(
+                lpa=decimal_pt_br(lpa), vpa=decimal_pt_br(vpa)
             ),
         }
 

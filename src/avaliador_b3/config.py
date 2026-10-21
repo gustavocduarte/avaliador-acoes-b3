@@ -1016,6 +1016,12 @@ MOTIVO_CRESCIMENTO_IPCA_BASE_NAO_POSITIVA = (
     "o fluxo de caixa livre do ano-base foi zero ou negativo"
 )
 # Entrada que veio como NaN ou infinito (dado corrompido, não ausente): o método não se aplica.
+MOTIVO_GRAHAM_LPA_VPA_NAO_POSITIVOS = (
+    "Fórmula de Graham exige LPA>0 e VPA>0 (LPA = {lpa} e VPA = {vpa})."
+)
+MOTIVO_FCD_WACC_NAO_POSITIVO = (
+    "WACC calculado não é positivo ({wacc}) — condições macro fora do esperado para o modelo."
+)
 MOTIVO_ENTRADA_NAO_FINITA = "Entrada com valor inválido (NaN ou infinito): {campos}."
 MOTIVO_RESULTADO_NAO_FINITO = "O cálculo não deu um número finito com as entradas disponíveis."
 MOTIVO_BAZIN_DIVIDENDO_NAO_FINITO = (

@@ -65,6 +65,7 @@ from avaliador_b3.config import (
     MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR_CURTO,
     MOTIVO_FCD_FLUXO_NAO_POSITIVO,
     MOTIVO_FCD_HOLDING_FINANCEIRA,
+    MOTIVO_FCD_WACC_NAO_POSITIVO,
     MOTIVO_PATRIMONIO_TOTAL_INDISPONIVEL,
     MOTIVO_PATRIMONIO_TOTAL_NAO_POSITIVO,
     MOTIVO_RECEITA_NAO_LIDA,
@@ -82,7 +83,12 @@ from avaliador_b3.config import (
     TEXTO_DEDUCOES_COM_CAIXA_LIQUIDO,
     TICKERS_FCD_NAO_APLICAVEL,
 )
-from avaliador_b3.numeros import campos_nao_finitos, numero_finito, reais_abreviado
+from avaliador_b3.numeros import (
+    campos_nao_finitos,
+    numero_finito,
+    percentual_pt_br,
+    reais_abreviado,
+)
 
 
 def calcular_proporcao_capex_caixa_operacional_percentual(
@@ -532,9 +538,8 @@ def calcular_valor_justo_fcd(
         return {
             "aplicavel": False,
             "valor_justo": None,
-            "motivo_nao_aplicavel": (
-                f"WACC calculado não é positivo ({wacc:.2%}) — condições "
-                "macro fora do esperado para o modelo."
+            "motivo_nao_aplicavel": MOTIVO_FCD_WACC_NAO_POSITIVO.format(
+                wacc=percentual_pt_br(wacc)
             ),
         }
 

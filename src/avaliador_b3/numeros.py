@@ -43,6 +43,16 @@ def numero_pt_br(valor: float, casas: int) -> str:
     return f"{valor:,.{casas}f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
+def decimal_pt_br(valor: float, casas: int = 2) -> str:
+    """ "−2,25" / "1.234,50": vírgula decimal e sinal negativo "−"."""
+    return f"{'−' if valor < 0 else ''}{numero_pt_br(abs(valor), casas)}"
+
+
+def percentual_pt_br(fracao: float, casas: int = 2) -> str:
+    """ "−0,50%" a partir de uma fração (−0.005)."""
+    return f"{decimal_pt_br(fracao * 100, casas)}%"
+
+
 def reais_abreviado(valor: float) -> str:
     """ "R$ 3,6 bi" a partir de R$ 1 bilhão, "R$ 420,3 mi" a partir de R$ 1 milhão."""
     sinal = "−" if valor < 0 else ""
