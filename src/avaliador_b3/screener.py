@@ -233,6 +233,7 @@ COLUNAS_RESULTADO = [
     "data_balanco_fundamentus",
     "beta_utilizado",
     "aviso_desconto_extremo",
+    "segmento_setorial",
 ]
 
 
@@ -564,6 +565,7 @@ def _calcular_linha_ticker(
         "aviso_desconto_extremo": _aviso_desconto_extremo(
             desconto_percentual, resultado_combinado["metodos_utilizados"]
         ),
+        "segmento_setorial": segmento_setorial,
     }
 
 

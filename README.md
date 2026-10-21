@@ -87,7 +87,9 @@ do redesenho.
   potencial, divergência entre métodos, avisos e a proporção do caixa
   operacional reinvestida. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
-  desde o primeiro acesso) e é atualizado pelo workflow agendado. O botão
+  desde o primeiro acesso) e é atualizado pelo workflow agendado. O arquivo traz o segmento
+  setorial de cada ação (coluna `segmento_setorial`), que a página lê sem buscar o catálogo da B3.
+  O botão
   "Rodar screener agora" só aparece com o opt-in explícito
   (`AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), descrito em "Instalação, execução e testes".
 - **Simulador de carteira** — dado um valor investido por ação, mostra o

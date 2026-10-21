@@ -632,6 +632,44 @@ def test_calcular_linha_ticker_falha_de_rede_no_balanco_mantem_o_fcd_e_conta_fal
     assert falhas.por_ticker() == {"AAAA4": ["CVM"]}
 
 
+def test_calcular_linha_ticker_grava_o_segmento_setorial_do_catalogo(ambiente_feliz, tmp_path):
+    assert _linha_ticker("AAAA4", tmp_path)["segmento_setorial"] == "Setor Genérico"
+
+
+def test_calcular_linha_ticker_sem_emissor_no_catalogo_deixa_o_segmento_vazio(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: (_ for _ in ()).throw(screener.EmissorNaoEncontrado(ticker)),
+    )
+
+    assert _linha_ticker("AAAA4", tmp_path)["segmento_setorial"] is None
+
+
+def test_rodada_grava_a_coluna_do_segmento_e_aceita_o_segmento_vazio(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def resolver(ticker, catalogo):
+        if ticker == "BBBB4":
+            raise screener.EmissorNaoEncontrado(ticker)
+        return {"cnpj": f"CNPJ-{ticker}", "segmento_setorial": "Bancos"}
+
+    monkeypatch.setattr(screener, "resolver_cnpj", resolver)
+    caminho_saida = tmp_path / "screener.csv"
+
+    screener.rodar_screener(
+        tickers=["AAAA4", "BBBB4"], diretorio_cache=tmp_path, caminho_saida=caminho_saida
+    )
+
+    gravado = pd.read_csv(caminho_saida)
+    assert "segmento_setorial" in gravado.columns
+    segmentos = gravado.set_index("ticker")["segmento_setorial"]
+    assert segmentos["AAAA4"] == "Bancos"
+    assert pd.isna(segmentos["BBBB4"])
+
+
 def test_calcular_linha_ticker_sem_cnpj_nao_le_o_balanco(ambiente_feliz, tmp_path, monkeypatch):
     def leitura(*args, **kwargs):
         raise AssertionError("não devia ler o balanço sem CNPJ")
