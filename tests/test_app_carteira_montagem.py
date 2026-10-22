@@ -173,8 +173,7 @@ def test_acao_que_saiu_do_screener_fica_na_lista_marcada_e_fora_das_contas(monke
     assert avisos == ["Fora do screener atual, sem entrar nas contas: SUMIU3."]
     tabelas = [df for df in at.dataframe if "projecao_base" in df.value.columns]
     assert tabelas[0].value["ticker"].tolist() == ["DOBR4"]
-    totais = [m for m in at.metric if m.label == "Investido"]
-    assert totais[0].value == "R$ 1.000,00"
+    assert app._kpi_por_rotulo(at, "Valor investido")["valor"] == "R$ 1.000,00"
     # Dá para tirá-la com o "×" mesmo fora do screener.
     at.sidebar.button(key=CHAVE_CARTEIRA_REMOVER_PREFIXO + "SUMIU3").click().run(timeout=60)
     assert at.session_state[CHAVE_CARTEIRA_POSICOES] == {"DOBR4": 25}

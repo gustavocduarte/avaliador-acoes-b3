@@ -3196,18 +3196,27 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
 
     # Frase-resumo: só DOBR4 e NEGA4 têm cenário (R$ 1.500,00 investidos);
     # pessimista = 2.000 (DOBR4) + 0 (NEGA4, piso); otimista = 2.000 + 1.000.
-    frases = [m.value for m in aba.markdown if "sem prazo definido" in m.value]
-    assert len(frases) == 1
-    assert frases[0] == (
-        "R\\$ 1.500,00 investidos hoje equivaleriam a entre R\\$ 2.000,00 (pessimista) e "
-        "R\\$ 3.000,00 (otimista) se os preços convergissem aos valores justos, sem prazo "
-        "definido."
+    # A frase-resumo e o aviso de que não é previsão agora são o "?" do painel "Cenários".
+    from html import unescape
+
+    cabecalho = unescape(
+        next(
+            h.proto.body
+            for h in aba.get("html")
+            if "ab-cabecalho" in h.proto.body and "Cenários" in h.proto.body
+        )
     )
+    assert (
+        "R$ 1.500,00 investidos hoje equivaleriam a entre R$ 2.000,00 (pessimista) e "
+        "R$ 3.000,00 (otimista) se os preços convergissem aos valores justos, sem prazo "
+        "definido."
+    ) in cabecalho
     assert any("ficaram de fora desse cálculo" in c.value for c in aba.caption)
     assert (
         "Quanto a carteira valeria se o preço de cada ação chegasse ao valor justo do "
         "cenário, em reais de hoje, sem prazo e sem contar dividendos. Não é previsão."
-    ) in [c.value for c in aba.caption]
+    ) in cabecalho
+    assert "Mostra o potencial de cada cenário (pessimista/base/otimista)" in cabecalho
 
     # Sem prazo, taxa anual nem ganho real.
     textos = [c.value for c in aba.caption] + [m.value for m in aba.markdown]

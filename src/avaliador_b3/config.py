@@ -1608,6 +1608,21 @@ TOOLTIP_CONCENTRACAO = (
 )
 LIMITE_CONCENTRACAO_SETOR_PERCENTUAL = 50.0
 
+# Painéis "Cenários" e "Contribuição" do Simulador.
+TITULO_CENARIOS_CARTEIRA = "Cenários"
+ROTULOS_CENARIOS_CARTEIRA = {"pessimista": "Pessimista", "base": "Base", "otimista": "Otimista"}
+TEXTO_LINHA_INVESTIDO_NO_GRAFICO = "Investido {valor}"
+TEXTO_NENHUMA_ACAO_COM_CENARIO = (
+    "Nenhuma das ações selecionadas tem cenário disponível — sem projeção pra somar (ver avisos "
+    "acima)."
+)
+TITULO_CONTRIBUICAO_CARTEIRA = "Contribuição de cada ação para o potencial"
+TOOLTIP_CONTRIBUICAO_CARTEIRA = (
+    "Quanto cada ação soma (verde) ou tira (rosa) do valor da carteira se o preço chegar ao valor "
+    "combinado: quantidade × (valor combinado - preço), em reais. Da maior para a menor."
+)
+TEXTO_SEM_CONTRIBUICAO = "Sem contribuição: {tickers}"
+
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
@@ -1619,7 +1634,6 @@ TEXTO_ABERTURA_SIMULADOR = (
     "valor investido em cada ação — a partir do resultado já salvo do "
     "screener, sem recalcular nada ao vivo."
 )
-SUBTITULO_POTENCIAL_CARTEIRA = "Potencial de valorização da carteira"
 AVISO_SIMULADOR_SEM_PREVISAO = (
     "Quanto a carteira valeria se o preço de cada ação chegasse ao valor "
     "justo do cenário, em reais de hoje, sem prazo e sem contar dividendos. "
@@ -1634,11 +1648,6 @@ ROTULOS_POTENCIAL_CENARIO = {
     "pessimista": "Potencial: pessimista (%)",
     "base": "Potencial: base (%)",
     "otimista": "Potencial: otimista (%)",
-}
-ROTULOS_TOTAL_AO_CONVERGIR = {
-    "pessimista": "Valor ao convergir: pessimista",
-    "base": "Valor ao convergir: base",
-    "otimista": "Valor ao convergir: otimista",
 }
 TOOLTIP_POTENCIAL_CENARIO = (
     "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço "

@@ -133,17 +133,16 @@ from avaliador_b3.config import (
     ROTULO_POTENCIAL,
     ROTULO_REMOVER_POSICAO,
     ROTULO_RODAR_SCREENER,
+    ROTULOS_CENARIOS_CARTEIRA,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
     ROTULOS_POTENCIAL_CENARIO,
-    ROTULOS_TOTAL_AO_CONVERGIR,
     ROTULOS_VALOR_AO_CONVERGIR,
     SEPARADOR_OBSERVACAO_RANKING,
     SEPARADORES_NUMERICOS_GRAFICO,
     SEQUENCIA_CORES_SERIES,
     SERIES_BCB_SGS,
     SUBTITULO_APP,
-    SUBTITULO_POTENCIAL_CARTEIRA,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_ACAO_DA_URL_INVALIDA,
@@ -175,11 +174,13 @@ from avaliador_b3.config import (
     TEXTO_KPI_SEM_METODO,
     TEXTO_KPI_SOBRE_COM_COMBINADO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
+    TEXTO_LINHA_INVESTIDO_NO_GRAFICO,
     TEXTO_LINK_ACAO_REGEX,
     TEXTO_MEDIANA_NO_GRAFICO,
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_ALERTA,
     TEXTO_NENHUM_METODO_SE_APLICA,
+    TEXTO_NENHUMA_ACAO_COM_CENARIO,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_OBSERVACOES_CORRELACAO,
     TEXTO_POSICAO_DA_CARTEIRA,
@@ -199,6 +200,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
+    TEXTO_SEM_CONTRIBUICAO,
     TEXTO_SEM_DADO_NA_TABELA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
@@ -210,6 +212,8 @@ from avaliador_b3.config import (
     TITULO_APP,
     TITULO_ATENCAO,
     TITULO_CARTAO_SEM_METODO,
+    TITULO_CENARIOS_CARTEIRA,
+    TITULO_CONTRIBUICAO_CARTEIRA,
     TITULO_DISTRIBUICAO_POTENCIAL,
     TITULO_EIXO_POTENCIAL,
     TITULO_EXPANDER_SIMULADOR,
@@ -219,6 +223,7 @@ from avaliador_b3.config import (
     TITULO_PAINEL_DIVIDENDOS,
     TITULO_RANKING_SCREENER,
     TOOLTIP_CONCENTRACAO,
+    TOOLTIP_CONTRIBUICAO_CARTEIRA,
     TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_MEDIANA_POTENCIAL,
@@ -1455,6 +1460,13 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-app-divisoria { border-top: 1px solid $borda; margin: .25rem 0 .5rem; }
 /* Limites "mín." e "máx." do slider do potencial: o valor atual já diz se há filtro. */
 [class*="st-key-barra_"] [data-testid="stSliderTickBar"] { display: none; }
+/* Linhas do painel "Cenários" do Simulador. */
+.ab-cenarios { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
+.ab-cenario { display: grid; grid-template-columns: 1fr auto auto; gap: .8rem; padding: .4rem .7rem;
+  border-radius: 4px; border-left: 3px solid transparent; }
+.ab-cenario-base { background: $borda; border-left-color: $principal; font-weight: 600; }
+.ab-cenario-valor { font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; text-align: right; }
 /* Cartões de alerta do Screener. */
 .ab-atencao { display: flex; flex-direction: column; gap: .6rem; max-height: 20rem;
   overflow-y: auto; }
@@ -3249,6 +3261,136 @@ def _html_kpis_carteira(resumo: dict) -> str:
     return f'<div class="ab-kpis">{"".join(cartoes)}</div>'
 
 
+def _frase_resumo_cenarios(totais: dict) -> str:
+    """ "R$ X investidos hoje equivaleriam a entre R$ P (pessimista) e R$ O (otimista)…", sobre as
+    posições com cenário."""
+    return FRASE_RESUMO_SIMULADOR.format(
+        investido=_fmt_bilhoes(totais["soma_investida_com_cenario"]),
+        pessimista=_fmt_bilhoes(totais["total_pessimista"]),
+        otimista=_fmt_bilhoes(totais["total_otimista"]),
+    )
+
+
+def _ajuda_cenarios_carteira(totais: dict) -> str:
+    """ "?" do painel Cenários: a abertura do Simulador, o aviso de que não é previsão e, havendo
+    cenário, a frase-resumo com os valores da carteira."""
+    partes = [TEXTO_ABERTURA_SIMULADOR, AVISO_SIMULADOR_SEM_PREVISAO]
+    if totais["soma_investida_com_cenario"]:
+        partes.append(_frase_resumo_cenarios(totais))
+    return " ".join(partes)
+
+
+def _html_cenarios_carteira(totais: dict) -> str:
+    """Três linhas (pessimista, base e otimista) com o valor da carteira em cada cenário e o
+    potencial sobre o investido nas posições com cenário; o base fica em destaque."""
+    investido = totais["soma_investida_com_cenario"]
+    linhas = []
+    for cenario in ("pessimista", "base", "otimista"):
+        valor = totais[f"total_{cenario}"]
+        potencial = (valor / investido - 1) * 100 if investido else None
+        cor = (
+            "ab-cor-texto"
+            if potencial is None or potencial == LIMITE_SINAL_INDICADOR
+            else "ab-cor-positivo"
+            if potencial > LIMITE_SINAL_INDICADOR
+            else "ab-cor-negativo"
+        )
+        destaque = " ab-cenario-base" if cenario == "base" else ""
+        linhas.append(
+            f'<div class="ab-cenario{destaque}">'
+            f"<span>{escape(ROTULOS_CENARIOS_CARTEIRA[cenario])}</span>"
+            f'<span class="ab-cenario-valor">{escape(_fmt_bilhoes(valor))}</span>'
+            f'<span class="ab-cenario-valor {cor}">{escape(_fmt_potencial(potencial))}</span>'
+            "</div>"
+        )
+    return f'<div class="ab-cenarios">{"".join(linhas)}</div>'
+
+
+def _figura_faixa_cenarios(totais: dict) -> go.Figure:
+    """Faixa horizontal do pessimista ao otimista (em R$), com o ponto do base e a linha tracejada
+    do valor investido nas posições com cenário."""
+    pessimista, base, otimista = (totais[f"total_{c}"] for c in ("pessimista", "base", "otimista"))
+    investido = totais["soma_investida_com_cenario"]
+    figura = go.Figure()
+    figura.add_trace(
+        go.Scatter(
+            x=[pessimista, otimista],
+            y=[0, 0],
+            mode="lines",
+            line={"color": COR_PRINCIPAL, "width": 16},
+            opacity=0.35,
+            hoverinfo="skip",
+        )
+    )
+    figura.add_trace(
+        go.Scatter(
+            x=[base],
+            y=[0],
+            mode="markers",
+            marker={
+                "color": COR_PRINCIPAL,
+                "size": 16,
+                "line": {"color": COR_FUNDO_PAINEL, "width": 2},
+            },
+            customdata=[_fmt_bilhoes(base)],
+            hovertemplate="Base: %{customdata}<extra></extra>",
+        )
+    )
+    figura.add_vline(
+        x=investido,
+        line_dash="dash",
+        line_color=COR_ALERTA,
+        annotation_text=TEXTO_LINHA_INVESTIDO_NO_GRAFICO.format(valor=_fmt_bilhoes(investido)),
+        annotation_position="top",
+        annotation_font_color=COR_ALERTA,
+    )
+    menor, maior = min(pessimista, investido), max(otimista, investido)
+    folga = (maior - menor) * 0.12 or 1.0
+    figura.update_xaxes(
+        range=[menor - folga, maior + folga],
+        tickprefix="R$ ",
+        tickformat=",.0f",
+        automargin=True,
+    )
+    figura.update_yaxes(visible=False, range=[-1, 1])
+    figura.update_layout(height=170, margin={"t": 36, "b": 10, "l": 10, "r": 10}, showlegend=False)
+    return aplicar_template_grafico(figura)
+
+
+def _figura_contribuicao_carteira(tabela_aplicavel: pd.DataFrame) -> go.Figure:
+    """Barras horizontais divergentes da contribuição de cada ação (projeção base menos o
+    investido, em R$), verde acima de zero e rosa abaixo, da maior para a menor."""
+    ordenada = tabela_aplicavel.assign(
+        contribuicao=tabela_aplicavel["projecao_base"] - tabela_aplicavel["valor_investido"]
+    ).sort_values("contribuicao", ascending=False)
+    valores = list(ordenada["contribuicao"])
+    textos = [("+" if v > LIMITE_SINAL_INDICADOR else "") + _fmt_bilhoes(v) for v in valores]
+    figura = go.Figure(
+        go.Bar(
+            x=valores,
+            y=list(ordenada["ticker"]),
+            orientation="h",
+            marker={
+                "color": [
+                    COR_POSITIVO if v >= LIMITE_SINAL_INDICADOR else COR_NEGATIVO for v in valores
+                ]
+            },
+            text=textos,
+            textposition="outside",
+            textfont={"color": COR_TEXTO},
+            cliponaxis=False,
+            hovertemplate="%{y}: %{text}<extra></extra>",
+        )
+    )
+    maior_modulo = max((abs(v) for v in valores), default=0.0) or 1.0
+    figura.update_xaxes(range=[-maior_modulo * 1.5, maior_modulo * 1.5], showticklabels=False)
+    figura.update_yaxes(autorange="reversed", automargin=True)
+    figura.update_layout(
+        height=70 + 36 * len(valores), margin={"t": 10, "b": 10, "l": 10, "r": 10}, showlegend=False
+    )
+    return aplicar_template_grafico(figura)
+
+
 def _investimentos_da_carteira(
     tabela_screener: pd.DataFrame, posicoes: dict[str, int]
 ) -> dict[str, float]:
@@ -3337,8 +3479,6 @@ def _desenhar_montagem_da_carteira(
 
 
 def pagina_carteira() -> None:
-    st.caption(TEXTO_ABERTURA_SIMULADOR)
-
     tabela_screener_carteira = _carregar_screener_ou_avisar(
         CAMINHO_SAIDA_PADRAO,
         'Rode o screener primeiro na página "Screener"',
@@ -3357,12 +3497,55 @@ def pagina_carteira() -> None:
         investimentos = _investimentos_da_carteira(tabela_screener_carteira, posicoes)
 
         if not investimentos:
+            st.caption(TEXTO_ABERTURA_SIMULADOR)
             st.info(TEXTO_CARTEIRA_VAZIA)
         else:
             with st.container(border=True, key="painel_destaque_carteira"):
                 st.html(_html_kpis_carteira(resumir_carteira(tabela_screener_carteira, posicoes)))
 
             tabela_carteira = montar_tabela_carteira(tabela_screener_carteira, investimentos)
+            tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
+            totais_carteira = calcular_totais_carteira(tabela_carteira)
+
+            coluna_cenarios, coluna_contribuicao = st.columns([1, 2])
+            with (
+                coluna_cenarios,
+                st.container(border=True, key="painel_cenarios_carteira", height="stretch"),
+            ):
+                _titulo_painel(TITULO_CENARIOS_CARTEIRA, _ajuda_cenarios_carteira(totais_carteira))
+                if tabela_carteira_aplicavel.empty:
+                    st.info(TEXTO_NENHUMA_ACAO_COM_CENARIO)
+                else:
+                    st.html(_html_cenarios_carteira(totais_carteira))
+                    exibir_grafico(_figura_faixa_cenarios(totais_carteira))
+                    if totais_carteira["quantidade_sem_cenario"]:
+                        sem_cenario = totais_carteira["quantidade_sem_cenario"]
+                        st.caption(
+                            f"{sem_cenario} ação(ões) sem cenário não entram nos totais por "
+                            "cenário, mas o valor investido nelas está incluído em "
+                            f'"{ROTULO_KPI_VALOR_INVESTIDO}".'
+                        )
+                        soma_investida = totais_carteira["soma_investida"]
+                        fora_da_conta = (
+                            soma_investida - totais_carteira["soma_investida_com_cenario"]
+                        )
+                        st.caption(
+                            f"De um total de {_fmt_bilhoes_md(soma_investida)} investidos, "
+                            f"{_fmt_bilhoes_md(fora_da_conta)} ({sem_cenario} ação(ões)) ficaram "
+                            "de fora desse cálculo — ver avisos acima."
+                        )
+            with (
+                coluna_contribuicao,
+                st.container(border=True, key="painel_contribuicao_carteira", height="stretch"),
+            ):
+                _titulo_painel(TITULO_CONTRIBUICAO_CARTEIRA, TOOLTIP_CONTRIBUICAO_CARTEIRA)
+                if tabela_carteira_aplicavel.empty:
+                    st.info(TEXTO_NENHUMA_ACAO_COM_CENARIO)
+                else:
+                    exibir_grafico(_figura_contribuicao_carteira(tabela_carteira_aplicavel))
+                sem_contribuicao = list(tabela_carteira[~tabela_carteira["aplicavel"]]["ticker"])
+                if sem_contribuicao:
+                    st.caption(TEXTO_SEM_CONTRIBUICAO.format(tickers=", ".join(sem_contribuicao)))
 
             # Ações sem nenhum método aplicável (ex: HAPV3/MRVE3 no screener
             # real) não entram na tabela de projeção — mostrar zero ali seria
@@ -3382,7 +3565,7 @@ def pagina_carteira() -> None:
             # carteira.simular_investimento_ticker. Avisa qual(is) cenário(s)
             # de cada ação foram limitados, pra não esconder que o número
             # exibido não é a conta "crua".
-            for _, linha_com_cenario in tabela_carteira[tabela_carteira["aplicavel"]].iterrows():
+            for _, linha_com_cenario in tabela_carteira_aplicavel.iterrows():
                 cenarios_limitados = linha_com_cenario["cenarios_limitados_perda_total"]
                 if cenarios_limitados:
                     rotulos = ", ".join(c.capitalize() for c in cenarios_limitados)
@@ -3393,7 +3576,6 @@ def pagina_carteira() -> None:
                         "100%, o que não existe economicamente."
                     )
 
-            tabela_carteira_aplicavel = tabela_carteira[tabela_carteira["aplicavel"]]
             if not tabela_carteira_aplicavel.empty:
                 tc_fmt, colunas_tc_fmt = _tabela_formatada_pt_br(
                     tabela_carteira_aplicavel,
@@ -3426,63 +3608,8 @@ def pagina_carteira() -> None:
                     width="stretch",
                 )
 
-            totais_carteira = calcular_totais_carteira(tabela_carteira)
-            st.divider()
-            st.subheader("Total da carteira")
-            if tabela_carteira_aplicavel.empty:
-                st.info(
-                    "Nenhuma das ações selecionadas tem cenário disponível — sem "
-                    "projeção pra somar (ver avisos acima)."
-                )
-            else:
-                col_investido, col_pessimista, col_base, col_otimista = st.columns(4)
-                col_investido.metric("Investido", _fmt_bilhoes(totais_carteira["soma_investida"]))
-                col_pessimista.metric(
-                    ROTULOS_TOTAL_AO_CONVERGIR["pessimista"],
-                    _fmt_bilhoes(totais_carteira["total_pessimista"]),
-                )
-                col_base.metric(
-                    ROTULOS_TOTAL_AO_CONVERGIR["base"], _fmt_bilhoes(totais_carteira["total_base"])
-                )
-                col_otimista.metric(
-                    ROTULOS_TOTAL_AO_CONVERGIR["otimista"],
-                    _fmt_bilhoes(totais_carteira["total_otimista"]),
-                )
-                if totais_carteira["quantidade_sem_cenario"]:
-                    st.caption(
-                        f"{totais_carteira['quantidade_sem_cenario']} ação(ões) sem cenário "
-                        "não entram nos totais por cenário, mas o valor investido nelas está "
-                        'incluído em "Investido".'
-                    )
-
-                st.divider()
-                st.subheader(SUBTITULO_POTENCIAL_CARTEIRA)
-                st.caption(AVISO_SIMULADOR_SEM_PREVISAO)
-
-                soma_investida = totais_carteira["soma_investida"]
-                soma_investida_com_cenario = totais_carteira["soma_investida_com_cenario"]
-                # `_fmt_bilhoes_md` escapa o "$" (st.write renderiza markdown, e
-                # "$...$" vira LaTeX). A base é soma_investida_com_cenario, não
-                # soma_investida: os valores por cenário só somam os tickers com
-                # cenário, então a frase compara o mesmo universo.
-                st.write(
-                    FRASE_RESUMO_SIMULADOR.format(
-                        investido=_fmt_bilhoes_md(soma_investida_com_cenario),
-                        pessimista=_fmt_bilhoes_md(totais_carteira["total_pessimista"]),
-                        otimista=_fmt_bilhoes_md(totais_carteira["total_otimista"]),
-                    )
-                )
-                if totais_carteira["quantidade_sem_cenario"]:
-                    valor_fora_da_conta = soma_investida - soma_investida_com_cenario
-                    st.caption(
-                        f"De um total de {_fmt_bilhoes_md(soma_investida)} investidos, "
-                        f"{_fmt_bilhoes_md(valor_fora_da_conta)} "
-                        f"({totais_carteira['quantidade_sem_cenario']} ação(ões)) "
-                        "ficaram de fora desse cálculo — ver avisos acima."
-                    )
-
-                with st.expander(TITULO_EXPANDER_SIMULADOR):
-                    st.markdown(TEXTO_EXPANDER_SIMULADOR)
+            with st.expander(TITULO_EXPANDER_SIMULADOR):
+                st.markdown(TEXTO_EXPANDER_SIMULADOR)
 
 
 # Nota de rodapé, fora de qualquer página (aparece nas três) — Streamlit
