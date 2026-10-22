@@ -213,23 +213,85 @@ AVISO_FCD = config.AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD
 RESUMO_AVISO_FCD = "Potencial extremo: confira as premissas do FCD"
 
 
+TEXTO_FCD_CURTO_REAL = config.MOTIVO_FCD_DEDUCOES_SUPERAM_VALOR_CURTO.format(
+    parcelas="dívida líquida, arrendamento e sócios minoritários",
+    deducoes="R$ 44,3 bi",
+    valor_empresa="R$ 12,6 bi",
+)
+TEXTO_SEM_METODO_REAL = (
+    "Nenhum método se aplica a esta empresa. Graham não aplicável: Fórmula de Graham exige "
+    "LPA>0 e VPA>0 (LPA = -2,25 e VPA = 1,26). Bazin não aplicável: Empresa não distribuiu "
+    "dividendos em cada um dos últimos 5 anos. FCD não aplicável: O que precisa ser descontado."
+)
+FCD_MINIMO = "FCD não aplicável: dívidas superam o valor da empresa"
+
+
 @pytest.mark.parametrize(
     ("aviso", "observacao", "esperado"),
     [
         (AVISO_FCD, "", RESUMO_AVISO_FCD),
-        ("", "Nenhum método se aplica.", "Nenhum método se aplica."),
-        (AVISO_FCD, "FCD não aplicável.", f"{RESUMO_AVISO_FCD} · FCD não aplicável."),
         ("", "", ""),
+        # O motivo curto do FCD (com parcelas e valores) vira a versão mínima na tabela.
+        ("", TEXTO_FCD_CURTO_REAL, FCD_MINIMO),
+        # Sem método: só "Nenhum método se aplica", sem a lista de motivos.
+        ("", TEXTO_SEM_METODO_REAL, "Nenhum método se aplica"),
+        # As duas partes juntas: só o começo de cada uma.
+        (AVISO_FCD, TEXTO_FCD_CURTO_REAL, "Potencial extremo · FCD não aplicável"),
+        (
+            config.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+            FCD_MINIMO,
+            "Potencial extremo · FCD não aplicável",
+        ),
+        (
+            config.AVISO_DESCONTO_EXTREMO_GENERICO,
+            TEXTO_SEM_METODO_REAL,
+            "Potencial fora do comum · Nenhum método se aplica",
+        ),
+        # Mensagem livre (erro de busca) sem aviso: como veio, se couber.
+        ("", "Preço indisponível agora.", "Preço indisponível agora."),
     ],
 )
-def test_observacao_junta_o_resumo_do_aviso_e_a_observacao_com_ponto_medio(
-    aviso, observacao, esperado
-):
+def test_observacao_na_forma_minima_e_junta_so_o_comeco_de_cada_parte(aviso, observacao, esperado):
     tabela = _tabela().iloc[[0]].assign(aviso_desconto_extremo=[aviso], erro=[observacao])
 
     estilo, _ = _tabela_ranking_screener(tabela)
 
     assert list(estilo.data["erro"]) == [esperado]
+
+
+def test_mensagem_livre_acima_do_limite_e_cortada_com_reticencias():
+    longa = (
+        "Falha ao buscar o preço de AAA3 no Yahoo Finance: tempo esgotado depois de várias "
+        "tentativas"
+    )
+    tabela = _tabela().iloc[[0]].assign(aviso_desconto_extremo=[""], erro=[longa])
+
+    estilo, _ = _tabela_ranking_screener(tabela)
+
+    texto = list(estilo.data["erro"])[0]
+    assert len(texto) == config.LIMITE_CARACTERES_OBSERVACAO_RANKING
+    assert texto.endswith("…") and longa.startswith(texto[:-1])
+
+
+def test_todos_os_textos_fixos_possiveis_da_observacao_cabem_no_limite_de_caracteres():
+    from avaliador_b3.app.main import _observacao_do_ranking
+
+    avisos = [
+        "",
+        config.AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
+        config.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+        config.AVISO_DESCONTO_EXTREMO_GENERICO,
+    ]
+    observacoes = ["", TEXTO_FCD_CURTO_REAL, TEXTO_SEM_METODO_REAL]
+    limite = config.LIMITE_CARACTERES_OBSERVACAO_RANKING
+
+    for aviso in avisos:
+        for observacao in observacoes:
+            texto = _observacao_do_ranking(aviso, observacao)
+            assert len(texto) <= limite, texto
+            assert "…" not in texto, texto  # nenhum texto fixo precisa ser cortado
+    # O maior texto fixo ainda cabe com folga no limite que cabe nos 360 px da coluna.
+    assert len(config.TEXTO_FCD_NAO_APLICAVEL_NA_TABELA) <= limite
 
 
 def test_observacao_tem_largura_para_o_texto_curto_do_aviso_sem_corte():

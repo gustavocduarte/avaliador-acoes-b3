@@ -1519,6 +1519,15 @@ TEXTO_AJUDA_RANKING_SCREENER = (
 # Largura (px) da coluna Observação do ranking: cabe o texto curto do aviso sem corte.
 LARGURA_COLUNA_OBSERVACAO_RANKING = 360
 SEPARADOR_OBSERVACAO_RANKING = " · "
+# Versões mínimas da Observação na tabela do Screener (os textos curto e completo seguem os de
+# sempre, nos tooltips, nos cartões e na página de análise): o FCD não aplicável sem valores nem
+# parcelas e, com mais de uma parte, só o começo de cada uma. Mais que o limite de caracteres
+# (cerca de 360 px na fonte da tabela) é cortado com reticências.
+PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA = "FCD não aplicável:"
+TEXTO_FCD_NAO_APLICAVEL_NA_TABELA = "FCD não aplicável: dívidas superam o valor da empresa"
+TEXTO_NENHUM_METODO_NA_TABELA = "Nenhum método se aplica"
+LIMITE_CARACTERES_OBSERVACAO_RANKING = 56
+TEXTO_CORTE_DA_OBSERVACAO = "…"
 TEXTO_SEM_DADO_NA_TABELA = "—"
 ROTULO_COLUNAS_RANKING_SCREENER = {
     "ticker": "Ticker",

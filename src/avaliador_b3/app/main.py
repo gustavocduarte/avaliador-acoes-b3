@@ -94,6 +94,7 @@ from avaliador_b3.config import (
     LARGURA_COLUNA_OBSERVACAO_RANKING,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_BARRA_POTENCIAL,
+    LIMITE_CARACTERES_OBSERVACAO_RANKING,
     LIMITE_CONCENTRACAO_SETOR_PERCENTUAL,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
@@ -116,6 +117,7 @@ from avaliador_b3.config import (
     POTENCIAL_MINIMO_FILTRO_DESLIGADO,
     POTENCIAL_MINIMO_FILTRO_MAXIMO,
     POTENCIAL_MINIMO_FILTRO_PASSO,
+    PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     QUANTIDADE_PADRAO_CARTEIRA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
@@ -169,6 +171,7 @@ from avaliador_b3.config import (
     TEXTO_CARTEIRA_ACAO_PLACEHOLDER,
     TEXTO_CARTEIRA_VAZIA,
     TEXTO_COMPLEMENTO_SEM_METODO,
+    TEXTO_CORTE_DA_OBSERVACAO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
@@ -178,6 +181,7 @@ from avaliador_b3.config import (
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FAIXA_ACIMA_DO_LIMITE,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
+    TEXTO_FCD_NAO_APLICAVEL_NA_TABELA,
     TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_FORA_DA_LINHA_CARTEIRA,
@@ -198,6 +202,7 @@ from avaliador_b3.config import (
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_ALERTA,
     TEXTO_NENHUM_HISTORICO_DA_CARTEIRA,
+    TEXTO_NENHUM_METODO_NA_TABELA,
     TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_NENHUMA_ACAO_COM_CENARIO,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
@@ -2942,11 +2947,30 @@ def _cor_do_potencial(valor: float) -> str:
     return f"color: {COR_POSITIVO if valor > LIMITE_SINAL_INDICADOR else COR_NEGATIVO}"
 
 
+def _observacao_minima(observacao: str) -> str:
+    """Observação da rodada na forma mínima da tabela: o FCD não aplicável sem valores nem
+    parcelas e "Nenhum método se aplica" sem a lista de motivos; o resto, como veio."""
+    if observacao.startswith(PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA):
+        return TEXTO_FCD_NAO_APLICAVEL_NA_TABELA
+    if observacao.startswith(TEXTO_NENHUM_METODO_SE_APLICA):
+        return TEXTO_NENHUM_METODO_NA_TABELA
+    return observacao
+
+
 def _observacao_do_ranking(aviso: str, observacao: str) -> str:
     """Texto da coluna Observação: a linha curta do aviso de potencial extremo (a mesma dos cartões
-    "Atenção") e a observação da rodada, juntas por " · " quando há as duas."""
-    partes = [_resumo_do_aviso(aviso) if aviso else "", observacao]
-    return SEPARADOR_OBSERVACAO_RANKING.join(parte for parte in partes if parte)
+    "Atenção") e a observação da rodada na forma mínima. Havendo as duas, juntas por " · " só com
+    o começo de cada uma ("Potencial extremo · FCD não aplicável"). Texto acima do limite de
+    caracteres é cortado com reticências."""
+    partes = [_resumo_do_aviso(aviso) if aviso else "", _observacao_minima(observacao)]
+    if all(partes):
+        partes = [parte.split(":")[0] for parte in partes]
+    texto = SEPARADOR_OBSERVACAO_RANKING.join(parte for parte in partes if parte)
+    if len(texto) > LIMITE_CARACTERES_OBSERVACAO_RANKING:
+        texto = (
+            texto[: LIMITE_CARACTERES_OBSERVACAO_RANKING - 1].rstrip() + TEXTO_CORTE_DA_OBSERVACAO
+        )
+    return texto
 
 
 def _percentual_ou_traco(valor: float) -> str:
