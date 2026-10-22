@@ -129,7 +129,10 @@ def test_pagina_nao_repete_o_total_da_carteira_nem_a_secao_do_potencial(monkeypa
     assert not any("investidos hoje equivaleriam" in t for t in textos)
     # O texto de abertura só aparece na tela quando não há carteira (senão vive no "?").
     assert config.TEXTO_ABERTURA_SIMULADOR not in [c.value for c in at.caption]
-    assert [e.label for e in at.expander] == [config.TITULO_EXPANDER_SIMULADOR]
+    assert [e.label for e in at.expander] == [
+        config.TITULO_EXPANDER_CENARIOS_POR_ACAO,
+        config.TITULO_EXPANDER_SIMULADOR,
+    ]
 
 
 def test_pagina_mostra_os_paineis_de_cenarios_e_contribuicao(monkeypatch, tmp_path):
@@ -144,8 +147,13 @@ def test_pagina_mostra_os_paineis_de_cenarios_e_contribuicao(monkeypatch, tmp_pa
     # Só DOBR4 e NEGA4 têm cenário: pessimista 2.000 + 0, base 2.000 + 375, otimista 2.000 + 1.000.
     assert "R$ 2.000,00" in cenarios and "R$ 2.375,00" in cenarios and "R$ 3.000,00" in cenarios
     graficos = _graficos(at)
-    assert len(graficos) == 2
-    contribuicao = next(g for g in graficos if g["data"][0].get("orientation") == "h")
+    # Faixa dos cenários, contribuição, rosca da composição (sem setor no CSV, não há o de setor).
+    assert len(graficos) == 3
+    contribuicao = next(
+        g
+        for g in graficos
+        if g["data"][0].get("orientation") == "h" and g["data"][0]["y"][0] == "DOBR4"
+    )
     assert contribuicao["data"][0]["y"] == ["DOBR4", "NEGA4"]
     assert app._valores_plotly(contribuicao["data"][0]["x"]) == [1000.0, -125.0]
     assert "Sem contribuição: SEMC3" in [c.value for c in at.caption]
@@ -159,7 +167,8 @@ def test_so_com_acao_sem_cenario_os_paineis_avisam_em_vez_de_desenhar(monkeypatc
     adicionar_a_carteira(at, "SEMC3", 30)
 
     assert not at.exception
-    assert not _graficos(at)
+    # Sem cenário não há faixa nem contribuição; só a rosca da composição (dinheiro alocado).
+    assert [g["data"][0]["type"] for g in _graficos(at)] == ["pie"]
     avisos = [i.value for i in at.info if i.value == config.TEXTO_NENHUMA_ACAO_COM_CENARIO]
     assert len(avisos) == 2  # um em cada painel
     assert "Sem contribuição: SEMC3" in [c.value for c in at.caption]

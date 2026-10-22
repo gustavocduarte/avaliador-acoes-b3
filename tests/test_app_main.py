@@ -3147,7 +3147,6 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
     monkeypatch, tmp_path
 ):
     import avaliador_b3.screener as screener_mod
-    from avaliador_b3.config import ROTULOS_POTENCIAL_CENARIO
 
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
@@ -3175,17 +3174,14 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
 
     # Perda acima de 100% continua limitada: NEGA4 pessimista = FCD -5 -> perda
     # total (R$ 0, -100%); otimista = Graham 20 contra preço 10 -> +100%.
-    tabelas = [df for df in aba.dataframe if "projecao_pessimista" in df.value.columns]
+    # A tabela de nove colunas virou o expander "Cenários por ação", só com os potenciais.
+    tabelas = [df for df in aba.dataframe if "retorno_pessimista_percentual" in df.value.columns]
     assert len(tabelas) == 1
     linha_nega4 = tabelas[0].value.loc[tabelas[0].value["ticker"] == "NEGA4"].iloc[0]
-    assert linha_nega4["projecao_pessimista"] == "R$ 0,00"
     assert linha_nega4["retorno_pessimista_percentual"] == "-100,0%"
     assert linha_nega4["retorno_otimista_percentual"] == "100,0%"
     rotulos_colunas = json.loads(tabelas[0].proto.columns)
-    assert (
-        rotulos_colunas["retorno_pessimista_percentual"]["label"]
-        == ROTULOS_POTENCIAL_CENARIO["pessimista"]
-    )
+    assert rotulos_colunas["retorno_pessimista_percentual"]["label"] == "Pessimista"
     assert rotulos_colunas["retorno_base_percentual"]["help"] == (
         "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço atual "
         "(valor justo ÷ preço - 1). Não é retorno esperado nem tem prazo."

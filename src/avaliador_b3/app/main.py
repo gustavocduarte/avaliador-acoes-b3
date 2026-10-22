@@ -30,10 +30,14 @@ from streamlit.errors import StreamlitSecretNotFoundError
 
 from avaliador_b3.carteira import (
     calcular_totais_carteira,
+    compor_posicoes,
     montar_tabela_carteira,
     resumir_carteira,
 )
 from avaliador_b3.config import (
+    ACOES_COM_COR_PROPRIA,
+    ALTURA_MINIMA_CONTRIBUICAO,
+    ALTURA_POR_BARRA_CONTRIBUICAO,
     ANOS_HISTORICO_CRESCIMENTO_FCD,
     ANOS_JANELA_CORRELACAO,
     ANOS_JANELA_DIVIDENDOS,
@@ -72,6 +76,7 @@ from avaliador_b3.config import (
     COR_PRINCIPAL,
     COR_TEXTO,
     COR_TEXTO_SECUNDARIO,
+    CORES_ACOES_CARTEIRA,
     CORRECOES_EXIBICAO_SEGMENTO_SETORIAL,
     FAIXA_POTENCIAL_LARGURA,
     FAIXA_POTENCIAL_LIMITE,
@@ -134,10 +139,9 @@ from avaliador_b3.config import (
     ROTULO_REMOVER_POSICAO,
     ROTULO_RODAR_SCREENER,
     ROTULOS_CENARIOS_CARTEIRA,
+    ROTULOS_COLUNAS_POSICOES,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
-    ROTULOS_POTENCIAL_CENARIO,
-    ROTULOS_VALOR_AO_CONVERGIR,
     SEPARADOR_OBSERVACAO_RANKING,
     SEPARADORES_NUMERICOS_GRAFICO,
     SEQUENCIA_CORES_SERIES,
@@ -149,6 +153,7 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
+    TEXTO_AJUDA_POTENCIAL_DO_TOTAL,
     TEXTO_AJUDA_RANKING_SCREENER,
     TEXTO_AJUDA_TRADINGVIEW,
     TEXTO_AVISO_FORA_DO_SCREENER,
@@ -166,6 +171,7 @@ from avaliador_b3.config import (
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_INVESTIDO_NO_CENTRO,
     TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
     TEXTO_KPI_COM_COMBINADO,
     TEXTO_KPI_COM_FCD,
@@ -176,6 +182,7 @@ from avaliador_b3.config import (
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
     TEXTO_LINHA_INVESTIDO_NO_GRAFICO,
     TEXTO_LINK_ACAO_REGEX,
+    TEXTO_MAIS_DE_METADE_NUM_SETOR,
     TEXTO_MEDIANA_NO_GRAFICO,
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_ALERTA,
@@ -183,6 +190,7 @@ from avaliador_b3.config import (
     TEXTO_NENHUMA_ACAO_COM_CENARIO,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_OBSERVACOES_CORRELACAO,
+    TEXTO_OUTRAS_ACOES,
     TEXTO_POSICAO_DA_CARTEIRA,
     TEXTO_POSICAO_FORA_DO_SCREENER,
     TEXTO_POSICAO_SEM_COMBINADO,
@@ -206,6 +214,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
+    TEXTO_TOTAL_DAS_POSICOES,
     TEXTO_ULTIMO_DADO_GPR,
     TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO,
     TICKER_PETROLEO_BRENT,
@@ -213,20 +222,27 @@ from avaliador_b3.config import (
     TITULO_ATENCAO,
     TITULO_CARTAO_SEM_METODO,
     TITULO_CENARIOS_CARTEIRA,
+    TITULO_COMPOSICAO_ACAO,
+    TITULO_COMPOSICAO_SETOR,
     TITULO_CONTRIBUICAO_CARTEIRA,
     TITULO_DISTRIBUICAO_POTENCIAL,
     TITULO_EIXO_POTENCIAL,
+    TITULO_EXPANDER_CENARIOS_POR_ACAO,
     TITULO_EXPANDER_SIMULADOR,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
+    TITULO_POSICOES,
     TITULO_RANKING_SCREENER,
+    TOOLTIP_COMPOSICAO_ACAO,
+    TOOLTIP_COMPOSICAO_SETOR,
     TOOLTIP_CONCENTRACAO,
     TOOLTIP_CONTRIBUICAO_CARTEIRA,
     TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_MEDIANA_POTENCIAL,
+    TOOLTIP_POSICOES,
     TOOLTIP_POTENCIAL_CARTAO,
     TOOLTIP_POTENCIAL_CARTEIRA,
     TOOLTIP_POTENCIAL_CENARIO,
@@ -334,18 +350,6 @@ COLUNAS_TABELA_SCREENER = [
     "bazin_razao_dividendos_percentual",
     "proporcao_reinvestimento_percentual",
     "metodos_utilizados",
-]
-
-COLUNAS_TABELA_CARTEIRA = [
-    "ticker",
-    "valor_investido",
-    "preco_atual",
-    "projecao_pessimista",
-    "retorno_pessimista_percentual",
-    "projecao_base",
-    "retorno_base_percentual",
-    "projecao_otimista",
-    "retorno_otimista_percentual",
 ]
 
 
@@ -1520,6 +1524,7 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-tabela .ab-num { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ab-tabela tr.ab-linha-destaque td { font-weight: 600; background: $borda; }
+.ab-tabela tr.ab-linha-total td { font-weight: 600; border-top: 1px solid $secundario; }
 .ab-tabela tr.ab-linha-destaque td:first-child { color: $principal;
   box-shadow: inset 3px 0 $principal; }
 .ab-div { display: flex; align-items: center; gap: .5rem; min-width: 11rem; }
@@ -3261,6 +3266,170 @@ def _html_kpis_carteira(resumo: dict) -> str:
     return f'<div class="ab-kpis">{"".join(cartoes)}</div>'
 
 
+def _cores_das_acoes(composicao: pd.DataFrame) -> dict[str, str]:
+    """Cor de cada uma das maiores ações da carteira (por valor investido), da primeira à última de
+    `CORES_ACOES_CARTEIRA`; as demais ficam sem cor própria. A mesma cor em todos os gráficos."""
+    maiores = composicao.sort_values("investido", ascending=False, kind="stable")["ticker"]
+    return dict(zip(maiores, CORES_ACOES_CARTEIRA, strict=False))
+
+
+def _fatias_da_composicao(composicao: pd.DataFrame) -> list[tuple[str, float, float]]:
+    """`(nome, investido, peso %)` de cada fatia da rosca, da maior para a menor; com mais de
+    `ACOES_COM_COR_PROPRIA` ações, as menores se juntam numa fatia "Outras"."""
+    ordenada = composicao.sort_values("investido", ascending=False, kind="stable")
+    fatias = [
+        (linha.ticker, linha.investido, linha.peso_percentual) for linha in ordenada.itertuples()
+    ]
+    if len(fatias) > ACOES_COM_COR_PROPRIA:
+        principais, resto = fatias[:ACOES_COM_COR_PROPRIA], fatias[ACOES_COM_COR_PROPRIA:]
+        fatias = [
+            *principais,
+            (TEXTO_OUTRAS_ACOES, sum(f[1] for f in resto), sum(f[2] for f in resto)),
+        ]
+    return fatias
+
+
+def _figura_composicao_por_acao(composicao: pd.DataFrame, cores: dict[str, str]) -> go.Figure:
+    """Rosca do peso de cada ação no valor investido, com o % na fatia, o total investido no
+    centro e a cor de cada ação (as menores, quando são muitas, viram "Outras")."""
+    fatias = _fatias_da_composicao(composicao)
+    figura = go.Figure(
+        go.Pie(
+            labels=[f[0] for f in fatias],
+            values=[f[1] for f in fatias],
+            hole=0.6,
+            sort=False,
+            direction="clockwise",
+            marker={"colors": [cores.get(f[0], COR_NEUTRO) for f in fatias]},
+            text=[_fmt_percentual(f[2], 1) for f in fatias],
+            textinfo="text",
+            customdata=[_fmt_bilhoes(f[1]) for f in fatias],
+            hovertemplate="%{label}: %{customdata} (%{text})<extra></extra>",
+            textfont={"color": COR_FUNDO_PAGINA},
+        )
+    )
+    figura.add_annotation(
+        text=(
+            f"<b>{_fmt_bilhoes(composicao['investido'].sum())}</b><br>{TEXTO_INVESTIDO_NO_CENTRO}"
+        ),
+        showarrow=False,
+        font={"color": COR_TEXTO, "size": 14},
+    )
+    figura.update_layout(height=300, margin={"t": 10, "b": 10, "l": 10, "r": 10})
+    return aplicar_template_grafico(figura)
+
+
+def _pesos_por_setor(composicao: pd.DataFrame) -> pd.Series:
+    """Peso (%) de cada setor no investido das posições que têm setor, do maior para o menor."""
+    com_setor = composicao[composicao["setor"].notna() & (composicao["investido"] > 0)]
+    por_setor = com_setor.groupby("setor")["investido"].sum().sort_values(ascending=False)
+    return por_setor / por_setor.sum() * 100 if len(por_setor) else por_setor
+
+
+def _peso_do_maior_setor(composicao: pd.DataFrame) -> float:
+    pesos = _pesos_por_setor(composicao)
+    return float(pesos.iloc[0]) if len(pesos) else 0.0
+
+
+def _figura_composicao_por_setor(composicao: pd.DataFrame) -> go.Figure | None:
+    """Barras horizontais do peso de cada setor; a do maior setor fica em amarelo quando ele passa
+    de 50%. `None` sem nenhum setor no screener."""
+    pesos = _pesos_por_setor(composicao)
+    if pesos.empty:
+        return None
+    destacar = pesos.iloc[0] > LIMITE_CONCENTRACAO_SETOR_PERCENTUAL
+    rotulos = [_rotulo_segmento_setorial(setor) or setor for setor in pesos.index]
+    figura = go.Figure(
+        go.Bar(
+            x=list(pesos),
+            y=rotulos,
+            orientation="h",
+            marker={
+                "color": [
+                    COR_ALERTA if destacar and i == 0 else COR_PRINCIPAL for i in range(len(pesos))
+                ]
+            },
+            text=[_fmt_percentual(p, 1) for p in pesos],
+            textposition="outside",
+            textfont={"color": COR_TEXTO},
+            cliponaxis=False,
+            hovertemplate="%{y}: %{text}<extra></extra>",
+        )
+    )
+    figura.update_xaxes(range=[0, 120], showticklabels=False)
+    figura.update_yaxes(autorange="reversed", automargin=True)
+    figura.update_layout(
+        height=max(120, 60 + 40 * len(pesos)),
+        margin={"t": 10, "b": 10, "l": 10, "r": 10},
+        showlegend=False,
+    )
+    return aplicar_template_grafico(figura)
+
+
+def _html_tabela_posicoes(composicao: pd.DataFrame) -> str:
+    """Tabela "Posições" em HTML: ação, quantidade, preço, investido, valor combinado, valor justo,
+    potencial (barra divergente) e peso, mais a linha de Total; as posições sem valor combinado
+    ficam com "—" e o motivo no "?"."""
+    cabecalho = "".join(
+        (f'<th class="ab-num">{escape(rotulo)}</th>' if i else f"<th>{escape(rotulo)}</th>")
+        for i, rotulo in enumerate(ROTULOS_COLUNAS_POSICOES)
+    )
+    sem_dado = TEXTO_SEM_DADO_NA_TABELA
+
+    def celula(texto: str) -> str:
+        return f'<td class="ab-num">{escape(texto)}</td>'
+
+    linhas = []
+    for linha in composicao.itertuples():
+        ajuda = ""
+        if linha.sem_combinado:
+            motivo = escape(TEXTO_POSICAO_SEM_COMBINADO)
+            ajuda = f'<span class="ab-ajuda" title="{motivo}">?</span>'
+        preco = _fmt_bilhoes(linha.preco_atual) if linha.preco_atual else sem_dado
+        combinado = sem_dado if linha.sem_combinado else _fmt_bilhoes(linha.valor_combinado)
+        valor_justo = sem_dado if linha.sem_combinado else _fmt_bilhoes(linha.valor_justo)
+        linhas.append(
+            f"<tr><td>{escape(str(linha.ticker))}{ajuda}</td>"
+            + celula(_fmt_quantidade(linha.quantidade))
+            + celula(preco)
+            + celula(_fmt_bilhoes(linha.investido))
+            + celula(combinado)
+            + celula(valor_justo)
+            + f"<td>{_html_barra_potencial(linha.potencial_percentual)}</td>"
+            + celula(_fmt_percentual(linha.peso_percentual, 1))
+            + "</tr>"
+        )
+    com_valor = composicao[~composicao["sem_combinado"]]
+    investido_com_valor = com_valor["investido"].sum()
+    valor_justo_total = com_valor["valor_justo"].sum()
+    potencial = (valor_justo_total / investido_com_valor - 1) * 100 if investido_com_valor else None
+    ajuda_total = ""
+    if composicao["sem_combinado"].any():
+        # O potencial do Total é só sobre as posições com valor combinado, não sobre o investido
+        # total mostrado na mesma linha.
+        texto_ajuda = TEXTO_AJUDA_POTENCIAL_DO_TOTAL.format(valor=_fmt_bilhoes(investido_com_valor))
+        ajuda_total = f'<span class="ab-ajuda" title="{escape(texto_ajuda)}">?</span>'
+    linhas.append(
+        f'<tr class="ab-linha-total"><td>{escape(TEXTO_TOTAL_DAS_POSICOES)}</td>'
+        + celula("")
+        + celula("")
+        + celula(_fmt_bilhoes(composicao["investido"].sum()))
+        + celula("")
+        + celula(_fmt_bilhoes(valor_justo_total) if investido_com_valor else sem_dado)
+        + f"<td>{_html_barra_potencial(potencial)}{ajuda_total}</td>"
+        + celula(_fmt_percentual(composicao["peso_percentual"].sum(), 1))
+        + "</tr>"
+    )
+    return (
+        '<div class="ab-tabela-caixa"><table class="ab-tabela ab-tabela-posicoes"><thead><tr>'
+        f"{cabecalho}</tr></thead><tbody>{''.join(linhas)}</tbody></table></div>"
+    )
+
+
+def _fmt_quantidade(quantidade: int) -> str:
+    return f"{quantidade:,}".replace(",", ".")
+
+
 def _frase_resumo_cenarios(totais: dict) -> str:
     """ "R$ X investidos hoje equivaleriam a entre R$ P (pessimista) e R$ O (otimista)…", sobre as
     posições com cenário."""
@@ -3386,7 +3555,9 @@ def _figura_contribuicao_carteira(tabela_aplicavel: pd.DataFrame) -> go.Figure:
     figura.update_xaxes(range=[-maior_modulo * 1.5, maior_modulo * 1.5], showticklabels=False)
     figura.update_yaxes(autorange="reversed", automargin=True)
     figura.update_layout(
-        height=70 + 36 * len(valores), margin={"t": 10, "b": 10, "l": 10, "r": 10}, showlegend=False
+        height=max(ALTURA_MINIMA_CONTRIBUICAO, ALTURA_POR_BARRA_CONTRIBUICAO * len(valores) + 40),
+        margin={"t": 10, "b": 10, "l": 10, "r": 10},
+        showlegend=False,
     )
     return aplicar_template_grafico(figura)
 
@@ -3576,37 +3747,67 @@ def pagina_carteira() -> None:
                         "100%, o que não existe economicamente."
                     )
 
-            if not tabela_carteira_aplicavel.empty:
-                tc_fmt, colunas_tc_fmt = _tabela_formatada_pt_br(
-                    tabela_carteira_aplicavel,
-                    colunas_moeda={
-                        "valor_investido": "Investido",
-                        "preco_atual": "Preço atual",
-                        "projecao_pessimista": ROTULOS_VALOR_AO_CONVERGIR["pessimista"],
-                        "projecao_base": ROTULOS_VALOR_AO_CONVERGIR["base"],
-                        "projecao_otimista": ROTULOS_VALOR_AO_CONVERGIR["otimista"],
-                    },
-                    colunas_percentual={
-                        "retorno_pessimista_percentual": ROTULOS_POTENCIAL_CENARIO["pessimista"],
-                        "retorno_base_percentual": ROTULOS_POTENCIAL_CENARIO["base"],
-                        "retorno_otimista_percentual": ROTULOS_POTENCIAL_CENARIO["otimista"],
-                    },
-                    ajudas={
-                        coluna: TOOLTIP_POTENCIAL_CENARIO
-                        for coluna in (
-                            "retorno_pessimista_percentual",
-                            "retorno_base_percentual",
-                            "retorno_otimista_percentual",
+            composicao = compor_posicoes(tabela_screener_carteira, posicoes)
+            cores_das_acoes = _cores_das_acoes(composicao)
+            coluna_por_acao, coluna_por_setor = st.columns(2)
+            with (
+                coluna_por_acao,
+                st.container(border=True, key="painel_composicao_acao", height="stretch"),
+            ):
+                _titulo_painel(TITULO_COMPOSICAO_ACAO, TOOLTIP_COMPOSICAO_ACAO)
+                if composicao["investido"].sum() > 0:
+                    exibir_grafico(_figura_composicao_por_acao(composicao, cores_das_acoes))
+            with (
+                coluna_por_setor,
+                st.container(border=True, key="painel_composicao_setor", height="stretch"),
+            ):
+                _titulo_painel(TITULO_COMPOSICAO_SETOR, TOOLTIP_COMPOSICAO_SETOR)
+                figura_setor = _figura_composicao_por_setor(composicao)
+                if figura_setor is None:
+                    st.info(TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO)
+                else:
+                    exibir_grafico(figura_setor)
+                    if _peso_do_maior_setor(composicao) > LIMITE_CONCENTRACAO_SETOR_PERCENTUAL:
+                        st.caption(TEXTO_MAIS_DE_METADE_NUM_SETOR)
+
+            with st.container(border=True, key="painel_posicoes_carteira"):
+                _titulo_painel(TITULO_POSICOES, TOOLTIP_POSICOES)
+                st.html(_html_tabela_posicoes(composicao))
+                if not tabela_carteira_aplicavel.empty:
+                    with st.expander(TITULO_EXPANDER_CENARIOS_POR_ACAO):
+                        cenarios_fmt, colunas_cenarios = _tabela_formatada_pt_br(
+                            tabela_carteira_aplicavel,
+                            colunas_moeda={},
+                            colunas_percentual={
+                                "retorno_pessimista_percentual": ROTULOS_CENARIOS_CARTEIRA[
+                                    "pessimista"
+                                ],
+                                "retorno_base_percentual": ROTULOS_CENARIOS_CARTEIRA["base"],
+                                "retorno_otimista_percentual": ROTULOS_CENARIOS_CARTEIRA[
+                                    "otimista"
+                                ],
+                            },
+                            ajudas={
+                                coluna: TOOLTIP_POTENCIAL_CENARIO
+                                for coluna in (
+                                    "retorno_pessimista_percentual",
+                                    "retorno_base_percentual",
+                                    "retorno_otimista_percentual",
+                                )
+                            },
                         )
-                    },
-                )
-                st.dataframe(
-                    tc_fmt,
-                    column_order=COLUNAS_TABELA_CARTEIRA,
-                    column_config={"ticker": "Ticker", **colunas_tc_fmt},
-                    hide_index=True,
-                    width="stretch",
-                )
+                        st.dataframe(
+                            cenarios_fmt,
+                            column_order=[
+                                "ticker",
+                                "retorno_pessimista_percentual",
+                                "retorno_base_percentual",
+                                "retorno_otimista_percentual",
+                            ],
+                            column_config={"ticker": "Ação", **colunas_cenarios},
+                            hide_index=True,
+                            width="stretch",
+                        )
 
             with st.expander(TITULO_EXPANDER_SIMULADOR):
                 st.markdown(TEXTO_EXPANDER_SIMULADOR)

@@ -1,6 +1,8 @@
 """Montagem da carteira do Simulador na barra lateral: campos, posições, "×", "Limpar carteira" e
 a carteira guardada ao trocar de página."""
 
+import re
+
 import pandas as pd
 import pytest
 import streamlit
@@ -39,6 +41,16 @@ def _abrir_simulador(monkeypatch, tmp_path) -> AppTest:
     return at
 
 
+def _linhas_das_posicoes(at) -> list[list[str]]:
+    """Linhas da tabela "Posições" (HTML), com a de Total no fim, como listas de textos."""
+    html = next(h.proto.body for h in at.get("html") if "ab-tabela-posicoes" in h.proto.body)
+    corpo = html.split("<tbody>")[1]
+    return [
+        [re.sub(r"<[^>]+>", "", c) for c in re.findall(r"<td[^>]*>(.*?)</td>", linha, re.DOTALL)]
+        for linha in re.findall(r"<tr[^>]*>(.*?)</tr>", corpo, re.DOTALL)
+    ]
+
+
 def _posicoes_na_barra(at) -> list[str]:
     return [m.value for m in at.sidebar.markdown if "×" in m.value]
 
@@ -74,9 +86,8 @@ def test_adicionar_poe_a_posicao_na_lista_e_na_carteira(monkeypatch, tmp_path):
     assert _posicoes_na_barra(at) == ["**DOBR4** × 25"]
     assert at.session_state[CHAVE_CARTEIRA_POSICOES] == {"DOBR4": 25}
     # Investido = quantidade × preço do screener: 25 × R$ 40,00.
-    tabelas = [df for df in at.dataframe if "projecao_base" in df.value.columns]
-    assert len(tabelas) == 1
-    assert tabelas[0].value["valor_investido"].tolist() == ["R$ 1.000,00"]
+    linhas = _linhas_das_posicoes(at)
+    assert linhas[0][0] == "DOBR4" and linhas[0][1] == "25" and linhas[0][3] == "R$ 1.000,00"
 
 
 def test_adicionar_uma_acao_que_ja_esta_na_carteira_soma_a_quantidade(monkeypatch, tmp_path):
@@ -145,8 +156,7 @@ def test_carteira_continua_ao_trocar_de_pagina_e_voltar(monkeypatch, tmp_path):
 
     assert not at.exception
     assert _posicoes_na_barra(at) == ["**DOBR4** × 25", "**NEGA4** × 50"]
-    tabelas = [df for df in at.dataframe if "projecao_base" in df.value.columns]
-    assert tabelas[0].value["ticker"].tolist() == ["DOBR4", "NEGA4"]
+    assert [linha[0] for linha in _linhas_das_posicoes(at)[:-1]] == ["DOBR4", "NEGA4"]
 
 
 def test_acao_sem_valor_combinado_fica_marcada_na_lista(monkeypatch, tmp_path):
@@ -171,8 +181,7 @@ def test_acao_que_saiu_do_screener_fica_na_lista_marcada_e_fora_das_contas(monke
     assert _posicoes_na_barra(at) == ["**DOBR4** × 25", "**SUMIU3** × 7 · fora do screener atual"]
     avisos = [w.value for w in at.warning if "Fora do screener atual" in w.value]
     assert avisos == ["Fora do screener atual, sem entrar nas contas: SUMIU3."]
-    tabelas = [df for df in at.dataframe if "projecao_base" in df.value.columns]
-    assert tabelas[0].value["ticker"].tolist() == ["DOBR4"]
+    assert [linha[0] for linha in _linhas_das_posicoes(at)[:-1]] == ["DOBR4"]
     assert app._kpi_por_rotulo(at, "Valor investido")["valor"] == "R$ 1.000,00"
     # Dá para tirá-la com o "×" mesmo fora do screener.
     at.sidebar.button(key=CHAVE_CARTEIRA_REMOVER_PREFIXO + "SUMIU3").click().run(timeout=60)

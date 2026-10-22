@@ -1623,6 +1623,59 @@ TOOLTIP_CONTRIBUICAO_CARTEIRA = (
 )
 TEXTO_SEM_CONTRIBUICAO = "Sem contribuição: {tickers}"
 
+# Cores das ações nos gráficos do Simulador (rosca e histórico), da maior para a menor por peso:
+# fogem das cores com significado no app (ciano da carteira e do base, verde e rosa do sinal,
+# amarelo do investido e do alerta, cinza de "Outras" e do IPCA, lima, e o texto do CDI). Só as 7
+# maiores têm cor e linha própria; as demais viram "Outras" na rosca e entram só na linha
+# "Carteira" do histórico, então nenhuma cor se repete.
+CORES_ACOES_CARTEIRA = (
+    "#4C83F0",  # azul
+    "#F3A268",  # pêssego
+    "#C7A0EE",  # lilás
+    "#CFD590",  # oliva-claro
+    "#F4623A",  # tomate
+    "#7C85F6",  # índigo
+    "#E040D8",  # magenta
+)
+
+# Composição e tabela de posições do Simulador.
+TITULO_COMPOSICAO_ACAO = "Composição por ação"
+TOOLTIP_COMPOSICAO_ACAO = (
+    "Peso de cada posição no valor investido (quantidade × preço). As ações sem valor combinado "
+    "entram, porque é dinheiro alocado. Com mais de 7 ações, as menores se juntam em "
+    '"Outras".'
+)
+TEXTO_OUTRAS_ACOES = "Outras"
+ACOES_COM_COR_PROPRIA = len(CORES_ACOES_CARTEIRA)
+TEXTO_INVESTIDO_NO_CENTRO = "investido"
+TITULO_COMPOSICAO_SETOR = "Composição por setor"
+TOOLTIP_COMPOSICAO_SETOR = (
+    "Peso de cada setor (B3) no valor investido das posições que têm setor no screener. A barra "
+    "do maior setor fica em amarelo quando ele passa de 50%."
+)
+TEXTO_MAIS_DE_METADE_NUM_SETOR = "Mais de 50% num só setor"
+TITULO_POSICOES = "Posições"
+TOOLTIP_POSICOES = (
+    "Investido = quantidade × preço. Valor justo = quantidade × valor combinado. Potencial = "
+    "valor combinado ÷ preço - 1. Peso = investido da posição ÷ investido total. As posições "
+    'sem valor combinado ficam com "—" e o Total soma o valor justo só das que têm.'
+)
+ROTULOS_COLUNAS_POSICOES = (
+    "Ação",
+    "Qtd.",
+    "Preço",
+    "Investido",
+    "Combinado",
+    "Valor justo",
+    "Potencial",
+    "Peso",
+)
+TEXTO_TOTAL_DAS_POSICOES = "Total"
+TEXTO_AJUDA_POTENCIAL_DO_TOTAL = "Sobre {valor} investidos em ações com valor combinado"
+ALTURA_POR_BARRA_CONTRIBUICAO = 50
+ALTURA_MINIMA_CONTRIBUICAO = 150
+TITULO_EXPANDER_CENARIOS_POR_ACAO = "Cenários por ação"
+
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
@@ -1639,16 +1692,6 @@ AVISO_SIMULADOR_SEM_PREVISAO = (
     "justo do cenário, em reais de hoje, sem prazo e sem contar dividendos. "
     "Não é previsão."
 )
-ROTULOS_VALOR_AO_CONVERGIR = {
-    "pessimista": "Valor ao convergir: pessimista (R$)",
-    "base": "Valor ao convergir: base (R$)",
-    "otimista": "Valor ao convergir: otimista (R$)",
-}
-ROTULOS_POTENCIAL_CENARIO = {
-    "pessimista": "Potencial: pessimista (%)",
-    "base": "Potencial: base (%)",
-    "otimista": "Potencial: otimista (%)",
-}
 TOOLTIP_POTENCIAL_CENARIO = (
     "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço "
     "atual (valor justo ÷ preço - 1). Não é retorno esperado nem tem prazo."

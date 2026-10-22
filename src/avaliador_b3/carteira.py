@@ -232,3 +232,52 @@ def resumir_carteira(tabela_screener: pd.DataFrame, posicoes: dict[str, int]) ->
         resumo["setor_de_maior_peso"] = setor
         resumo["peso_do_maior_setor_percentual"] = maior / sum(investido_por_setor.values()) * 100
     return resumo
+
+
+def compor_posicoes(tabela_screener: pd.DataFrame, posicoes: dict[str, int]) -> pd.DataFrame:
+    """Uma linha por posição, na ordem de `posicoes`, com o que a tabela "Posições" e os gráficos
+    de composição mostram: quantidade, preço, `investido` (quantidade × preço; zero sem preço),
+    `valor_combinado` (por ação), `valor_justo` (quantidade × valor combinado) e
+    `potencial_percentual` (valor combinado ÷ preço - 1), vazios sem valor combinado ou sem preço
+    (`sem_combinado` True), `peso_percentual` (do investido total) e `setor` do screener."""
+    por_ticker = tabela_screener.set_index("ticker", drop=False)
+    linhas = []
+    for ticker, quantidade in posicoes.items():
+        linha = por_ticker.loc[ticker]
+        preco, combinado = linha.get("preco_atual"), linha.get("valor_combinado")
+        preco_ok, combinado_ok = _valor_valido(preco), _valor_valido(combinado)
+        setor = linha.get("segmento_setorial")
+        linhas.append(
+            {
+                "ticker": ticker,
+                "quantidade": quantidade,
+                "preco_atual": float(preco) if preco_ok else None,
+                "investido": quantidade * float(preco) if preco_ok else 0.0,
+                "valor_combinado": float(combinado) if combinado_ok else None,
+                "valor_justo": quantidade * float(combinado) if preco_ok and combinado_ok else None,
+                "potencial_percentual": (
+                    (float(combinado) / float(preco) - 1) * 100
+                    if preco_ok and combinado_ok
+                    else None
+                ),
+                "sem_combinado": not (preco_ok and combinado_ok),
+                "setor": setor if isinstance(setor, str) and setor else None,
+            }
+        )
+    composicao = pd.DataFrame(
+        linhas,
+        columns=[
+            "ticker",
+            "quantidade",
+            "preco_atual",
+            "investido",
+            "valor_combinado",
+            "valor_justo",
+            "potencial_percentual",
+            "sem_combinado",
+            "setor",
+        ],
+    )
+    total = composicao["investido"].sum()
+    composicao["peso_percentual"] = composicao["investido"] / total * 100 if total else 0.0
+    return composicao
