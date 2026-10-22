@@ -14,6 +14,7 @@ SERIES_BCB_SGS = {
     "selic_diaria": 11,  # Taxa Selic diária (% a.d.), série "Taxa de juros - Selic"
     "selic_meta": 432,  # Meta Selic definida pelo Copom (% a.a.)
     "ipca_mensal": 433,  # IPCA, variação mensal (%)
+    "cdi_diaria": 12,  # CDI, taxa do dia (% a.d.)
     "cambio_usd_venda": 1,  # Câmbio livre - dólar americano (venda), diário - PTAX
     "m2_saldo": 27810,  # Meios de pagamento amplos - M2 (saldo em final de período)
 }
@@ -1637,6 +1638,32 @@ CORES_ACOES_CARTEIRA = (
     "#7C85F6",  # índigo
     "#E040D8",  # magenta
 )
+
+# Histórico da carteira (Simulador): período do seletor (anos e período do yfinance), tolerância
+# para dizer que uma ação tem o período inteiro, e os textos.
+JANELAS_HISTORICO_CARTEIRA = {"1 ano": ("1y", 1), "2 anos": ("2y", 2), "5 anos": ("5y", 5)}
+JANELA_PADRAO_HISTORICO_CARTEIRA = "1 ano"
+CHAVE_PERIODO_HISTORICO_CARTEIRA = "periodo_historico_carteira"
+TOLERANCIA_INICIO_HISTORICO_DIAS = 10
+TITULO_HISTORICO_CARTEIRA = "Histórico da carteira"
+TOOLTIP_HISTORICO_CARTEIRA = (
+    "Desempenho passado, não é previsão. Mostra quanto o valor de hoje teria rendido se a "
+    "carteira tivesse sido montada no início do período. Preços ajustados por dividendos e "
+    "desdobramentos (Yahoo Finance); o JCP pode não estar incluído em todos os casos."
+)
+TEXTO_BUSCANDO_HISTORICO = "Buscando o histórico das ações…"
+ROTULO_SELETOR_PERIODO_HISTORICO = "Período do histórico"
+TEXTO_SELECIONE_PERIODO_HISTORICO = "Selecione um período acima pra ver o gráfico."
+NOME_LINHA_CARTEIRA = "Carteira"
+NOME_LINHA_IPCA = "Inflação (IPCA)"
+NOME_LINHA_CDI = "CDI"
+TEXTO_DEMAIS_ACOES_NA_CARTEIRA = "Demais ações incluídas na carteira: {tickers}"
+TEXTO_FORA_DA_LINHA_CARTEIRA = (
+    'Sem histórico no período todo, ficaram de fora da linha "Carteira": {tickers}.'
+)
+TEXTO_SEM_HISTORICO_DE_PRECOS = "Sem histórico de preços para: {tickers}."
+TEXTO_NENHUM_HISTORICO_DA_CARTEIRA = "Nenhuma ação da carteira tem histórico de preços."
+TEXTO_INDICE_INDISPONIVEL = "{nome} indisponível agora: {motivo}"
 
 # Composição e tabela de posições do Simulador.
 TITULO_COMPOSICAO_ACAO = "Composição por ação"

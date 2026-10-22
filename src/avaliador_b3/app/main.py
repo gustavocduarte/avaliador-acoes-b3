@@ -61,6 +61,7 @@ from avaliador_b3.config import (
     CHAVE_FILTRO_POTENCIAL_MINIMO,
     CHAVE_FILTRO_SETOR,
     CHAVE_FILTROS_GUARDADOS,
+    CHAVE_PERIODO_HISTORICO_CARTEIRA,
     CHAVE_RODAR_SCREENER_SOLICITADO,
     CHAVE_TEXTO_TICKER,
     CHAVE_TICKER_GUARDADO,
@@ -86,7 +87,9 @@ from avaliador_b3.config import (
     ICONE_PAGINA_ANALISAR,
     ICONE_PAGINA_CARTEIRA,
     ICONE_PAGINA_SCREENER,
+    JANELA_PADRAO_HISTORICO_CARTEIRA,
     JANELAS_COMPARACAO_PETROLEO,
+    JANELAS_HISTORICO_CARTEIRA,
     LARGURA_CARACTERE_ROTULO_BARRA,
     LARGURA_COLUNA_OBSERVACAO_RANKING,
     LEGENDA_REINVESTIMENTO_CAPEX,
@@ -96,6 +99,9 @@ from avaliador_b3.config import (
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
     LIMITE_SINAL_INDICADOR,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
+    NOME_LINHA_CARTEIRA,
+    NOME_LINHA_CDI,
+    NOME_LINHA_IPCA,
     NOMES_FATORES_CORRELACAO,
     NOMES_METODOS,
     NOTA_DIVIDEND_YIELD_SUBESTIMADO,
@@ -138,6 +144,7 @@ from avaliador_b3.config import (
     ROTULO_POTENCIAL,
     ROTULO_REMOVER_POSICAO,
     ROTULO_RODAR_SCREENER,
+    ROTULO_SELETOR_PERIODO_HISTORICO,
     ROTULOS_CENARIOS_CARTEIRA,
     ROTULOS_COLUNAS_POSICOES,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
@@ -157,6 +164,7 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_RANKING_SCREENER,
     TEXTO_AJUDA_TRADINGVIEW,
     TEXTO_AVISO_FORA_DO_SCREENER,
+    TEXTO_BUSCANDO_HISTORICO,
     TEXTO_CARTAO_SEM_METODO,
     TEXTO_CARTEIRA_ACAO_PLACEHOLDER,
     TEXTO_CARTEIRA_VAZIA,
@@ -164,6 +172,7 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
+    TEXTO_DEMAIS_ACOES_NA_CARTEIRA,
     TEXTO_DIVERGENCIA_NENHUM_METODO,
     TEXTO_DIVERGENCIA_UM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
@@ -171,6 +180,8 @@ from avaliador_b3.config import (
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
+    TEXTO_FORA_DA_LINHA_CARTEIRA,
+    TEXTO_INDICE_INDISPONIVEL,
     TEXTO_INVESTIDO_NO_CENTRO,
     TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
     TEXTO_KPI_COM_COMBINADO,
@@ -186,6 +197,7 @@ from avaliador_b3.config import (
     TEXTO_MEDIANA_NO_GRAFICO,
     TEXTO_MOSTRANDO_ACOES,
     TEXTO_NENHUM_ALERTA,
+    TEXTO_NENHUM_HISTORICO_DA_CARTEIRA,
     TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_NENHUMA_ACAO_COM_CENARIO,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
@@ -205,12 +217,14 @@ from avaliador_b3.config import (
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
+    TEXTO_SELECIONE_PERIODO_HISTORICO,
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
     TEXTO_SEM_CONTRIBUICAO,
     TEXTO_SEM_DADO_NA_TABELA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
+    TEXTO_SEM_HISTORICO_DE_PRECOS,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
@@ -229,18 +243,21 @@ from avaliador_b3.config import (
     TITULO_EIXO_POTENCIAL,
     TITULO_EXPANDER_CENARIOS_POR_ACAO,
     TITULO_EXPANDER_SIMULADOR,
+    TITULO_HISTORICO_CARTEIRA,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
     TITULO_POSICOES,
     TITULO_RANKING_SCREENER,
+    TOLERANCIA_INICIO_HISTORICO_DIAS,
     TOOLTIP_COMPOSICAO_ACAO,
     TOOLTIP_COMPOSICAO_SETOR,
     TOOLTIP_CONCENTRACAO,
     TOOLTIP_CONTRIBUICAO_CARTEIRA,
     TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
+    TOOLTIP_HISTORICO_CARTEIRA,
     TOOLTIP_MEDIANA_POTENCIAL,
     TOOLTIP_POSICOES,
     TOOLTIP_POTENCIAL_CARTAO,
@@ -270,6 +287,12 @@ from avaliador_b3.graficos import (
     calcular_dividend_yield_por_ano,
     normalizar_base_100,
     ticks_mensais_pt_br,
+)
+from avaliador_b3.historico_carteira import (
+    HistoricoDaCarteira,
+    montar_historico,
+    serie_cdi,
+    serie_ipca,
 )
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
@@ -3649,6 +3672,152 @@ def _desenhar_montagem_da_carteira(
     return posicoes, fora_do_screener
 
 
+@st.cache_data(ttl=3600)
+def _buscar_serie_bcb_cacheada(codigo: int, data_inicial: str, data_final: str) -> pd.DataFrame:
+    return obter_serie_com_fallback(codigo, data_inicial=data_inicial, data_final=data_final)
+
+
+def _buscar_serie_bcb(
+    chave: str, nome: str, inicio: datetime
+) -> tuple[pd.DataFrame | None, str | None]:
+    """IPCA mensal ou CDI diário (`SERIES_BCB_SGS[chave]`) desde `inicio`, cacheado na sessão por
+    1h; a parte cacheada levanta em vez de devolver `(None, erro)`, para um erro transitório não
+    ficar preso em cache."""
+    hoje = datetime.now()
+    try:
+        serie = _buscar_serie_bcb_cacheada(
+            SERIES_BCB_SGS[chave], inicio.strftime("%d/%m/%Y"), hoje.strftime("%d/%m/%Y")
+        )
+    except Exception as erro:
+        return None, TEXTO_INDICE_INDISPONIVEL.format(nome=nome, motivo=erro)
+    return serie, None
+
+
+def _figura_historico_carteira(
+    historico: HistoricoDaCarteira,
+    cores: dict[str, str],
+    ipca: pd.Series | None,
+    cdi: pd.Series | None,
+) -> go.Figure:
+    """Linhas em R$ do histórico: uma por ação com cor própria (as maiores), a "Carteira" mais
+    grossa em COR_PRINCIPAL, a inflação pontilhada em COR_NEUTRO e o CDI tracejado em COR_TEXTO."""
+    figura = go.Figure()
+    for ticker, serie in historico.por_acao.items():
+        if ticker in cores:
+            figura.add_trace(
+                go.Scatter(
+                    x=serie.index,
+                    y=serie,
+                    name=ticker,
+                    mode="lines",
+                    line={"color": cores[ticker], "width": 1.5},
+                    hovertemplate="R$ %{y:,.2f}",
+                )
+            )
+    if historico.carteira is not None:
+        figura.add_trace(
+            go.Scatter(
+                x=historico.carteira.index,
+                y=historico.carteira,
+                name=NOME_LINHA_CARTEIRA,
+                mode="lines",
+                line={"color": COR_PRINCIPAL, "width": 4},
+                hovertemplate="R$ %{y:,.2f}",
+            )
+        )
+    for serie, nome, cor, traco in (
+        (ipca, NOME_LINHA_IPCA, COR_NEUTRO, "dot"),
+        (cdi, NOME_LINHA_CDI, COR_TEXTO, "dash"),
+    ):
+        if serie is not None:
+            figura.add_trace(
+                go.Scatter(
+                    x=serie.index,
+                    y=serie,
+                    name=nome,
+                    mode="lines",
+                    line={"color": cor, "width": 2, "dash": traco},
+                    hovertemplate="R$ %{y:,.2f}",
+                )
+            )
+    figura.update_layout(
+        height=420,
+        hovermode="x unified",
+        legend={"orientation": "h", "yanchor": "top", "y": -0.12, "xanchor": "left", "x": 0},
+        margin={"t": 10, "b": 10, "l": 10, "r": 10},
+    )
+    aplicar_template_grafico(figura)
+    todas = [t.x for t in figura.data if len(t.x)]
+    if todas:
+        tickvals, ticktext = ticks_mensais_pt_br(
+            pd.Series(pd.concat([pd.Series(x) for x in todas]))
+        )
+        figura.update_xaxes(tickmode="array", tickvals=tickvals, ticktext=ticktext)
+    figura.update_yaxes(tickprefix="R$ ", tickformat=",.0f", automargin=True)
+    return figura
+
+
+def _desenhar_historico_da_carteira(composicao: pd.DataFrame, cores: dict[str, str]) -> None:
+    """Painel "Histórico da carteira": seletor de período, busca dos preços (e do IPCA e do CDI),
+    avisos das ações sem histórico completo e o gráfico."""
+    _titulo_painel(TITULO_HISTORICO_CARTEIRA, TOOLTIP_HISTORICO_CARTEIRA)
+    janela = st.pills(
+        ROTULO_SELETOR_PERIODO_HISTORICO,
+        options=list(JANELAS_HISTORICO_CARTEIRA),
+        default=JANELA_PADRAO_HISTORICO_CARTEIRA,
+        key=CHAVE_PERIODO_HISTORICO_CARTEIRA,
+    )
+    if not janela:
+        st.info(TEXTO_SELECIONE_PERIODO_HISTORICO)
+        return
+    periodo, anos = JANELAS_HISTORICO_CARTEIRA[janela]
+    com_preco = composicao[composicao["investido"] > 0]
+    valor_inicial = float(com_preco["investido"].sum())
+    pesos = dict(zip(com_preco["ticker"], com_preco["investido"] / valor_inicial, strict=True))
+    with st.spinner(TEXTO_BUSCANDO_HISTORICO):
+        historicos: dict[str, pd.DataFrame] = {}
+        sem_preco = []
+        for ticker in com_preco["ticker"]:
+            historico, erro = _buscar_historico(ticker, periodo)
+            if erro or historico is None:
+                sem_preco.append(ticker)
+            else:
+                historicos[ticker] = historico
+        inicio_dos_indices = datetime.now() - timedelta(days=365 * anos + 45)
+        ipca_mensal, erro_ipca = _buscar_serie_bcb(
+            "ipca_mensal", NOME_LINHA_IPCA, inicio_dos_indices
+        )
+        cdi_diario, erro_cdi = _buscar_serie_bcb("cdi_diaria", NOME_LINHA_CDI, inicio_dos_indices)
+    historico = montar_historico(
+        historicos, pesos, valor_inicial, anos, TOLERANCIA_INICIO_HISTORICO_DIAS
+    )
+    historico.sem_historico = [*sem_preco, *historico.sem_historico]
+    if not historico.por_acao:
+        st.info(TEXTO_NENHUM_HISTORICO_DA_CARTEIRA)
+        return
+    referencia = (
+        historico.carteira
+        if historico.carteira is not None
+        else next(iter(historico.por_acao.values()))
+    )
+    datas = referencia.index
+    ipca = serie_ipca(ipca_mensal, datas, valor_inicial) if ipca_mensal is not None else None
+    cdi = serie_cdi(cdi_diario, datas, valor_inicial) if cdi_diario is not None else None
+    exibir_grafico(_figura_historico_carteira(historico, cores, ipca, cdi))
+    demais = sorted((t for t in historico.na_carteira if t not in cores), key=lambda t: -pesos[t])
+    if demais:
+        st.caption(TEXTO_DEMAIS_ACOES_NA_CARTEIRA.format(tickers=", ".join(demais)))
+    if historico.fora_da_carteira:
+        st.warning(
+            TEXTO_FORA_DA_LINHA_CARTEIRA.format(tickers=", ".join(historico.fora_da_carteira))
+        )
+    if historico.sem_historico:
+        st.warning(TEXTO_SEM_HISTORICO_DE_PRECOS.format(tickers=", ".join(historico.sem_historico)))
+    for erro in (erro_ipca, erro_cdi):
+        if erro:
+            st.warning(erro)
+
+
 def pagina_carteira() -> None:
     tabela_screener_carteira = _carregar_screener_ou_avisar(
         CAMINHO_SAIDA_PADRAO,
@@ -3808,6 +3977,9 @@ def pagina_carteira() -> None:
                             hide_index=True,
                             width="stretch",
                         )
+
+            with st.container(border=True, key="painel_historico_carteira"):
+                _desenhar_historico_da_carteira(composicao, cores_das_acoes)
 
             with st.expander(TITULO_EXPANDER_SIMULADOR):
                 st.markdown(TEXTO_EXPANDER_SIMULADOR)

@@ -3218,7 +3218,8 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
     textos = [c.value for c in aba.caption] + [m.value for m in aba.markdown]
     for proibido in ("ao ano", "Ganho real", "CAGR", "IPCA", " anos"):
         assert not any(proibido in texto for texto in textos), proibido
-    assert len(aba.pills) == 0
+    # Nenhum seletor de prazo nos cenários; o único seletor é o do período do histórico (passado).
+    assert [p.key for p in aba.pills] == ["periodo_historico_carteira"]
     assert not any("ganho_real" in df.value.columns for df in aba.dataframe)
 
 
