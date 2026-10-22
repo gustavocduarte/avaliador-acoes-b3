@@ -179,3 +179,56 @@ def calcular_totais_carteira(tabela_carteira: pd.DataFrame) -> dict:
         "total_pessimista": float(tabela_carteira["projecao_pessimista"].sum()),
         "quantidade_sem_cenario": int((~tabela_carteira["aplicavel"]).sum()),
     }
+
+
+def resumir_carteira(tabela_screener: pd.DataFrame, posicoes: dict[str, int]) -> dict:
+    """Números do topo do Simulador, a partir das posições (ticker -> quantidade) e da linha de
+    cada ação no screener; todos os tickers precisam estar em `tabela_screener`.
+
+    - `investido_total`: soma de quantidade × preço de todas as posições com preço.
+    - `valor_justo`: soma de quantidade × valor combinado das posições com preço e valor
+      combinado, e `investido_com_combinado`, o investido nessas mesmas posições; o potencial
+      (`potencial_percentual`) e a diferença em R$ comparam os dois, o mesmo universo.
+    - `quantidade_sem_combinado` e `investido_sem_combinado`: as posições que ficam de fora da
+      conta do valor justo (sem valor combinado ou sem preço).
+    - `setor_de_maior_peso` e `peso_do_maior_setor_percentual`: o setor com mais dinheiro entre as
+      posições que têm setor no screener, e o peso dele nesse total; `None` sem setor nenhum.
+    """
+    por_ticker = tabela_screener.set_index("ticker", drop=False)
+    investido_total = investido_com_combinado = valor_justo = investido_sem_combinado = 0.0
+    quantidade_sem_combinado = 0
+    investido_por_setor: dict[str, float] = {}
+    for ticker, quantidade in posicoes.items():
+        linha = por_ticker.loc[ticker]
+        preco, combinado = linha.get("preco_atual"), linha.get("valor_combinado")
+        investido = quantidade * float(preco) if _valor_valido(preco) else 0.0
+        investido_total += investido
+        if _valor_valido(preco) and _valor_valido(combinado):
+            investido_com_combinado += investido
+            valor_justo += quantidade * float(combinado)
+        else:
+            quantidade_sem_combinado += 1
+            investido_sem_combinado += investido
+        setor = linha.get("segmento_setorial")
+        if isinstance(setor, str) and setor and investido > 0:
+            investido_por_setor[setor] = investido_por_setor.get(setor, 0.0) + investido
+
+    resumo: dict = {
+        "quantidade_posicoes": len(posicoes),
+        "investido_total": investido_total,
+        "investido_com_combinado": investido_com_combinado,
+        "valor_justo": valor_justo,
+        "diferenca_reais": valor_justo - investido_com_combinado,
+        "potencial_percentual": (
+            (valor_justo / investido_com_combinado - 1) * 100 if investido_com_combinado else None
+        ),
+        "quantidade_sem_combinado": quantidade_sem_combinado,
+        "investido_sem_combinado": investido_sem_combinado,
+        "setor_de_maior_peso": None,
+        "peso_do_maior_setor_percentual": None,
+    }
+    if investido_por_setor:
+        setor, maior = max(investido_por_setor.items(), key=lambda item: item[1])
+        resumo["setor_de_maior_peso"] = setor
+        resumo["peso_do_maior_setor_percentual"] = maior / sum(investido_por_setor.values()) * 100
+    return resumo

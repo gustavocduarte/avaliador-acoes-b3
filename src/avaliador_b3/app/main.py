@@ -31,6 +31,7 @@ from streamlit.errors import StreamlitSecretNotFoundError
 from avaliador_b3.carteira import (
     calcular_totais_carteira,
     montar_tabela_carteira,
+    resumir_carteira,
 )
 from avaliador_b3.config import (
     ANOS_HISTORICO_CRESCIMENTO_FCD,
@@ -85,6 +86,7 @@ from avaliador_b3.config import (
     LARGURA_COLUNA_OBSERVACAO_RANKING,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_BARRA_POTENCIAL,
+    LIMITE_CONCENTRACAO_SETOR_PERCENTUAL,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
     LIMITE_SINAL_INDICADOR,
@@ -121,7 +123,11 @@ from avaliador_b3.config import (
     ROTULO_KPI_ABAIXO_DO_VALOR_JUSTO,
     ROTULO_KPI_COM_COMBINADO,
     ROTULO_KPI_COM_FCD,
+    ROTULO_KPI_CONCENTRACAO,
     ROTULO_KPI_MEDIANA_POTENCIAL,
+    ROTULO_KPI_POTENCIAL_CARTEIRA,
+    ROTULO_KPI_VALOR_INVESTIDO,
+    ROTULO_KPI_VALOR_JUSTO_CARTEIRA,
     ROTULO_LIMPAR_CARTEIRA,
     ROTULO_LIMPAR_FILTROS,
     ROTULO_POTENCIAL,
@@ -164,7 +170,10 @@ from avaliador_b3.config import (
     TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
     TEXTO_KPI_COM_COMBINADO,
     TEXTO_KPI_COM_FCD,
+    TEXTO_KPI_POSICOES,
+    TEXTO_KPI_SEM_COMBINADO,
     TEXTO_KPI_SEM_METODO,
+    TEXTO_KPI_SOBRE_COM_COMBINADO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
     TEXTO_LINK_ACAO_REGEX,
     TEXTO_MEDIANA_NO_GRAFICO,
@@ -209,13 +218,16 @@ from avaliador_b3.config import (
     TITULO_PAGINA_SCREENER,
     TITULO_PAINEL_DIVIDENDOS,
     TITULO_RANKING_SCREENER,
+    TOOLTIP_CONCENTRACAO,
     TOOLTIP_DISTRIBUICAO_POTENCIAL,
     TOOLTIP_DIVERGENCIA_METODOS,
     TOOLTIP_MEDIANA_POTENCIAL,
     TOOLTIP_POTENCIAL_CARTAO,
+    TOOLTIP_POTENCIAL_CARTEIRA,
     TOOLTIP_POTENCIAL_CENARIO,
     TOOLTIP_POTENCIAL_COLUNA,
     TOOLTIP_VALOR_FIRMA,
+    TOOLTIP_VALOR_JUSTO_CARTEIRA,
     URL_LINK_ACAO,
     URL_PAGINA_ANALISAR,
     URL_PAGINA_CARTEIRA,
@@ -3139,6 +3151,104 @@ def _preco_valido_da_linha(linha: pd.Series) -> float | None:
     return float(preco) if numero_finito(preco) else None
 
 
+def _html_kpis_carteira(resumo: dict) -> str:
+    """Cartões do topo do Simulador: valor investido, valor justo da carteira (ciano), potencial
+    (verde ou rosa, com a diferença em R$) e concentração no maior setor (amarela acima de 50%)."""
+    sem_combinado = resumo["quantidade_sem_combinado"]
+    linha_investido = (
+        TEXTO_KPI_SEM_COMBINADO.format(
+            quantidade=sem_combinado, valor=_fmt_bilhoes(resumo["investido_sem_combinado"])
+        )
+        if sem_combinado
+        else TEXTO_KPI_POSICOES.format(quantidade=resumo["quantidade_posicoes"])
+    )
+    cartoes = [
+        _html_kpi(
+            ROTULO_KPI_VALOR_INVESTIDO,
+            _fmt_bilhoes(resumo["investido_total"]),
+            "ab-cor-texto",
+            linha_investido,
+        )
+    ]
+
+    potencial = resumo["potencial_percentual"]
+    if potencial is None:
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_VALOR_JUSTO_CARTEIRA,
+                "—",
+                "ab-cor-secundario",
+                TEXTO_NENHUM_METODO_SE_APLICA,
+                ajuda=TOOLTIP_VALOR_JUSTO_CARTEIRA,
+            )
+        )
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_POTENCIAL_CARTEIRA,
+                "—",
+                "ab-cor-secundario",
+                TEXTO_NENHUM_METODO_SE_APLICA,
+                ajuda=TOOLTIP_POTENCIAL_CARTEIRA,
+            )
+        )
+    else:
+        cor = (
+            "ab-cor-positivo"
+            if potencial > LIMITE_SINAL_INDICADOR
+            else "ab-cor-negativo"
+            if potencial < LIMITE_SINAL_INDICADOR
+            else "ab-cor-texto"
+        )
+        diferenca = resumo["diferenca_reais"]
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_VALOR_JUSTO_CARTEIRA,
+                _fmt_bilhoes(resumo["valor_justo"]),
+                "ab-cor-principal",
+                TEXTO_KPI_SOBRE_COM_COMBINADO.format(
+                    valor=_fmt_bilhoes(resumo["investido_com_combinado"])
+                )
+                if sem_combinado
+                else "",
+                ajuda=TOOLTIP_VALOR_JUSTO_CARTEIRA,
+            )
+        )
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_POTENCIAL_CARTEIRA,
+                _fmt_potencial(potencial),
+                cor,
+                ("+" if diferenca > LIMITE_SINAL_INDICADOR else "") + _fmt_bilhoes(diferenca),
+                cor,
+                ajuda=TOOLTIP_POTENCIAL_CARTEIRA,
+            )
+        )
+
+    setor = resumo["setor_de_maior_peso"]
+    if setor is None:
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_CONCENTRACAO,
+                "—",
+                "ab-cor-secundario",
+                TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
+                ajuda=TOOLTIP_CONCENTRACAO,
+            )
+        )
+    else:
+        peso = resumo["peso_do_maior_setor_percentual"]
+        cartoes.append(
+            _html_kpi(
+                ROTULO_KPI_CONCENTRACAO,
+                _fmt_percentual(peso, 1),
+                "ab-cor-alerta" if peso > LIMITE_CONCENTRACAO_SETOR_PERCENTUAL else "ab-cor-texto",
+                _rotulo_segmento_setorial(setor) or setor,
+                ajuda=TOOLTIP_CONCENTRACAO,
+            )
+        )
+    return f'<div class="ab-kpis">{"".join(cartoes)}</div>'
+
+
 def _investimentos_da_carteira(
     tabela_screener: pd.DataFrame, posicoes: dict[str, int]
 ) -> dict[str, float]:
@@ -3249,6 +3359,9 @@ def pagina_carteira() -> None:
         if not investimentos:
             st.info(TEXTO_CARTEIRA_VAZIA)
         else:
+            with st.container(border=True, key="painel_destaque_carteira"):
+                st.html(_html_kpis_carteira(resumir_carteira(tabela_screener_carteira, posicoes)))
+
             tabela_carteira = montar_tabela_carteira(tabela_screener_carteira, investimentos)
 
             # Ações sem nenhum método aplicável (ex: HAPV3/MRVE3 no screener

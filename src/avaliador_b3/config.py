@@ -1585,6 +1585,29 @@ TEXTO_POSICAO_FORA_DO_SCREENER = "fora do screener atual"
 TEXTO_AVISO_FORA_DO_SCREENER = "Fora do screener atual, sem entrar nas contas: {tickers}."
 TEXTO_CARTEIRA_VAZIA = "Adicione ações à carteira na barra lateral para simular."
 
+# Cartões do topo do Simulador.
+ROTULO_KPI_VALOR_INVESTIDO = "Valor investido"
+TEXTO_KPI_POSICOES = "{quantidade} posições"
+TEXTO_KPI_SEM_COMBINADO = "{quantidade} sem valor combinado ({valor})"
+ROTULO_KPI_VALOR_JUSTO_CARTEIRA = "Valor justo da carteira"
+TOOLTIP_VALOR_JUSTO_CARTEIRA = (
+    "Soma de quantidade × valor combinado das posições com valor combinado: quanto a carteira "
+    "valeria se o preço de cada ação chegasse ao valor justo (cenário base), em reais de hoje, "
+    "sem prazo e sem contar dividendos. As posições sem valor combinado ficam fora."
+)
+TEXTO_KPI_SOBRE_COM_COMBINADO = "sobre {valor} com valor combinado"
+ROTULO_KPI_POTENCIAL_CARTEIRA = "Potencial da carteira"
+TOOLTIP_POTENCIAL_CARTEIRA = (
+    "Valor justo da carteira ÷ valor investido nas posições com valor combinado - 1. A linha "
+    "de baixo é a diferença em reais. Não é previsão nem tem prazo."
+)
+ROTULO_KPI_CONCENTRACAO = "Concentração"
+TOOLTIP_CONCENTRACAO = (
+    "Peso do setor com mais dinheiro no valor investido (setor da B3). Fica em amarelo acima "
+    "de 50%."
+)
+LIMITE_CONCENTRACAO_SETOR_PERCENTUAL = 50.0
+
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
