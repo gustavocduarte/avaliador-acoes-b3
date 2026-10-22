@@ -46,6 +46,10 @@ from avaliador_b3.config import (
     CHAVE_BARRA_CARTEIRA,
     CHAVE_BARRA_RODAPE,
     CHAVE_BARRA_SCREENER,
+    CHAVE_CARTEIRA_ACAO,
+    CHAVE_CARTEIRA_POSICOES,
+    CHAVE_CARTEIRA_QUANTIDADE,
+    CHAVE_CARTEIRA_REMOVER_PREFIXO,
     CHAVE_DROPDOWN_TICKER,
     CHAVE_FILTRO_ESCONDER_SEM_COMBINADO,
     CHAVE_FILTRO_METODO_PREFIXO,
@@ -100,8 +104,12 @@ from avaliador_b3.config import (
     POTENCIAL_MINIMO_FILTRO_MAXIMO,
     POTENCIAL_MINIMO_FILTRO_PASSO,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
+    QUANTIDADE_PADRAO_CARTEIRA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
+    ROTULO_ADICIONAR_A_CARTEIRA,
     ROTULO_ANO_PARCIAL,
+    ROTULO_CARTEIRA_ACAO,
+    ROTULO_CARTEIRA_QUANTIDADE,
     ROTULO_COLUNAS_RANKING_SCREENER,
     ROTULO_COMBINADO_GRAFICO,
     ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
@@ -114,8 +122,10 @@ from avaliador_b3.config import (
     ROTULO_KPI_COM_COMBINADO,
     ROTULO_KPI_COM_FCD,
     ROTULO_KPI_MEDIANA_POTENCIAL,
+    ROTULO_LIMPAR_CARTEIRA,
     ROTULO_LIMPAR_FILTROS,
     ROTULO_POTENCIAL,
+    ROTULO_REMOVER_POSICAO,
     ROTULO_RODAR_SCREENER,
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
@@ -136,7 +146,10 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
     TEXTO_AJUDA_RANKING_SCREENER,
     TEXTO_AJUDA_TRADINGVIEW,
+    TEXTO_AVISO_FORA_DO_SCREENER,
     TEXTO_CARTAO_SEM_METODO,
+    TEXTO_CARTEIRA_ACAO_PLACEHOLDER,
+    TEXTO_CARTEIRA_VAZIA,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CRESCIMENTO_IPCA,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
@@ -160,6 +173,9 @@ from avaliador_b3.config import (
     TEXTO_NENHUM_METODO_SE_APLICA,
     TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_OBSERVACOES_CORRELACAO,
+    TEXTO_POSICAO_DA_CARTEIRA,
+    TEXTO_POSICAO_FORA_DO_SCREENER,
+    TEXTO_POSICAO_SEM_COMBINADO,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_RODAPE_LINK_REPOSITORIO,
@@ -271,7 +287,7 @@ from avaliador_b3.modelos.fcd import (
     montar_fluxos_fcd,
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
-from avaliador_b3.numeros import decimal_pt_br
+from avaliador_b3.numeros import decimal_pt_br, numero_finito
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
@@ -3118,6 +3134,98 @@ def pagina_screener() -> None:
         )
 
 
+def _preco_valido_da_linha(linha: pd.Series) -> float | None:
+    preco = linha.get("preco_atual")
+    return float(preco) if numero_finito(preco) else None
+
+
+def _investimentos_da_carteira(
+    tabela_screener: pd.DataFrame, posicoes: dict[str, int]
+) -> dict[str, float]:
+    """Valor investido em R$ de cada posição: quantidade × preço do screener (zero quando o
+    screener não traz preço; a ação segue na carteira, sem cenário)."""
+    por_ticker = tabela_screener.set_index("ticker", drop=False)
+    investimentos = {}
+    for ticker, quantidade in posicoes.items():
+        preco = _preco_valido_da_linha(por_ticker.loc[ticker])
+        investimentos[ticker] = quantidade * preco if preco is not None else 0.0
+    return investimentos
+
+
+def _adicionar_posicao_da_carteira() -> None:
+    """Soma a quantidade escolhida à da ação, se ela já estiver na carteira."""
+    ticker = st.session_state.get(CHAVE_CARTEIRA_ACAO)
+    quantidade = st.session_state.get(CHAVE_CARTEIRA_QUANTIDADE)
+    if not ticker or not quantidade or quantidade < 1:
+        return
+    posicoes = dict(st.session_state.get(CHAVE_CARTEIRA_POSICOES, {}))
+    posicoes[ticker] = posicoes.get(ticker, 0) + int(quantidade)
+    st.session_state[CHAVE_CARTEIRA_POSICOES] = posicoes
+
+
+def _remover_posicao_da_carteira(ticker: str) -> None:
+    posicoes = dict(st.session_state.get(CHAVE_CARTEIRA_POSICOES, {}))
+    posicoes.pop(ticker, None)
+    st.session_state[CHAVE_CARTEIRA_POSICOES] = posicoes
+
+
+def _limpar_carteira() -> None:
+    st.session_state[CHAVE_CARTEIRA_POSICOES] = {}
+
+
+def _desenhar_montagem_da_carteira(
+    tabela_screener: pd.DataFrame,
+) -> tuple[dict[str, int], list[str]]:
+    """Campos de montagem da carteira no bloco atual da barra lateral (ação, quantidade e
+    "Adicionar à carteira") e a lista das posições, cada uma com seu "×", mais "Limpar carteira".
+    Devolve as posições que entram nas contas (ticker -> quantidade) e os tickers que saíram do
+    screener: esses seguem na lista, marcados, sem entrar nas contas. A carteira vive em
+    `CHAVE_CARTEIRA_POSICOES`, que sobrevive à troca de página."""
+    tickers = sorted(tabela_screener["ticker"])
+    todas = st.session_state.get(CHAVE_CARTEIRA_POSICOES, {})
+    posicoes = {t: q for t, q in todas.items() if t in tickers}
+    fora_do_screener = [t for t in todas if t not in tickers]
+
+    acao = st.selectbox(
+        ROTULO_CARTEIRA_ACAO,
+        tickers,
+        index=None,
+        placeholder=TEXTO_CARTEIRA_ACAO_PLACEHOLDER,
+        key=CHAVE_CARTEIRA_ACAO,
+    )
+    st.number_input(
+        ROTULO_CARTEIRA_QUANTIDADE,
+        min_value=1,
+        value=QUANTIDADE_PADRAO_CARTEIRA,
+        step=1,
+        key=CHAVE_CARTEIRA_QUANTIDADE,
+    )
+    st.button(
+        ROTULO_ADICIONAR_A_CARTEIRA,
+        on_click=_adicionar_posicao_da_carteira,
+        disabled=acao is None,
+    )
+
+    por_ticker = tabela_screener.set_index("ticker", drop=False)
+    for ticker, quantidade in todas.items():
+        coluna_texto, coluna_remover = st.columns([4, 1], vertical_alignment="center")
+        texto = TEXTO_POSICAO_DA_CARTEIRA.format(ticker=ticker, quantidade=quantidade)
+        if ticker in fora_do_screener:
+            texto += f" · {TEXTO_POSICAO_FORA_DO_SCREENER}"
+        elif not numero_finito(por_ticker.loc[ticker].get("valor_combinado")):
+            texto += f" · {TEXTO_POSICAO_SEM_COMBINADO}"
+        coluna_texto.markdown(texto)
+        coluna_remover.button(
+            ROTULO_REMOVER_POSICAO,
+            key=CHAVE_CARTEIRA_REMOVER_PREFIXO + ticker,
+            on_click=_remover_posicao_da_carteira,
+            args=(ticker,),
+        )
+    if todas:
+        st.button(ROTULO_LIMPAR_CARTEIRA, on_click=_limpar_carteira)
+    return posicoes, fora_do_screener
+
+
 def pagina_carteira() -> None:
     st.caption(TEXTO_ABERTURA_SIMULADOR)
 
@@ -3126,27 +3234,20 @@ def pagina_carteira() -> None:
         'Rode o screener primeiro na página "Screener"',
     )
 
+    # Os campos de montagem ficam no bloco da barra lateral, depois do link da página.
+    with _bloco_barra_carteira:
+        posicoes: dict[str, int] = {}
+        fora_do_screener: list[str] = []
+        if tabela_screener_carteira is not None:
+            posicoes, fora_do_screener = _desenhar_montagem_da_carteira(tabela_screener_carteira)
+
     if tabela_screener_carteira is not None:
-        tickers_disponiveis = sorted(tabela_screener_carteira["ticker"])
-        tickers_selecionados = st.multiselect(
-            "Ações da carteira (restrito às ações com dado no screener salvo)",
-            options=tickers_disponiveis,
-        )
+        if fora_do_screener:
+            st.warning(TEXTO_AVISO_FORA_DO_SCREENER.format(tickers=", ".join(fora_do_screener)))
+        investimentos = _investimentos_da_carteira(tabela_screener_carteira, posicoes)
 
-        investimentos: dict[str, float] = {}
-        if tickers_selecionados:
-            st.caption("Quanto investir em cada ação:")
-            for ticker in tickers_selecionados:
-                investimentos[ticker] = st.number_input(
-                    f"{ticker} (R$)",
-                    min_value=0.0,
-                    value=1000.0,
-                    step=100.0,
-                    key=f"investimento_{ticker}",
-                )
-
-        if not tickers_selecionados:
-            st.info("Selecione ao menos uma ação pra simular.")
+        if not investimentos:
+            st.info(TEXTO_CARTEIRA_VAZIA)
         else:
             tabela_carteira = montar_tabela_carteira(tabela_screener_carteira, investimentos)
 
@@ -3345,6 +3446,7 @@ for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_ME
 # filtros e o botão da rodada, no bloco do Screener, só quando a página do Screener roda.
 _bloco_barra_analisar = _blocos_barra[CHAVE_BARRA_ANALISAR]
 _bloco_barra_screener = _blocos_barra[CHAVE_BARRA_SCREENER]
+_bloco_barra_carteira = _blocos_barra[CHAVE_BARRA_CARTEIRA]
 pagina_atual.run()
 _rodape_da_barra_lateral()
 

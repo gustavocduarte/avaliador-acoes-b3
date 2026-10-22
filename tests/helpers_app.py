@@ -44,3 +44,18 @@ def blocos_da_barra(at: AppTest) -> list[tuple[str, list]]:
         for bloco in at.sidebar.children.values()
         if bloco.type == "flex_container"
     ]
+
+
+def adicionar_a_carteira(at: AppTest, ticker: str, quantidade: int, timeout: int = 60) -> AppTest:
+    """Põe uma posição na carteira do Simulador pelos campos da barra lateral."""
+    from avaliador_b3.config import (
+        CHAVE_CARTEIRA_ACAO,
+        CHAVE_CARTEIRA_QUANTIDADE,
+        ROTULO_ADICIONAR_A_CARTEIRA,
+    )
+
+    at.sidebar.selectbox(key=CHAVE_CARTEIRA_ACAO).select(ticker)
+    at.sidebar.number_input(key=CHAVE_CARTEIRA_QUANTIDADE).set_value(quantidade)
+    at.run(timeout=timeout)  # o botão só habilita depois de a ação ser escolhida
+    botao = next(b for b in at.sidebar.button if b.label == ROTULO_ADICIONAR_A_CARTEIRA)
+    return botao.click().run(timeout=timeout)

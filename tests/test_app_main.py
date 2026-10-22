@@ -47,7 +47,7 @@ from avaliador_b3.ingest.cvm import CnpjNaoEncontrado
 from avaliador_b3.ingest.fundamentus import TickerNaoEncontrado
 from avaliador_b3.ingest.precos import TickerInvalido
 from avaliador_b3.screener import DeteccaoAnoCvmFalhouWarning, MacroIndisponivelWarning
-from tests.helpers_app import abrir_pagina
+from tests.helpers_app import abrir_pagina, adicionar_a_carteira
 
 # Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
 # execução (`ingest.cvm.resolver_ano_mais_recente_disponivel`), não é uma
@@ -3165,12 +3165,11 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
     abrir_pagina(at, TITULO_PAGINA_CARTEIRA)
     assert not at.exception
 
-    _aba_carteira(at).multiselect[0].set_value(["DOBR4", "SEMC3", "NEGA4"])
-    at.run(timeout=60)
-    at.number_input(key="investimento_DOBR4").set_value(1000.0)
-    at.number_input(key="investimento_SEMC3").set_value(300.0)
-    at.number_input(key="investimento_NEGA4").set_value(500.0)
-    at.run(timeout=60)
+    # Quantidades que dão os mesmos R$ de antes: 25 × R$ 40 = 1.000; 30 × R$ 10 = 300;
+    # 50 × R$ 10 = 500.
+    adicionar_a_carteira(at, "DOBR4", 25)
+    adicionar_a_carteira(at, "SEMC3", 30)
+    adicionar_a_carteira(at, "NEGA4", 50)
     assert not at.exception
     aba = _aba_carteira(at)
 

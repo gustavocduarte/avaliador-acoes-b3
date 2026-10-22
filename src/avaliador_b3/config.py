@@ -1564,6 +1564,27 @@ TOOLTIP_DIVERGENCIA_METODOS = (
 TEXTO_DIVERGENCIA_UM_METODO = "Só um método aplicável"
 TEXTO_DIVERGENCIA_NENHUM_METODO = "Nenhum método aplicável"
 
+# --- Simulador de carteira: montagem na barra lateral ---
+#
+# A carteira (ticker -> quantidade) fica em `CHAVE_CARTEIRA_POSICOES`, fora de qualquer widget,
+# para sobreviver a uma troca de página; as outras chaves são dos campos de montagem.
+CHAVE_CARTEIRA_POSICOES = "carteira_posicoes"
+CHAVE_CARTEIRA_ACAO = "carteira_acao"
+CHAVE_CARTEIRA_QUANTIDADE = "carteira_quantidade"
+CHAVE_CARTEIRA_REMOVER_PREFIXO = "carteira_remover_"
+ROTULO_CARTEIRA_ACAO = "Ação"
+TEXTO_CARTEIRA_ACAO_PLACEHOLDER = "Selecione uma ação..."
+ROTULO_CARTEIRA_QUANTIDADE = "Quantidade"
+QUANTIDADE_PADRAO_CARTEIRA = 100
+ROTULO_ADICIONAR_A_CARTEIRA = "Adicionar à carteira"
+ROTULO_REMOVER_POSICAO = "×"
+ROTULO_LIMPAR_CARTEIRA = "Limpar carteira"
+TEXTO_POSICAO_DA_CARTEIRA = "**{ticker}** × {quantidade}"
+TEXTO_POSICAO_SEM_COMBINADO = "sem valor combinado"
+TEXTO_POSICAO_FORA_DO_SCREENER = "fora do screener atual"
+TEXTO_AVISO_FORA_DO_SCREENER = "Fora do screener atual, sem entrar nas contas: {tickers}."
+TEXTO_CARTEIRA_VAZIA = "Adicione ações à carteira na barra lateral para simular."
+
 # --- Simulador de carteira: potencial sem prazo ---
 #
 # O valor justo (Graham, Bazin, FCD) é um valor de hoje: o Simulador mostra
