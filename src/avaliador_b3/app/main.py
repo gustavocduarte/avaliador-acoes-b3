@@ -93,6 +93,8 @@ from avaliador_b3.config import (
     JANELAS_HISTORICO_CARTEIRA,
     LARGURA_CARACTERE_ROTULO_BARRA,
     LARGURA_COLUNA_OBSERVACAO_RANKING,
+    LARGURA_MARGEM_COLUNA_SETOR,
+    LARGURA_PX_POR_CARACTERE_COLUNA_SETOR,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_BARRA_POTENCIAL,
     LIMITE_CARACTERES_OBSERVACAO_RANKING,
@@ -3110,9 +3112,21 @@ def _tabela_ranking_screener(tabela: pd.DataFrame) -> tuple[pd.io.formats.style.
     return estilo, colunas
 
 
-def _configuracao_colunas_ranking(colunas: list[str]) -> dict:
+def _largura_coluna_setor(tabela: pd.DataFrame) -> int | None:
+    """Largura (px) da coluna Setor: a do maior rótulo de setor da tabela inteira (não só das
+    linhas filtradas, para a coluna não mudar de largura ao filtrar); `None` sem a coluna."""
+    if "segmento_setorial" not in tabela.columns or tabela["segmento_setorial"].isna().all():
+        return None
+    maior = max(
+        len(_rotulo_segmento_setorial(s) or "") for s in tabela["segmento_setorial"].dropna()
+    )
+    return maior * LARGURA_PX_POR_CARACTERE_COLUNA_SETOR + LARGURA_MARGEM_COLUNA_SETOR
+
+
+def _configuracao_colunas_ranking(colunas: list[str], largura_setor: int | None = None) -> dict:
     """`column_config` do ranking: rótulo de cada coluna, o link do ticker, a explicação do
-    potencial, a largura da Observação e o alinhamento à direita dos percentuais em texto."""
+    potencial, a largura da Observação e do Setor e o alinhamento à direita dos percentuais em
+    texto."""
     configuracao: dict = {}
     for coluna in colunas:
         rotulo = ROTULO_COLUNAS_RANKING_SCREENER[coluna]
@@ -3125,6 +3139,8 @@ def _configuracao_colunas_ranking(colunas: list[str]) -> dict:
             configuracao[coluna] = st.column_config.Column(
                 rotulo, width=LARGURA_COLUNA_OBSERVACAO_RANKING
             )
+        elif coluna == "segmento_setorial" and largura_setor is not None:
+            configuracao[coluna] = st.column_config.Column(rotulo, width=largura_setor)
         elif coluna in COLUNAS_PERCENTUAL_EM_TEXTO_RANKING:
             configuracao[coluna] = st.column_config.TextColumn(rotulo, alignment="right")
         else:
@@ -3267,7 +3283,9 @@ def pagina_screener() -> None:
             st.dataframe(
                 tabela_ranking,
                 column_order=colunas_ranking,
-                column_config=_configuracao_colunas_ranking(colunas_ranking),
+                column_config=_configuracao_colunas_ranking(
+                    colunas_ranking, _largura_coluna_setor(tabela_screener)
+                ),
                 hide_index=True,
                 width="stretch",
             )

@@ -13,6 +13,7 @@ from avaliador_b3 import screener as screener_mod
 from avaliador_b3.app.main import (
     COLUNAS_TABELA_SCREENER,
     _configuracao_colunas_ranking,
+    _largura_coluna_setor,
     _tabela_ranking_screener,
 )
 from avaliador_b3.screener import COLUNAS_RESULTADO
@@ -352,3 +353,54 @@ def test_formas_minimas_gravadas_pela_rodada_passam_como_estao_e_juntam_so_o_com
             junto = _observacao_do_ranking(aviso, forma)
             assert junto.endswith(" · FCD não aplicável"), junto
             assert len(junto) <= limite and "…" not in junto
+
+
+def _tabela_com_setores(*setores) -> pd.DataFrame:
+    return pd.DataFrame(
+        {"ticker": [f"T{i}" for i in range(len(setores))], "segmento_setorial": setores}
+    )
+
+
+def test_largura_da_coluna_setor_vem_do_maior_rotulo_da_tabela_inteira():
+    maior = "Serv.Méd.Hospit..Análises e Diagnósticos"
+    tabela = _tabela_com_setores("Bancos", maior, None, "Exploração. Refino e Distribuição")
+
+    esperado = (
+        len(maior) * config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR
+        + config.LARGURA_MARGEM_COLUNA_SETOR
+    )
+    assert _largura_coluna_setor(tabela) == esperado
+
+
+def test_largura_da_coluna_setor_usa_o_rotulo_exibido_e_nao_o_do_dado():
+    # O dado traz "Exploração. Refino e Distribuição"; o exibido é "Exploração, Refino e ...".
+    tabela = _tabela_com_setores("Exploração. Refino e Distribuição")
+
+    assert _largura_coluna_setor(tabela) == (
+        len("Exploração, Refino e Distribuição") * config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR
+        + config.LARGURA_MARGEM_COLUNA_SETOR
+    )
+
+
+def test_largura_da_coluna_setor_cabe_o_maior_rotulo_com_folga_sobre_o_texto_medido():
+    # Na fonte da tabela o texto leva cerca de 6 px por caractere; a coluna usa mais que isso.
+    assert config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR >= 6.5
+    assert (
+        _largura_coluna_setor(_tabela_com_setores("Exploração. Refino e Distribuição")) > 33 * 6.5
+    )
+
+
+def test_sem_a_coluna_de_setor_ou_sem_nenhum_setor_nao_define_largura():
+    assert _largura_coluna_setor(pd.DataFrame({"ticker": ["A"]})) is None
+    assert _largura_coluna_setor(_tabela_com_setores(None, None)) is None
+
+
+def test_configuracao_aplica_a_largura_so_na_coluna_setor():
+    configuracao = _configuracao_colunas_ranking(COLUNAS_TABELA_SCREENER, largura_setor=333)
+
+    assert configuracao["segmento_setorial"]["width"] == 333
+    assert configuracao["segmento_setorial"]["label"] == "Setor"
+    assert configuracao["erro"]["width"] == config.LARGURA_COLUNA_OBSERVACAO_RANKING
+    assert (
+        "width" not in configuracao["preco_atual"] or configuracao["preco_atual"]["width"] is None
+    )

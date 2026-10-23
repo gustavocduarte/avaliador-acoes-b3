@@ -1531,6 +1531,10 @@ TEXTO_AJUDA_RANKING_SCREENER = (
 )
 # Largura (px) da coluna Observação do ranking: cabe o texto curto do aviso sem corte.
 LARGURA_COLUNA_OBSERVACAO_RANKING = 360
+# Largura (px) da coluna Setor: o maior rótulo de setor do screener, a PX_POR_CARACTERE por
+# caractere (folgado para a fonte da tabela) mais a margem das células.
+LARGURA_PX_POR_CARACTERE_COLUNA_SETOR = 7
+LARGURA_MARGEM_COLUNA_SETOR = 24
 SEPARADOR_OBSERVACAO_RANKING = " · "
 # Versões mínimas da Observação na tabela do Screener (os textos curto e completo seguem os de
 # sempre, nos tooltips, nos cartões e na página de análise): o FCD não aplicável sem valores nem
