@@ -1,6 +1,6 @@
 # Histórico de revisões
 
-Este documento reúne as auditorias, vistorias, baterias de testes, correções e revisões de código feitas no projeto entre 18/09/2026 e 06/10/2026 (com o tratamento da última, concluído em 19/10/2026). O processo foi o mesmo em todas: um achado aponta um problema, o problema é confirmado no código antes de qualquer correção, a correção sai com teste e o resultado é registrado aqui. As decisões de metodologia do modelo (o que calcular e como) estão em [`decisoes-de-metodologia.md`](decisoes-de-metodologia.md); as limitações que ficaram para quem usa o app estão em [`limitacoes-conhecidas.md`](limitacoes-conhecidas.md).
+Este documento reúne as auditorias, vistorias, baterias de testes, correções e revisões de código feitas no projeto entre 18/09/2026 e 06/10/2026 (com o tratamento da última, concluído em 19/10/2026), mais o registro do redesenho do app e do catálogo enxuto de 20 a 23/10/2026. O processo foi o mesmo em todas: um achado aponta um problema, o problema é confirmado no código antes de qualquer correção, a correção sai com teste e o resultado é registrado aqui. As decisões de metodologia do modelo (o que calcular e como) estão em [`decisoes-de-metodologia.md`](decisoes-de-metodologia.md); as limitações que ficaram para quem usa o app estão em [`limitacoes-conhecidas.md`](limitacoes-conhecidas.md).
 
 ## Como ler
 
@@ -54,6 +54,7 @@ As investigações de 02/10 a 04/10 (P03/P04, P10, fluxo-base e cíclicas) estã
 | 05/10 | Auditoria externa | Leitura de um ZIP do projeto | Média/alta | 844 a 1216 |
 | 05/10 | Revisão de código | Leitura e reprodução | Média/alta | 1216 a 1302 |
 | 06/10 | Revisão de código | Leitura e reprodução | Alta | 1317 a 1372 |
+| 20 a 23/10 | Redesenho, FCD ≤ 0 e catálogo enxuto | Mudança de produto, com defeitos achados no caminho | n/a | 1372 a 1724 |
 
 ---
 
@@ -269,3 +270,26 @@ Sem ação adicional: travas contra duas rodadas locais simultâneas (cada rodad
 
 - **Zip ausente sem validade permanente.** Sem o zip no disco, o cache derivado vale o mesmo prazo (30 dias para ano fechado, 7 para o ano corrente), contado pela data do zip guardada no próprio cache. Sem essa data, o cache não vale (`8a7aaa9`).
 - **Fechamento não positivo descartado na origem.** `ingest/precos.py` descarta o fechamento zero ou negativo junto com o vazio, o que protege todos os consumidores do histórico, inclusive os gráficos. A troca de ±inf por `NaN` em `comportamento.py` e `correlacao.py` continua como defesa (`a3aaf2d`). A regra vale também para o petróleo: um preço negativo de futuro, como o do WTI em abril de 2020, seria descartado.
+
+## 20 a 23/10/2026: redesenho das três páginas, FCD ≤ 0 e catálogo enxuto
+
+**Escopo.** Não foi uma auditoria: foi uma sequência de mudanças de produto, cada uma com um commit por assunto, testes e conferência na tela antes de commitar. A suíte foi de 1372 para 1724 testes, com `ruff` e `mypy` limpos em cada commit.
+
+**O que mudou.**
+
+- **Redesenho (de `e30028b` a `a0519b9`).** Tema escuro com os tokens de cor no `config.py`; as abas deram lugar a três páginas com menu e controles na barra lateral (`e7c4090`); a análise passou a ter cartões, gráfico de valor justo por método e grade de saúde financeira; o Screener ganhou filtros, quatro cartões, a distribuição do potencial, os cartões "Atenção" e o "Ranking por potencial", cujo ticker abre a análise por `?acao=` (`2284297`); o Simulador passou a montar a carteira por quantidade, com cenários, contribuição, composição por ação e por setor, posições e histórico contra IPCA e CDI (`010bd57` a `ea5c440`).
+- **FCD ≤ 0 como não aplicável (`9fcdb76`).** Decisão D, na seção 4.2 de [`decisoes-de-metodologia.md`](decisoes-de-metodologia.md). Em 21/10, 13 das 76 ações mudaram: a GOAU4 foi de −110% para −15% de potencial e a RDOR3, de −35% para +4%.
+- **Catálogo enxuto (`f23ed45`, `20aac99`, `14e1ad6`, `6065119`, `e897ca0`).** A rodada do screener grava `data/processed/catalogo_emissores.csv` (ticker, CNPJ e segmento), e a página de análise o lê antes da API da B3. A primeira abertura da análise caiu de cerca de 86 s para cerca de 24 s (medido localmente; só a busca do CNPJ e do segmento foi de 64 s para 0,02 s).
+
+**Defeitos achados no caminho.**
+
+| Defeito | Como apareceu | Correção |
+|---|---|---|
+| Página de análise caía quando a ação não tinha segmento | Sem a lista do Ibovespa e sem o setor no catálogo, o texto das pílulas ficava vazio e o `st.html("")` levantava erro | A faixa só é desenhada quando há pílula (`6eaf8e6`) |
+| Linha do CDI reta no gráfico do histórico | Conferência na tela: com "2 anos" a linha ficava em R$ 7.444 do começo ao fim. As datas de preço do Yahoo vêm com fuso (UTC) e as do Banco Central, sem. O `reindex` não casava nenhuma data e o `fillna(1.0)` escondia o erro | As datas passam a ser comparadas sem fuso, e sem nenhuma taxa nas datas o CDI some em vez de virar linha reta (`ea5c440`) |
+| Teste que passava sem verificar nada | Os dados falsos dos testes do histórico usavam datas sem fuso, então a suíte passava com o CDI quebrado | Os dados falsos passaram a usar datas em UTC, e há testes com valores realistas (252 dias úteis a 0,0551% ao dia dão cerca de +14,9%) (`ea5c440`) |
+| Observação do Screener cortada na coluna de 360 px | O texto curto do FCD não aplicável (com parcelas e valores) tinha de 124 a 148 caracteres, e os das ações sem método passavam de 400 | Versão mínima só na tabela, limite de 56 caracteres e teste de que todo texto fixo cabe (`a0519b9`) |
+| `.gitignore` bloquearia o catálogo enxuto | Notado ao gerar o arquivo localmente: `data/processed/*` é ignorado, então o `git add` do workflow recusaria o arquivo e o `git status` não o enxergaria | Exceção no `.gitignore`, com teste que cobre os três arquivos do commit automático (`6065119`) |
+| Checagem de mudança do workflow ignorava arquivo novo | O `git diff --quiet` não vê arquivo ainda fora do git, e o catálogo seria descartado num dia sem mudança no `screener.csv` | Troca por `git status --porcelain` nos dois arquivos, com teste de texto do `.yml` (`f23ed45`) |
+| Testes podiam ler o catálogo enxuto do repositório | Com o arquivo versionado, qualquer teste da página o leria no lugar do dublê | O `conftest.py` aponta o caminho do catálogo para uma pasta temporária em cada teste (`20aac99`) |
+| Segmento setorial com ponto no texto | A API da B3 devolve "Exploração. Refino e Distribuição" com ponto | Dicionário no `config.py` troca o texto só na exibição (`6403ce8`) |

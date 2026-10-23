@@ -85,7 +85,7 @@ As tabelas por empresa (fluxos ano a ano de oito empresas, comparações das 76 
 
 - **Problema (CONFIRMADO).** O Simulador tratava o valor justo de hoje como preço daqui a 5 anos (o prazo era o horizonte de projeção do FCD, sem relação com o tempo que o mercado levaria para convergir) e deflacionava esse valor pelo IPCA. O valor justo já está em reais de hoje. No exemplo da LREN3 no cenário base, o Simulador mostrava "ganho real" de R$ 4.132 sobre R$ 10.000, enquanto o mesmo valor justo crescendo à inflação dava R$ 7.379 em reais de hoje.
 - **Alternativas.** **A:** manter prazo e taxa, com prazo e crescimento escolhidos pelo usuário. **B:** potencial sem prazo, sem taxa anual e sem "ganho real". **C:** retorno total estimado (dividendos mais crescimento mais convergência amortizada em N anos).
-- **Decisão.** **Opção B** (`9bea4c6`; textos alinhados em `c878f10`). O piso de −100% (valor justo ≤ 0 conta como perda total) continua (`15ca3c9`).
+- **Decisão.** **Opção B** (`9bea4c6`; textos alinhados em `c878f10`). O piso de −100% (valor justo ≤ 0 conta como perda total) continua (`15ca3c9`). O histórico da carteira acrescentado depois (`ea5c440`) só lê o passado e não muda a decisão: os cenários seguem sem prazo.
 - **Por quê.** O Simulador mistura métodos com fragilidades diferentes: o FCD sai extremo em 16 de 70 ações e o Bazin é um preço teto, não uma estimativa de valor. Acrescentar prazo, crescimento e dividendos (A e C) multiplica as premissas sobre insumos frágeis e dá precisão falsa. A B remove os três problemas confirmados (prazo arbitrário, inflação sobre valor de hoje e dividendos ausentes) sem inventar um substituto. A C depende de dividend yield constante (proventos extraordinários) e de uma regra à parte para valor justo ≤ 0. A **A** fica como evolução opcional.
 
 ---
@@ -145,7 +145,7 @@ Os itens 4.1 a 4.4 foram decididos juntos, porque dependem do mesmo dado novo: o
   - **Por quê não B e C.** B deixa um número negativo na tela e a leitura do cartão ficaria incoerente com o combinado. C inventa um valor (zero) que o modelo não calculou e é a limitação que a decisão anterior descartou.
   - **Limitação (viés para cima).** O combinado das empresas afetadas passa a vir só de Graham e/ou Bazin, que tendem a ser mais otimistas nas empresas muito alavancadas: no `screener.csv` de 21/10/2026, o potencial da GOAU4 foi de −110% para −15% e o da RDOR3, de −35% para +4%. Quando o FCD era o único método (AURE3, HAPV3, CSAN3 e MRVE3), não há combinado.
   - **Melhoria futura.** Avaliar holdings (Cosan, Itaúsa, Simpar) pela soma das partes (SOTP), que o modelo consolidado não faz.
-  - **Textos.** Versão completa (legenda do gráfico) e curta (Observação do Screener e tooltips) em `config.py`; o Screener grava a versão curta na coluna "Observação" e, nas ações sem nenhum método, uma linha por método.
+  - **Textos.** Versão completa (legenda do gráfico) e curta (Observação do Screener e tooltips) em `config.py`; o Screener grava a versão curta na coluna "Observação" e, nas ações sem nenhum método, uma linha por método. A tabela da página mostra uma versão mínima, para caber na coluna de 360 px ("FCD não aplicável: dívidas superam o valor da empresa" e "Nenhum método se aplica"), e o texto completo continua na legenda do gráfico e na página de análise.
 
 ### 4.3 Patrimônio nos pesos do WACC (pergunta 15)
 

@@ -278,7 +278,7 @@ A pasta `docs/` tem três documentos. O processo é sempre o mesmo: um achado (d
 
 - [`limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md): as limitações dos modelos e dos dados, para quem usa o app.
 - [`decisoes-de-metodologia.md`](docs/decisoes-de-metodologia.md): o problema, as alternativas, a decisão, o porquê e os commits de cada mudança no modelo (valor do acionista e bancos, fluxo de caixa, número de ações, crescimento, prêmio de risco, risco sacado, empresas cíclicas), mais o que ficou decidido e ainda não foi implementado.
-- [`historico-de-revisoes.md`](docs/historico-de-revisoes.md): as auditorias, vistorias, baterias de testes, correções e revisões de código de 18/09 a 06/10/2026, com a gravidade dos achados, como foram resolvidos e os commits.
+- [`historico-de-revisoes.md`](docs/historico-de-revisoes.md): as auditorias, vistorias, baterias de testes, correções e revisões de código de 18/09 a 06/10/2026, mais o registro do redesenho e do catálogo enxuto de 20 a 23/10/2026, com a gravidade dos achados, como foram resolvidos e os commits.
 
 Os relatórios originais foram consolidados nesses dois últimos documentos e continuam no histórico do Git; cada um traz o comando para recuperá-los.
 
