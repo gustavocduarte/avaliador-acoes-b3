@@ -1407,6 +1407,8 @@ CORRECOES_EXIBICAO_SEGMENTO_SETORIAL = {
     "Motores . Compressores e Outros": "Motores, Compressores e Outros",
     "Tecidos. Vestuário e Calçados": "Tecidos, Vestuário e Calçados",
 }
+# Cabeçalho da análise: larguras relativas do ticker com o nome e das pílulas de setor.
+PROPORCAO_CABECALHO_ANALISE = [3, 2]
 # Gráfico "Histórico de dividendos por ano": o ano corrente, incompleto, leva asterisco.
 ROTULO_ANO_PARCIAL = "{ano}*"
 NOTA_DIVIDENDOS_ANO_PARCIAL = (

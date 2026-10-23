@@ -40,7 +40,7 @@ def test_acao_valida_na_url_e_buscada_no_lugar_da_padrao(monkeypatch):
     at = _abrir("vale3")
 
     assert at.sidebar.selectbox[0].value == "VALE3"
-    assert _subtitulos(at) == ["VALE3"]  # a busca automática da PETR4 não acontece
+    assert _subtitulos(at) == ["VALE3 · VALE S.A."]  # a busca automática da PETR4 não acontece
     assert not _avisos_da_url(at)
 
 
@@ -60,7 +60,7 @@ def test_acao_invalida_na_url_avisa_e_abre_a_pagina_como_sem_parametro(monkeypat
     avisos = _avisos_da_url(at)
     assert len(avisos) == 1
     assert "A ação “XYZW9” do endereço não foi encontrada no Ibovespa" in avisos[0]
-    assert _subtitulos(at) == ["PETR4"]  # a abertura normal, com a ação padrão
+    assert _subtitulos(at) == ["PETR4 · PETROBRAS"]  # a abertura normal, com a ação padrão
     assert "acao" not in at.query_params
 
 
@@ -102,6 +102,6 @@ def test_sem_o_parametro_a_abertura_continua_com_a_acao_padrao(monkeypatch):
 
     at = _abrir(None)
 
-    assert _subtitulos(at) == ["PETR4"]
+    assert _subtitulos(at) == ["PETR4 · PETROBRAS"]
     assert not _avisos_da_url(at)
     assert TITULO_PAGINA_ANALISAR  # a página de análise é a padrão, na raiz

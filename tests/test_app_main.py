@@ -343,7 +343,7 @@ def test_primeira_abertura_pre_seleciona_e_busca_petr4_automaticamente(monkeypat
     # ... e a busca já rodou sozinha nesse mesmo carregamento, sem precisar
     # clicar em "Buscar" — confirmado pelo subheader com o ticker, que só
     # aparece depois de `if buscar and ticker:` em app/main.py.
-    assert any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
     assert at.session_state["busca_inicial_automatica_feita"] is True
 
 
@@ -356,7 +356,7 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
     at = AppTest.from_file(CAMINHO_APP)
     at.run(timeout=60)
-    assert any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
 
     # Trocar a ação selecionada, sozinho, não deve disparar nova busca
     # automática — a flag em session_state já foi consumida na abertura.
@@ -367,8 +367,8 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
 
     assert not at.exception
     assert at.selectbox[0].value == "VALE3"
-    assert not any(subheader.value == "PETR4" for subheader in at.subheader)
-    assert not any(subheader.value == "VALE3" for subheader in at.subheader)
+    assert not any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
+    assert not any(subheader.value == "VALE3 · VALE S.A." for subheader in at.subheader)
 
     # Só depois do clique manual em "Buscar" é que a busca de VALE3 roda —
     # fluxo 100% manual de novo, igual a antes da mudança.
@@ -376,7 +376,7 @@ def test_depois_da_busca_automatica_fluxo_volta_a_ser_100_por_cento_manual(monke
     botao_buscar.click().run(timeout=60)
 
     assert not at.exception
-    assert any(subheader.value == "VALE3" for subheader in at.subheader)
+    assert any(subheader.value == "VALE3 · VALE S.A." for subheader in at.subheader)
 
 
 # --- Histórico "vazio mas sem exceção" vira erro tratado (_buscar_historico) -

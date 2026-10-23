@@ -143,7 +143,7 @@ def test_blocos_fora_da_analise_tem_so_o_link():
 def test_a_pagina_padrao_e_a_analise_com_resultado_de_exemplo():
     at = _app_aberto()
 
-    assert any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
     assert _tem_caixa_da_acao(at)
 
 
@@ -168,7 +168,7 @@ def test_acao_e_resultado_continuam_valendo_ao_trocar_de_pagina_e_voltar():
     at = _app_aberto()
     at.selectbox[0].select("VALE3").run(timeout=60)
     next(b for b in at.button if b.label == "Buscar").click().run(timeout=60)
-    assert any(subheader.value == "VALE3" for subheader in at.subheader)
+    assert any(subheader.value == "VALE3 · VALE S.A." for subheader in at.subheader)
 
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
     abrir_pagina(at, TITULO_PAGINA_CARTEIRA)
@@ -176,8 +176,8 @@ def test_acao_e_resultado_continuam_valendo_ao_trocar_de_pagina_e_voltar():
 
     assert not at.exception
     assert at.sidebar.selectbox[0].value == "VALE3"
-    assert any(subheader.value == "VALE3" for subheader in at.subheader)
-    assert not any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert any(subheader.value == "VALE3 · VALE S.A." for subheader in at.subheader)
+    assert not any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
 
 
 def test_acao_digitada_no_texto_livre_tambem_e_mantida(monkeypatch):
@@ -234,7 +234,7 @@ def test_abrir_pagina_mostra_um_elemento_caracteristico_de_cada_pagina():
     at = AppTest.from_file(app.CAMINHO_APP)
 
     abrir_pagina(at, TITULO_PAGINA_ANALISAR)
-    assert any(subheader.value == "PETR4" for subheader in at.subheader)
+    assert any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
 
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
     assert any("Ranking por potencial" in h.proto.body for h in at.get("html"))
@@ -311,4 +311,15 @@ def test_na_analise_o_ticker_continua_abaixo_do_titulo_da_pagina():
     at = _app_aberto()
 
     assert _titulo_grande(at) == [TITULO_PAGINA_ANALISAR]
-    assert [s.value for s in at.subheader] == ["PETR4"]
+    assert [s.value for s in at.subheader] == ["PETR4 · PETROBRAS"]
+
+
+def test_na_analise_as_pilulas_ficam_na_linha_do_ticker_e_nao_acima_dele():
+    at = _app_aberto()
+
+    linha = [c for c in at.columns if any(e.type == "subheader" for e in c)]
+    assert len(linha) == 1 and [e.value for e in linha[0] if e.type == "subheader"] == [
+        "PETR4 · PETROBRAS"
+    ]
+    pilula = [h for h in at.get("html") if 'class="ab-pilula"' in h.proto.body]
+    assert len(pilula) == 1

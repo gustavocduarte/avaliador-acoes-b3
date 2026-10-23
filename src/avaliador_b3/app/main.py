@@ -124,6 +124,7 @@ from avaliador_b3.config import (
     POTENCIAL_MINIMO_FILTRO_MAXIMO,
     POTENCIAL_MINIMO_FILTRO_PASSO,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
+    PROPORCAO_CABECALHO_ANALISE,
     QUANTIDADE_PADRAO_CARTEIRA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
     ROTULO_ADICIONAR_A_CARTEIRA,
@@ -1608,6 +1609,7 @@ _CSS_DA_PAGINA = Template("""<style>
 .ab-corr-pos { left: 50%; background: $principal; }
 .ab-corr-neg { right: 50%; background: $principal; }
 .ab-pilulas { display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 .75rem; }
+@media (min-width: 640px) { .ab-pilulas { justify-content: flex-end; margin-top: .75rem; } }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
 </style>""").substitute(
@@ -1720,8 +1722,6 @@ def pagina_analisar() -> None:
         st.session_state[CHAVE_TICKER_GUARDADO] = ticker
 
         buscar_clicado = st.button("Buscar")
-    # Preenchido depois da busca, quando o segmento setorial já foi obtido.
-    espaco_pilulas = st.container()
 
     # Dispara a busca automaticamente só na primeira abertura da sessão,
     # equivalente a já ter clicado em "Buscar" uma vez — marca a flag em
@@ -1819,7 +1819,21 @@ def pagina_analisar() -> None:
                 ) = _buscar_fcf_fcd(cnpj, ano_fcd_mais_recente)
             leitura_balanco = _buscar_leitura_balanco(cnpj, indicadores, ticker) if cnpj else None
 
-        st.subheader(ticker)
+        linha_listagem = (
+            universo_ibovespa[universo_ibovespa["ticker"] == ticker]
+            if universo_ibovespa is not None
+            else None
+        )
+        segmento_listagem = nome_empresa = None
+        if linha_listagem is not None and not linha_listagem.empty:
+            segmento_listagem = linha_listagem.iloc[0]["segmento_listagem"]
+            nome_empresa = linha_listagem.iloc[0]["nome"]
+        # Ticker e nome à esquerda, pílulas de setor e governança à direita (abaixo, se estreito).
+        coluna_titulo, coluna_pilulas = st.columns(PROPORCAO_CABECALHO_ANALISE, gap="small")
+        coluna_titulo.subheader(f"{ticker} · {nome_empresa}" if nome_empresa else ticker)
+        html_pilulas = _html_pilulas(segmento_setorial, segmento_listagem)
+        if html_pilulas:  # st.html não aceita texto vazio
+            coluna_pilulas.html(html_pilulas)
         # Números de destaque: preenchido mais abaixo, quando o valor combinado já existe.
         painel_destaque = st.container(border=True, key="painel_destaque")
 
@@ -2006,21 +2020,6 @@ def pagina_analisar() -> None:
         )
         with painel_destaque:
             st.html(f'<div class="ab-kpis">{"".join(cartoes_destaque)}</div>')
-
-        linha_listagem = (
-            universo_ibovespa[universo_ibovespa["ticker"] == ticker]
-            if universo_ibovespa is not None
-            else None
-        )
-        segmento_listagem = (
-            linha_listagem.iloc[0]["segmento_listagem"]
-            if linha_listagem is not None and not linha_listagem.empty
-            else None
-        )
-        with espaco_pilulas:
-            html_pilulas = _html_pilulas(segmento_setorial, segmento_listagem)
-            if html_pilulas:  # st.html não aceita texto vazio
-                st.html(html_pilulas)
 
         proporcao_reinvestimento = None
         selos_valor_justo: list[tuple[str, str]] = []
