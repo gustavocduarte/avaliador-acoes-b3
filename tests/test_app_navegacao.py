@@ -14,6 +14,7 @@ from avaliador_b3.config import (
     CHAVE_BARRA_SCREENER,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_RODAPE_APP_DORMINDO,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
@@ -209,6 +210,18 @@ def test_rodape_sem_arquivo_de_referencia_mostra_so_o_link(monkeypatch):
     textos = [e.value for e in (*at.sidebar.caption, *at.sidebar.markdown)]
     assert not any("Screener atualizado em" in texto for texto in textos)
     assert any(URL_REPOSITORIO in texto for texto in textos)
+
+
+@pytest.mark.parametrize(
+    "titulo", [TITULO_PAGINA_ANALISAR, TITULO_PAGINA_SCREENER, TITULO_PAGINA_CARTEIRA]
+)
+def test_rodape_de_toda_pagina_diz_o_tempo_da_primeira_abertura_com_o_catalogo_enxuto(titulo):
+    at = abrir_pagina(_app_aberto(), titulo)
+
+    legendas = [c.value for c in at.caption]
+    assert TEXTO_RODAPE_APP_DORMINDO in legendas
+    assert "cerca de 25 segundos" in TEXTO_RODAPE_APP_DORMINDO
+    assert not any("1 minuto" in legenda for legenda in legendas)
 
 
 def test_abrir_pagina_mostra_um_elemento_caracteristico_de_cada_pagina():

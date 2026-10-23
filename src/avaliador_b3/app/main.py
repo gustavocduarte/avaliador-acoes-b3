@@ -226,6 +226,7 @@ from avaliador_b3.config import (
     TEXTO_POSICAO_SEM_COMBINADO,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
+    TEXTO_RODAPE_APP_DORMINDO,
     TEXTO_RODAPE_LINK_REPOSITORIO,
     TEXTO_RODAPE_SCREENER_ATUALIZADO,
     TEXTO_RODAPE_SCREENER_SEM_DATA,
@@ -4199,8 +4200,4 @@ _bloco_barra_carteira = _blocos_barra[CHAVE_BARRA_CARTEIRA]
 pagina_atual.run()
 _rodape_da_barra_lateral()
 
-st.caption(
-    'Hospedado no Streamlit Community Cloud — se o app estiver "dormindo", '
-    "vai aparecer uma tela pedindo um clique pra acordar; depois disso, "
-    "leva cerca de 1 minuto pra carregar."
-)
+st.caption(TEXTO_RODAPE_APP_DORMINDO)

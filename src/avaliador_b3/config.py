@@ -1460,6 +1460,12 @@ TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL = (
     "O resultado salvo do screener não traz o segmento setorial: rode o screener de novo "
     "para comparar com as ações do mesmo setor."
 )
+# Rodapé de todas as páginas: o app dormindo no Cloud e o tempo da primeira abertura (com o
+# catálogo enxuto, cerca de 25 s; o catálogo completo da B3 levava cerca de 1 minuto a mais).
+TEXTO_RODAPE_APP_DORMINDO = (
+    'Hospedado no Streamlit Community Cloud — se o app estiver "dormindo", vai aparecer uma tela '
+    "pedindo um clique pra acordar; depois disso, a primeira abertura leva cerca de 25 segundos."
+)
 TEXTO_RODAPE_LINK_REPOSITORIO = "Código no GitHub"
 TEXTO_RODAPE_SELIC = "Selic de referência {selic}"
 TEXTO_RODAPE_SCREENER_SEM_DATA = "Screener atualizado pelo workflow"
