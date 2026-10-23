@@ -95,6 +95,7 @@ from avaliador_b3.config import (
     LARGURA_CARACTERE_ROTULO_BARRA,
     LARGURA_COLUNA_OBSERVACAO_RANKING,
     LARGURA_MARGEM_COLUNA_SETOR,
+    LARGURA_MINIMA_LISTA_SELECAO_PX,
     LARGURA_PX_POR_CARACTERE_COLUNA_SETOR,
     LEGENDA_REINVESTIMENTO_CAPEX,
     LIMITE_BARRA_POTENCIAL,
@@ -1612,6 +1613,8 @@ _CSS_DA_PAGINA = Template("""<style>
 @media (min-width: 640px) { .ab-pilulas { justify-content: flex-end; margin-top: .75rem; } }
 .ab-pilula { padding: .1rem .75rem; border: 1px solid $borda; border-radius: 999px;
   font-size: .78rem; color: $secundario; }
+/* A lista aberta das caixas de seleção cabe o maior rótulo, mesmo passando da barra lateral. */
+[data-testid="stSelectboxVirtualDropdown"] { min-width: ${largura_lista}px; }
 </style>""").substitute(
     painel=COR_FUNDO_PAINEL,
     secundario=COR_TEXTO_SECUNDARIO,
@@ -1621,6 +1624,7 @@ _CSS_DA_PAGINA = Template("""<style>
     positivo=COR_POSITIVO,
     negativo=COR_NEGATIVO,
     alerta=COR_ALERTA,
+    largura_lista=LARGURA_MINIMA_LISTA_SELECAO_PX,
 )
 
 

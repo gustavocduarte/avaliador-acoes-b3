@@ -413,3 +413,16 @@ def test_configuracao_aplica_a_largura_so_na_coluna_setor():
     assert (
         "width" not in configuracao["preco_atual"] or configuracao["preco_atual"]["width"] is None
     )
+
+
+def test_lista_aberta_das_caixas_de_selecao_cabe_o_maior_rotulo_de_setor():
+    from avaliador_b3.app.main import _CSS_DA_PAGINA
+
+    maior = max(len(r) for r in config.CORRECOES_EXIBICAO_SEGMENTO_SETORIAL.values())
+    assert config.LARGURA_MINIMA_LISTA_SELECAO_PX >= (
+        maior * config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR + config.LARGURA_MARGEM_COLUNA_SETOR
+    )
+    assert (
+        f'[data-testid="stSelectboxVirtualDropdown"] {{ min-width: '
+        f"{config.LARGURA_MINIMA_LISTA_SELECAO_PX}px; }}"
+    ) in _CSS_DA_PAGINA
