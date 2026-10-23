@@ -1,6 +1,7 @@
 from pathlib import Path
 
-WORKFLOW = Path(__file__).parent.parent / ".github" / "workflows" / "atualiza-screener.yml"
+RAIZ = Path(__file__).parent.parent
+WORKFLOW = RAIZ / ".github" / "workflows" / "atualiza-screener.yml"
 ARQUIVOS = ("screener.csv", "catalogo_emissores.csv", "macro_referencia.json")
 
 
@@ -27,3 +28,12 @@ def test_a_checagem_de_mudanca_enxerga_o_catalogo_mesmo_sendo_arquivo_novo():
     checagem = next(linha for linha in passo.splitlines() if "git status --porcelain" in linha)
     assert "data/processed/screener.csv" in checagem
     assert "data/processed/catalogo_emissores.csv" in checagem
+
+
+def test_o_gitignore_libera_os_arquivos_que_o_commit_automatico_adiciona():
+    # `data/processed/*` é ignorado; sem a exceção, o `git add` do workflow recusa o arquivo.
+    linhas = (RAIZ / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "data/processed/*" in linhas
+    for arquivo in ARQUIVOS:
+        assert f"!data/processed/{arquivo}" in linhas

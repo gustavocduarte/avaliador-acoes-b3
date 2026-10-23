@@ -19,6 +19,9 @@ data/processed/*
 # Idem para a Selic/IPCA da última rodada aceita, último recurso do macro no Cloud
 # (ver CAMINHO_MACRO_REFERENCIA em config.py).
 !data/processed/macro_referencia.json
+# Catálogo enxuto de emissores da última rodada aceita (CNPJ e segmento de cada ação), lido pela
+# página de análise para não baixar o catálogo da B3 quando o app acorda.
+!data/processed/catalogo_emissores.csv
 # Rodada em andamento e rodada rejeitada pela checagem (ver rodar_screener).
 data/processed/screener.csv.novo
 data/processed/screener.rejeitado.csv
