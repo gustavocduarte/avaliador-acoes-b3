@@ -1401,6 +1401,11 @@ TEXTO_AJUDA_INDICADORES_AUSENTES = (
 # Só para exibir: a API da B3 devolve o segmento com este texto; dado e cache seguem iguais.
 CORRECOES_EXIBICAO_SEGMENTO_SETORIAL = {
     "Exploração. Refino e Distribuição": "Exploração, Refino e Distribuição",
+    "Serv.Méd.Hospit..Análises e Diagnósticos": (
+        "Serviços Médico-Hospitalares, Análises e Diagnósticos"
+    ),
+    "Motores . Compressores e Outros": "Motores, Compressores e Outros",
+    "Tecidos. Vestuário e Calçados": "Tecidos, Vestuário e Calçados",
 }
 # Gráfico "Histórico de dividendos por ano": o ano corrente, incompleto, leva asterisco.
 ROTULO_ANO_PARCIAL = "{ano}*"

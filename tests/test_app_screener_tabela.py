@@ -362,14 +362,23 @@ def _tabela_com_setores(*setores) -> pd.DataFrame:
 
 
 def test_largura_da_coluna_setor_vem_do_maior_rotulo_da_tabela_inteira():
-    maior = "Serv.Méd.Hospit..Análises e Diagnósticos"
-    tabela = _tabela_com_setores("Bancos", maior, None, "Exploração. Refino e Distribuição")
+    dado_bruto = "Serv.Méd.Hospit..Análises e Diagnósticos"
+    maior = "Serviços Médico-Hospitalares, Análises e Diagnósticos"
+    tabela = _tabela_com_setores("Bancos", dado_bruto, None, "Exploração. Refino e Distribuição")
 
     esperado = (
         len(maior) * config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR
         + config.LARGURA_MARGEM_COLUNA_SETOR
     )
     assert _largura_coluna_setor(tabela) == esperado
+
+
+def test_largura_da_coluna_setor_cobre_o_rotulo_exibido_de_todo_segmento_corrigido():
+    for dado, exibido in config.CORRECOES_EXIBICAO_SEGMENTO_SETORIAL.items():
+        assert _largura_coluna_setor(_tabela_com_setores(dado)) == (
+            len(exibido) * config.LARGURA_PX_POR_CARACTERE_COLUNA_SETOR
+            + config.LARGURA_MARGEM_COLUNA_SETOR
+        )
 
 
 def test_largura_da_coluna_setor_usa_o_rotulo_exibido_e_nao_o_do_dado():
