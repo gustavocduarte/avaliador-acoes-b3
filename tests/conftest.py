@@ -75,6 +75,9 @@ def _isolar_cache_de_disco(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bcb_sgs, "_caminho_macro_referencia", lambda: tmp_path / "macro_referencia.json"
     )
+    # O catálogo enxuto versionado do repositório nunca entra num teste: cada um parte do
+    # arquivo ausente (e grava o seu, se quiser, neste caminho).
+    monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "catalogo_emissores.csv")
 
 
 _DIRETORIOS_PROTEGIDOS = (config.DATA_RAW_DIR, config.DATA_PROCESSED_DIR)

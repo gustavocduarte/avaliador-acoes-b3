@@ -44,6 +44,7 @@ import pandas as pd
 import requests
 
 from avaliador_b3.config import (
+    COLUNAS_CATALOGO_ENXUTO,
     DATA_RAW_DIR,
     DELAY_PAGINACAO_B3_SEGUNDOS,
     DIAS_VALIDADE_CACHE_CATALOGO_EMISSORES_B3,
@@ -224,6 +225,34 @@ def resolver_cnpj(ticker: str, catalogo: pd.DataFrame) -> dict:
         "nome_empresa": linha["nome_empresa"],
         "segmento_setorial": linha["segmento_setorial"],
     }
+
+
+def ler_catalogo_enxuto(caminho: Path) -> pd.DataFrame | None:
+    """Catálogo enxuto gravado pela rodada do screener (ticker, CNPJ e segmento setorial), ou
+    `None` se o arquivo não existir ou estiver inválido."""
+    if not caminho.exists():
+        return None
+    catalogo = ler_csv_cache(caminho, COLUNAS_CATALOGO_ENXUTO, dtype=str, keep_default_na=False)
+    if catalogo is None:
+        return None
+    catalogo["cnpj"] = catalogo["cnpj"].apply(
+        lambda v: _completar_zeros(v, TAMANHO_CNPJ) if v.strip() else ""
+    )
+    return catalogo
+
+
+def buscar_no_catalogo_enxuto(ticker: str, catalogo: pd.DataFrame | None) -> dict | None:
+    """CNPJ e segmento setorial do ticker no catálogo enxuto, ou `None` se não estiver nele
+    (ou estiver com CNPJ ou segmento vazio) e for preciso buscar no catálogo completo."""
+    if catalogo is None:
+        return None
+    linhas = catalogo[catalogo["ticker"] == ticker]
+    if linhas.empty:
+        return None
+    linha = linhas.iloc[0]
+    if not linha["cnpj"].strip() or not linha["segmento_setorial"].strip():
+        return None
+    return {"cnpj": linha["cnpj"], "segmento_setorial": linha["segmento_setorial"]}
 
 
 def resolver_segmentos_setoriais(tickers: list[str], catalogo: pd.DataFrame) -> pd.DataFrame:

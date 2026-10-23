@@ -47,6 +47,7 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
+    CAMINHO_CATALOGO_EMISSORES,
     CHAVE_BARRA_ANALISAR,
     CHAVE_BARRA_CARTEIRA,
     CHAVE_BARRA_RODAPE,
@@ -233,6 +234,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
+    TEXTO_SPINNER_CATALOGO_COMPLETO,
     TEXTO_TOTAL_DAS_POSICOES,
     TEXTO_ULTIMO_DADO_GPR,
     TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO,
@@ -309,6 +311,8 @@ from avaliador_b3.ingest.bcb_sgs import (
 )
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
+    buscar_no_catalogo_enxuto,
+    ler_catalogo_enxuto,
     obter_catalogo_emissores,
     resolver_cnpj,
     resolver_segmentos_setoriais,
@@ -537,14 +541,24 @@ def _buscar_dividendos(ticker: str) -> tuple[pd.DataFrame | None, str | None]:
         return None, str(erro)
 
 
+def _emissor_do_ticker(ticker: str) -> dict:
+    """CNPJ e segmento setorial do ticker: primeiro no catálogo enxuto que a rodada do screener
+    versiona (`data/processed/catalogo_emissores.csv`); só se o ticker não estiver nele, ou o
+    arquivo faltar, no catálogo completo da B3 (36 páginas da API). Levanta
+    `EmissorNaoEncontrado` se o ticker não tiver emissor correspondente."""
+    emissor = buscar_no_catalogo_enxuto(ticker, ler_catalogo_enxuto(CAMINHO_CATALOGO_EMISSORES))
+    if emissor is not None:
+        return emissor
+    with st.spinner(TEXTO_SPINNER_CATALOGO_COMPLETO):
+        return resolver_cnpj(ticker, obter_catalogo_emissores())
+
+
 def _buscar_cnpj(ticker: str) -> tuple[str | None, str | None]:
-    """CNPJ da empresa via crosswalk ticker -> catálogo de emissores da
-    B3 (`ingest.crosswalk_cnpj`) — usado pra buscar dados da CVM
-    (`_buscar_fcf_fcd` abaixo). `EmissorNaoEncontrado` (ticker sem emissor
-    correspondente no catálogo) vira o par `(None, motivo)`."""
+    """CNPJ da empresa via crosswalk ticker -> catálogo de emissores da B3 (`_emissor_do_ticker`)
+    — usado pra buscar dados da CVM (`_buscar_fcf_fcd` abaixo). `EmissorNaoEncontrado` (ticker
+    sem emissor correspondente no catálogo) vira o par `(None, motivo)`."""
     try:
-        catalogo = obter_catalogo_emissores()
-        return resolver_cnpj(ticker, catalogo)["cnpj"], None
+        return _emissor_do_ticker(ticker)["cnpj"], None
     except EmissorNaoEncontrado as erro:
         return None, str(erro)
 
@@ -555,8 +569,7 @@ def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
     não confundir com o segmento de LISTAGEM (Novo Mercado/N1/N2) mostrado
     em "Governança" mais abaixo."""
     try:
-        catalogo = obter_catalogo_emissores()
-        return resolver_cnpj(ticker, catalogo)["segmento_setorial"], None
+        return _emissor_do_ticker(ticker)["segmento_setorial"], None
     except EmissorNaoEncontrado as erro:
         return None, str(erro)
 
