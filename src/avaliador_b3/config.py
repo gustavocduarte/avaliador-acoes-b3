@@ -1380,12 +1380,13 @@ AVISO_FCD_FECHAMENTO_ALTO = "Não é necessariamente uma oportunidade."
 # Vocabulário do "Potencial" (valor justo ÷ preço − 1) na tela: rótulo da
 # coluna e tooltips do Screener, da comparação setorial e dos cartões de
 # Valor Justo. A coluna `desconto_percentual` do CSV mantém o nome.
-# Subtítulo do app, logo abaixo do título.
+# Marca do app (topo da barra lateral), título da aba do navegador e, em cada página, a linha
+# que diz o que ela faz e o aviso de que os valores são estimativas.
 TITULO_APP = "Avaliador de Ações da B3"
-SUBTITULO_APP = (
-    "Valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
-    "comparado ao preço atual. Estimativas de modelos com premissas simplificadas, para "
-    "estudo — não é recomendação de investimento."
+TITULO_ABA_NAVEGADOR = "{pagina} · Avaliador B3"
+TEXTO_AVISO_ESTIMATIVAS = (
+    "Estimativas de modelos com premissas simplificadas, para estudo — não é recomendação de "
+    "investimento."
 )
 # Nomes dos métodos como aparecem na tela (o CSV do screener guarda "graham,bazin,fcd").
 NOMES_METODOS = {"graham": "Graham", "bazin": "Bazin", "fcd": "FCD"}
@@ -1447,6 +1448,19 @@ LIMITE_SINAL_INDICADOR = 0.0
 TITULO_PAGINA_ANALISAR = "Analisar uma ação"
 TITULO_PAGINA_SCREENER = "Screener"
 TITULO_PAGINA_CARTEIRA = "Simulador de carteira"
+DESCRICOES_DAS_PAGINAS = {
+    TITULO_PAGINA_ANALISAR: (
+        "Valor justo de uma ação do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
+        "comparado ao preço atual."
+    ),
+    TITULO_PAGINA_SCREENER: (
+        "A mesma avaliação para todo o Ibovespa, com filtros, distribuição do potencial e ranking."
+    ),
+    TITULO_PAGINA_CARTEIRA: (
+        "Monte uma carteira com a quantidade de cada ação e veja o potencial nos cenários e o "
+        "histórico dela comparado à inflação e ao CDI."
+    ),
+}
 ICONE_PAGINA_ANALISAR = ":material/search:"
 ICONE_PAGINA_SCREENER = ":material/table_chart:"
 ICONE_PAGINA_CARTEIRA = ":material/account_balance_wallet:"

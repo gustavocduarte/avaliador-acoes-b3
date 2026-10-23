@@ -1,6 +1,8 @@
 """Navegação por barra lateral: as três páginas, a padrão, a caixa da ação só na análise, a ação
 mantida ao trocar de página e o rodapé."""
 
+import re
+
 import pandas as pd
 import pytest
 import streamlit as st
@@ -12,9 +14,13 @@ from avaliador_b3.config import (
     CHAVE_BARRA_CARTEIRA,
     CHAVE_BARRA_RODAPE,
     CHAVE_BARRA_SCREENER,
+    DESCRICOES_DAS_PAGINAS,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_AVISO_ESTIMATIVAS,
     TEXTO_RODAPE_APP_DORMINDO,
+    TITULO_ABA_NAVEGADOR,
+    TITULO_APP,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
@@ -262,3 +268,47 @@ def test_texto_de_abertura_do_simulador_fala_da_montagem_por_quantidade():
     assert "valor investido em cada ação" not in TEXTO_ABERTURA_SIMULADOR
     # Não repete a descrição da página nem a instrução do aviso "Adicione ações…".
     assert "Monte" not in TEXTO_ABERTURA_SIMULADOR
+
+
+TITULOS_DAS_PAGINAS = [TITULO_PAGINA_ANALISAR, TITULO_PAGINA_SCREENER, TITULO_PAGINA_CARTEIRA]
+
+
+def _titulo_grande(at) -> list[str]:
+    return [
+        re.sub(r"<[^>]+>", "", e.proto.body)
+        for e in at.get("html")
+        if 'class="ab-app-titulo"' in e.proto.body
+    ]
+
+
+@pytest.mark.parametrize("titulo", TITULOS_DAS_PAGINAS)
+def test_titulo_grande_e_o_da_pagina_aberta_com_o_que_ela_faz_e_o_aviso_abaixo(titulo):
+    at = abrir_pagina(_app_aberto(), titulo)
+
+    assert not at.exception
+    assert _titulo_grande(at) == [titulo]
+    # Descrição e aviso vêm numa legenda só, logo abaixo do título e antes do resto da página.
+    assert at.caption[0].value == (f"{DESCRICOES_DAS_PAGINAS[titulo]}  \n{TEXTO_AVISO_ESTIMATIVAS}")
+
+
+def test_o_nome_do_app_e_a_marca_no_topo_da_barra_lateral_sem_link_e_nao_o_titulo_grande():
+    at = _app_aberto()
+
+    htmls = [e.proto.body for e in at.sidebar.get("html")]
+    marca = [h for h in htmls if "ab-app-marca" in h]
+    assert len(marca) == 1 and TITULO_APP in marca[0] and "<a " not in marca[0]
+    assert TITULO_APP not in _titulo_grande(at)
+    assert "ab-app-marca" in htmls[0]  # antes dos blocos das páginas
+
+
+def test_toda_pagina_do_menu_tem_descricao_e_o_titulo_da_aba_leva_o_nome_do_app():
+    assert set(DESCRICOES_DAS_PAGINAS) == set(TITULOS_DAS_PAGINAS)
+    for titulo in TITULOS_DAS_PAGINAS:
+        assert TITULO_ABA_NAVEGADOR.format(pagina=titulo) == f"{titulo} · Avaliador B3"
+
+
+def test_na_analise_o_ticker_continua_abaixo_do_titulo_da_pagina():
+    at = _app_aberto()
+
+    assert _titulo_grande(at) == [TITULO_PAGINA_ANALISAR]
+    assert [s.value for s in at.subheader] == ["PETR4"]

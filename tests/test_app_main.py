@@ -29,9 +29,9 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3.config import (
     ANOS_JANELA_CORRELACAO,
+    DESCRICOES_DAS_PAGINAS,
     LEGENDA_REINVESTIMENTO_CAPEX,
     MOTIVO_RECEITA_SEM_DRE,
-    SUBTITULO_APP,
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_FIRMA_SEM_COMPONENTES,
@@ -3215,9 +3215,14 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
     assert "Calculado com a quantidade de cada ação montada na barra lateral" in cabecalho
 
     # Sem prazo, taxa anual nem ganho real.
-    textos = [c.value for c in aba.caption] + [m.value for m in aba.markdown]
+    # O IPCA só não pode aparecer nos textos dos cenários (que não deflacionam); a descrição da
+    # página cita a inflação por causa do histórico.
+    descricao = DESCRICOES_DAS_PAGINAS[TITULO_PAGINA_CARTEIRA]
+    textos = [c.value for c in aba.caption if not c.value.startswith(descricao)]
+    textos += [m.value for m in aba.markdown]
     for proibido in ("ao ano", "Ganho real", "CAGR", "IPCA", " anos"):
         assert not any(proibido in texto for texto in textos), proibido
+    assert any(c.value.startswith(descricao) for c in aba.caption)
     # Nenhum seletor de prazo nos cenários; o único seletor é o do período do histórico (passado).
     assert [p.key for p in aba.pills] == ["periodo_historico_carteira"]
     assert not any("ganho_real" in df.value.columns for df in aba.dataframe)
@@ -3346,24 +3351,7 @@ def test_pagina_sem_aviso_de_unit_quando_a_leitura_nao_traz(monkeypatch):
     ]
 
 
-# --- Acabamento da tela: subtítulo, nomes dos métodos e gráfico de dividendos ---------------
-
-
-def test_subtitulo_do_app_diz_ibovespa_e_nao_promete_cenarios_nos_cartoes(monkeypatch):
-    _preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
-
-    at = AppTest.from_file(CAMINHO_APP)
-    at.run(timeout=60)
-
-    assert not at.exception
-    legendas = [c.value for c in at.caption]
-    assert SUBTITULO_APP in legendas
-    assert SUBTITULO_APP == (
-        "Valor justo das ações do Ibovespa por Graham, Bazin e fluxo de caixa descontado (FCD), "
-        "comparado ao preço atual. Estimativas de modelos com premissas simplificadas, para "
-        "estudo — não é recomendação de investimento."
-    )
-    assert "nunca como um número único" not in SUBTITULO_APP
+# --- Acabamento da tela: nomes dos métodos e gráfico de dividendos -----------------------------
 
 
 def test_metodos_utilizados_aparecem_com_os_nomes_da_tela(monkeypatch):

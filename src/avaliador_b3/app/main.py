@@ -80,6 +80,7 @@ from avaliador_b3.config import (
     COR_TEXTO_SECUNDARIO,
     CORES_ACOES_CARTEIRA,
     CORRECOES_EXIBICAO_SEGMENTO_SETORIAL,
+    DESCRICOES_DAS_PAGINAS,
     FAIXA_POTENCIAL_LARGURA,
     FAIXA_POTENCIAL_LIMITE,
     FOLGA_ROTULO_BARRA,
@@ -159,7 +160,6 @@ from avaliador_b3.config import (
     SEPARADORES_NUMERICOS_GRAFICO,
     SEQUENCIA_CORES_SERIES,
     SERIES_BCB_SGS,
-    SUBTITULO_APP,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_ACAO_DA_URL_INVALIDA,
@@ -172,6 +172,7 @@ from avaliador_b3.config import (
     TEXTO_AJUDA_POTENCIAL_DO_TOTAL,
     TEXTO_AJUDA_RANKING_SCREENER,
     TEXTO_AJUDA_TRADINGVIEW,
+    TEXTO_AVISO_ESTIMATIVAS,
     TEXTO_AVISO_FORA_DO_SCREENER,
     TEXTO_BUSCANDO_HISTORICO,
     TEXTO_CARTAO_SEM_METODO,
@@ -257,6 +258,7 @@ from avaliador_b3.config import (
     TEXTO_ULTIMO_DADO_GPR,
     TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO,
     TICKER_PETROLEO_BRENT,
+    TITULO_ABA_NAVEGADOR,
     TITULO_APP,
     TITULO_ATENCAO,
     TITULO_CARTAO_SEM_METODO,
@@ -1519,6 +1521,11 @@ _CSS_DA_PAGINA = Template("""<style>
 /* Cabeçalho do app: título menor, divisória fina e menos espaço no topo da página. */
 [data-testid="stMainBlockContainer"] { padding-top: 4rem; }
 .ab-app-titulo { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+/* Marca do app no topo da barra lateral: só texto, sem link. */
+.ab-app-marca { font-size: 1.05rem; font-weight: 700; line-height: 1.2;
+  padding: .25rem .25rem .1rem; }
+/* O ticker da página de análise fica abaixo do título da página. */
+[data-testid="stHeading"] h3 { font-size: 1.25rem; }
 .ab-app-divisoria { border-top: 1px solid $borda; margin: .25rem 0 .5rem; }
 /* Limites "mín." e "máx." do slider do potencial: o valor atual já diz se há filtro. */
 [class*="st-key-barra_"] [data-testid="stSliderTickBar"] { display: none; }
@@ -1613,12 +1620,6 @@ _CSS_DA_PAGINA = Template("""<style>
     negativo=COR_NEGATIVO,
     alerta=COR_ALERTA,
 )
-
-st.set_page_config(page_title="Avaliador B3 (protótipo)", page_icon="📈", layout="wide")
-# Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
-st.html(_CSS_DA_PAGINA)
-st.html(f'<div class="ab-app-titulo">{escape(TITULO_APP)}</div>')
-st.caption(SUBTITULO_APP)
 
 
 def _ler_acao_da_url() -> str | None:
@@ -4129,7 +4130,6 @@ def pagina_carteira() -> None:
 # precisa clicar pra acordar o container (confirmado contra a documentação
 # oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
 # Sem esse aviso, o clique extra pareceria um link quebrado.
-st.html('<div class="ab-app-divisoria"></div>')
 
 
 def _rodape_da_barra_lateral() -> None:
@@ -4184,6 +4184,17 @@ _ROTULOS_DO_MENU = [
 ]
 # Menu próprio (um bloco por página), no lugar do menu padrão do Streamlit.
 pagina_atual = st.navigation(list(_paginas.values()), position="hidden")
+# Fora de uma execução do Streamlit (importação nos testes) a página não tem título.
+_titulo_da_pagina_atual = getattr(pagina_atual, "title", TITULO_PAGINA_ANALISAR)
+# O título da aba é o da página aberta, por isso a configuração vem depois do menu.
+st.set_page_config(
+    page_title=TITULO_ABA_NAVEGADOR.format(pagina=_titulo_da_pagina_atual),
+    page_icon="📈",
+    layout="wide",
+)
+# Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
+st.html(_CSS_DA_PAGINA)
+st.sidebar.html(f'<div class="ab-app-marca">{escape(TITULO_APP)}</div>')
 _blocos_barra: dict[str, DeltaGenerator] = {}
 for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_MENU, strict=True):
     _ativa = _pagina is pagina_atual
@@ -4197,6 +4208,10 @@ for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_ME
 _bloco_barra_analisar = _blocos_barra[CHAVE_BARRA_ANALISAR]
 _bloco_barra_screener = _blocos_barra[CHAVE_BARRA_SCREENER]
 _bloco_barra_carteira = _blocos_barra[CHAVE_BARRA_CARTEIRA]
+# Cabeçalho: o título é o da página aberta; abaixo, o que ela faz e o aviso de estimativas.
+st.html(f'<div class="ab-app-titulo">{escape(_titulo_da_pagina_atual)}</div>')
+st.caption(f"{DESCRICOES_DAS_PAGINAS[_titulo_da_pagina_atual]}  \n{TEXTO_AVISO_ESTIMATIVAS}")
+st.html('<div class="ab-app-divisoria"></div>')
 pagina_atual.run()
 _rodape_da_barra_lateral()
 
