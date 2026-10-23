@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
 from avaliador_b3.app.main import (
     _fmt_potencial,
@@ -14,7 +15,7 @@ from avaliador_b3.app.main import (
     _html_linha_correlacao,
     _html_tabela_setorial,
 )
-from avaliador_b3.config import LIMITE_BARRA_POTENCIAL
+from avaliador_b3.config import LIMITE_BARRA_POTENCIAL, TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL
 from avaliador_b3.screener import COLUNAS_RESULTADO
 from tests import test_app_main as app
 
@@ -104,6 +105,7 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
     def linha(ticker, preco, valor, potencial):
         return base | {
             "ticker": ticker,
+            "segmento_setorial": "Mineração" if ticker == "VALE3" else SEGMENTO,
             "preco_atual": preco,
             "valor_combinado": valor,
             "desconto_percentual": potencial,
@@ -122,16 +124,6 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
         lambda *a, **k: app._catalogo_emissores_vazio(),
     )
     monkeypatch.setattr(
-        "avaliador_b3.ingest.crosswalk_cnpj.resolver_segmentos_setoriais",
-        lambda tickers, catalogo: pd.DataFrame(
-            {
-                "ticker": list(tickers),
-                "segmento_setorial": [SEGMENTO if t != "VALE3" else "Mineração" for t in tickers],
-            }
-        ),
-    )
-
-    monkeypatch.setattr(
         "avaliador_b3.ingest.bcb_sgs.carregar_macro_referencia",
         lambda: {"selic_meta": 0.1475, "data_busca": pd.Timestamp("2026-10-19")},
     )
@@ -149,6 +141,97 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
     assert "+13,5%" in html and "-30,0%" in html
     # A tabela antiga (st.dataframe) saiu do painel.
     assert not any("desconto_percentual" in df.value.columns for df in at.dataframe)
+
+
+def _preparar_comparacao_sem_catalogo(monkeypatch, tmp_path, colunas_extras=True):
+    """Screener salvo com o segmento de cada ação, o catálogo enxuto só com a PETR4 e o
+    catálogo completo da B3 trocado por um dublê que falha se for chamado."""
+    app._preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "erro": "",
+        "aviso_desconto_extremo": "",
+        "metodos_utilizados": "graham",
+    }
+    linhas = [
+        base
+        | {
+            "ticker": "PETR4",
+            "preco_atual": 58.0,
+            "valor_combinado": 65.82,
+            "desconto_percentual": 13.5,
+            "segmento_setorial": SEGMENTO,
+        },
+        base
+        | {
+            "ticker": "BRAV3",
+            "preco_atual": 20.0,
+            "valor_combinado": 14.0,
+            "desconto_percentual": -30.0,
+            "segmento_setorial": SEGMENTO,
+        },
+        base
+        | {
+            "ticker": "VALE3",
+            "preco_atual": 60.0,
+            "valor_combinado": 90.0,
+            "desconto_percentual": 50.0,
+            "segmento_setorial": "Mineração",
+        },
+    ]
+    colunas = (
+        COLUNAS_RESULTADO
+        if colunas_extras
+        else [c for c in COLUNAS_RESULTADO if c != "segmento_setorial"]
+    )
+    caminho = tmp_path / "screener.csv"
+    pd.DataFrame(linhas, columns=colunas).to_csv(caminho, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
+    config.CAMINHO_CATALOGO_EMISSORES.write_text(
+        f'ticker,cnpj,segmento_setorial\nPETR4,33000167000101,"{SEGMENTO}"\n',
+        encoding="utf-8",
+    )
+
+    def catalogo_proibido(*args, **kwargs):
+        raise AssertionError("o catálogo completo da B3 não deveria ser buscado")
+
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores", catalogo_proibido
+    )
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.bcb_sgs.carregar_macro_referencia",
+        lambda: {"selic_meta": 0.1475, "data_busca": pd.Timestamp("2026-10-19")},
+    )
+
+
+def test_comparacao_setorial_agrupa_pela_coluna_do_screener_sem_buscar_o_catalogo(
+    monkeypatch, tmp_path
+):
+    _preparar_comparacao_sem_catalogo(monkeypatch, tmp_path)
+
+    at = AppTest.from_file(app.CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    tabelas = [e.proto.body for e in at.get("html") if "<table" in e.proto.body]
+    assert len(tabelas) == 1
+    assert re.search(r'<tr class="ab-linha-destaque"><td>PETR4</td>', tabelas[0])
+    assert "BRAV3" in tabelas[0] and "VALE3" not in tabelas[0]
+    assert f"Segmento setorial (B3): {SEGMENTO}" in [c.value for c in at.caption]
+    assert not any("Catálogo de emissores" in aviso.value for aviso in at.warning)
+
+
+def test_screener_salvo_sem_a_coluna_de_segmento_avisa_em_vez_de_buscar_o_catalogo(
+    monkeypatch, tmp_path
+):
+    _preparar_comparacao_sem_catalogo(monkeypatch, tmp_path, colunas_extras=False)
+
+    at = AppTest.from_file(app.CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    assert not any("<table" in e.proto.body for e in at.get("html"))
+    assert TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL in [i.value for i in at.info]
 
 
 def _resultado_corr(valor, observacoes=500):

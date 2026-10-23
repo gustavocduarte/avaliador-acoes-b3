@@ -223,6 +223,7 @@ from avaliador_b3.config import (
     TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
+    TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL,
     TEXTO_SELECIONE_PERIODO_HISTORICO,
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
@@ -315,7 +316,6 @@ from avaliador_b3.ingest.crosswalk_cnpj import (
     ler_catalogo_enxuto,
     obter_catalogo_emissores,
     resolver_cnpj,
-    resolver_segmentos_setoriais,
 )
 from avaliador_b3.ingest.cvm import (
     CnpjNaoEncontrado,
@@ -2592,24 +2592,15 @@ def pagina_analisar() -> None:
                     'Rode o screener primeiro na página "Screener"',
                 )
                 if tabela_screener_setor is not None:
-                    try:
-                        catalogo_setorial = obter_catalogo_emissores()
-                    except Exception as erro:
-                        st.warning(f"Catálogo de emissores da B3: {erro}")
+                    if "segmento_setorial" not in tabela_screener_setor.columns:
+                        st.info(TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL)
                     else:
-                        # Resolve o segmento setorial de cada ticker do screener já
-                        # salvo (dado local, sem nova busca de rede além do catálogo
-                        # já cacheado) pra achar os pares do mesmo setor da ação
-                        # buscada. Os números da tabela (preço, valor combinado,
-                        # potencial) vêm direto do screener — não são recalculados.
-                        segmentos_screener = resolver_segmentos_setoriais(
-                            list(tabela_screener_setor["ticker"]), catalogo_setorial
-                        )
-                        tickers_do_setor = segmentos_screener[
-                            segmentos_screener["segmento_setorial"] == segmento_setorial
-                        ]["ticker"]
+                        # Os pares do mesmo setor vêm da coluna segmento_setorial do
+                        # screener salvo, sem catálogo nem rede. Os números da tabela
+                        # (preço, valor combinado, potencial) também vêm dele, não são
+                        # recalculados.
                         tabela_pares = tabela_screener_setor[
-                            tabela_screener_setor["ticker"].isin(tickers_do_setor)
+                            tabela_screener_setor["segmento_setorial"] == segmento_setorial
                         ]
                         if tabela_pares.empty:
                             st.info(
