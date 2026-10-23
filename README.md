@@ -33,7 +33,7 @@ flowchart LR
         ING --> CALC --> CHK
     end
 
-    CSV[("screener.csv<br/>versionado")]
+    CSV[("screener.csv e<br/>catalogo_emissores.csv<br/>versionados")]
     APP["App Streamlit<br/>Community Cloud"]
     REJ["Rodada rejeitada:<br/>mantém o CSV anterior<br/>e a execução falha"]
 
@@ -50,7 +50,8 @@ flowchart LR
 - **Checagem que impede publicar rodada ruim:** a rodada só substitui o `screener.csv` se tiver ao menos uma linha, uma linha por ação, no máximo 5 ações sem preço, no máximo 5 com falha de fonte, nenhum valor não finito (`NaN` ou infinito) e, quando o universo vem do Ibovespa, ao menos 60 ações; senão vira `screener.rejeitado.csv`, o resultado anterior fica e a execução do workflow falha.
 - **Gravação atômica:** o screener, os caches em disco e os zips da CVM são gravados num arquivo temporário de nome único por escritor e trocados no fim, então uma falha no meio, ou duas gravações simultâneas, nunca corrompem o arquivo anterior. O screener é publicado na ordem referência macro (`macro_referencia.json`) e depois CSV: se a publicação falhar no meio, o CSV anterior fica intacto.
 - **Cache versionado por schema:** cada cache em disco leva a versão do formato, e uma mudança de formato invalida os arquivos antigos; os zips da CVM expiram em 7 dias (ano em preenchimento) ou 30 dias (anos fechados), e os resultados derivados deles (fluxo de caixa, lucro e balanço) são refeitos quando o zip de origem muda ou vence.
-- **Testes sem rede:** mais de 1.300 testes, com **97% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
+- **Abertura mais rápida:** a primeira abertura da página de análise caiu de cerca de 86 s para cerca de 24 s ao trocar a busca do catálogo completo da B3 (36 páginas da API) por um catálogo enxuto gravado pelo pipeline (`data/processed/catalogo_emissores.csv`, versionado, com CNPJ e segmento de cada ação do screener). **Medido localmente**, com a PETR4 e o cache vazio: só a busca do CNPJ e do segmento foi de 64 s para 0,02 s. Uma ação fora do universo do screener ainda espera cerca de 1 minuto, e o spinner avisa.
+- **Testes sem rede:** mais de 1.700 testes, com **98% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
 - **Tipagem e CI:** `mypy` e `ruff` em todo o código, e um workflow que roda testes, lint, formatação e tipos a cada push e pull request.
 - **Decisões registradas:** cada mudança de metodologia passa por uma investigação só de leitura, com relatório que separa o confirmado nos dados da hipótese, e as decisões ficam em [`docs/decisoes-de-metodologia.md`](docs/decisoes-de-metodologia.md).
 
@@ -73,30 +74,37 @@ O escopo é só o das ações do Ibovespa (as principais da B3): fundos imobili�
   desconta pelo WACC (ver a metodologia abaixo).
 - **Combinado** — média simples só dos métodos que se aplicam àquela ação.
 
-O dashboard tem três páginas, escolhidas no menu da barra lateral (a caixa de seleção da ação e o
-botão Buscar ficam na barra lateral, na página de análise; o rodapé mostra a data da última
-atualização do screener e o link do repositório). As capturas de tela ficam para a etapa final
-do redesenho.
+O dashboard tem três páginas, escolhidas no menu da barra lateral. Cada página põe os seus
+controles na própria barra lateral (a ação e o botão Buscar, os filtros do Screener ou a montagem
+da carteira), e o rodapé mostra a data da última atualização do screener e o link do repositório.
 
 - **Analisar uma ação** — valor justo pelos três métodos e o combinado contra o
   preço atual, saúde financeira (ROE, margem, dívida, valor de mercado e de
   firma), governança, comportamento da ação (volume, volatilidade, Beta),
-  preço contra o Ibovespa, histórico de dividendos, **Comparação setorial** e
-  correlação com fatores externos (petróleo, câmbio e risco geopolítico).
-- **Screener** — a mesma avaliação para todo o Ibovespa, com
-  potencial, divergência entre métodos, avisos e a proporção do caixa
-  operacional reinvestida. O resultado fica salvo em
+  preço contra o Ibovespa, histórico de dividendos, **Comparação setorial** (as ações
+  do mesmo segmento, pelo `screener.csv`) e correlação com fatores externos (petróleo,
+  câmbio e risco geopolítico). A página também abre direto numa ação por `?acao=TICKER`, o
+  link que o ticker do Screener usa.
+- **Screener** — a mesma avaliação para todo o Ibovespa. A barra lateral tem os filtros (setor,
+  potencial mínimo, exigir método e esconder as ações sem valor combinado), e a página traz
+  cartões de resumo, a distribuição do potencial, os cartões "Atenção" (potencial extremo e ações
+  sem nenhum método) e o "Ranking por potencial", com divergência entre métodos, dividendos contra
+  o histórico, proporção do caixa operacional reinvestida e uma coluna "Observação". Clicar no
+  ticker abre a análise da ação. O resultado fica salvo em
   `data/processed/screener.csv` (versionado, para o app publicado ter dados
   desde o primeiro acesso) e é atualizado pelo workflow agendado. O arquivo traz o segmento
   setorial de cada ação (coluna `segmento_setorial`), que a página lê sem buscar o catálogo da B3.
-  O botão
-  "Rodar screener agora" só aparece com o opt-in explícito
+  O botão "Rodar screener agora" só aparece com o opt-in explícito
   (`AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), descrito em "Instalação, execução e testes".
-- **Simulador de carteira** — dado um valor investido por ação, mostra o
-  potencial da carteira nos cenários pessimista (menor valor entre os métodos
-  aplicáveis), base (valor combinado) e otimista (maior valor), a partir do
-  resultado já salvo do screener. É potencial sem prazo: o valor justo é um
-  valor de hoje, não uma previsão de retorno anual.
+- **Simulador de carteira** — a carteira é montada na barra lateral, com a **quantidade** de cada
+  ação, a partir do resultado já salvo do screener. A página mostra o valor investido, o valor
+  justo, o potencial e a concentração; os cenários pessimista (menor valor entre os métodos
+  aplicáveis), base (valor combinado) e otimista (maior valor); a contribuição de cada ação; a
+  composição por ação e por setor; a tabela de posições; e o **histórico de 1, 2 ou 5 anos** da
+  carteira (com as proporções de hoje, sem rebalancear) contra o IPCA e o CDI. Os cenários são
+  potencial sem prazo: o valor justo é um valor de hoje, não uma previsão de retorno anual. O
+  histórico é desempenho passado, com preços ajustados por dividendos e desdobramentos, e
+  também não é previsão.
 
 ![Simulador de carteira: valor investido por ação e potencial nos cenários pessimista, base e otimista](docs/img/simulador.png)
 
@@ -136,7 +144,8 @@ do redesenho.
   operação, ou a empresa vive de dividendos de participações); capex não identificado; fluxo
   de caixa livre do ano de referência zero ou negativo; empresa sem dados de fluxo de caixa na
   CVM; número de ações indisponível; WACC não positivo; valor por ação zero ou negativo (as
-  deduções passam o valor da empresa), com o motivo na tela e no Screener, sem zerar o valor.
+  deduções passam o valor da empresa). Nesses casos o FCD fica não aplicável, com o motivo na tela e no
+  Screener, o valor combinado usa só os métodos positivos e nenhum valor negativo aparece.
 - **Aviso de valor extremo:** quando o FCD é a partir de 3 vezes o preço ou positivo mas até
   10% do preço, o cartão do FCD mostra a causa provável nas entradas do modelo
   (deduções perto do valor da empresa, crescimento no teto ou no piso da faixa, perpetuidade
@@ -148,13 +157,17 @@ A justificativa de cada constante está em `src/avaliador_b3/config.py`.
 
 | Fonte | Para quê |
 |---|---|
-| Yahoo Finance (`yfinance`) | preços, dividendos, Ibovespa (Beta), petróleo e câmbio |
+| Yahoo Finance (`yfinance`) | preços, dividendos, Ibovespa (Beta), petróleo e câmbio, e o histórico ajustado da carteira |
 | Fundamentus | indicadores (LPA, VPA, ROE, margem, dívida líquida) e número de ações |
 | CVM (dados abertos) | fluxo de caixa (DFP/ITR), balanço consolidado e composição do capital |
-| B3 | universo do Ibovespa, catálogo de emissores (CNPJ e segmento setorial) |
-| Banco Central (SGS) | Selic meta (série 432), IPCA mensal (433) e câmbio (série 1) |
+| B3 | universo do Ibovespa e catálogo de emissores (CNPJ e segmento setorial), do qual o app lê o catálogo enxuto versionado |
+| Banco Central (SGS) | Selic meta (série 432), IPCA mensal (433), câmbio (série 1) e CDI diário (série 12) |
 | IBGE (SIDRA) | IPCA mensal, terceira fonte do IPCA |
 | GPR (Caldara e Iacoviello) | índice de risco geopolítico |
+
+A página de análise lê o CNPJ e o segmento de `data/processed/catalogo_emissores.csv`, regravado a
+cada rodada aceita do screener; só a ação que não está nele espera cerca de 1 minuto pelo
+catálogo completo da B3.
 
 A Selic e o IPCA seguem uma cadeia de fontes: API REST do Banco Central,
 serviço SOAP do Banco Central, IBGE (só o IPCA), o último valor obtido com
@@ -233,7 +246,7 @@ ruff format --check src tests
 python -m mypy
 ```
 
-Relatório de cobertura (hoje, 97%):
+Relatório de cobertura (hoje, 98%):
 
 ```bash
 pytest --cov --cov-report=term-missing:skip-covered
@@ -245,7 +258,7 @@ Os testes não acessam a rede e não gravam em `data/`.
 
 O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions, o "Atualiza o screener" (`.github/workflows/atualiza-screener.yml`). Ele roda **de segunda a sexta às 19:17 de Brasília** (22:17 UTC, depois do fechamento da B3; o GitHub pode atrasar a execução em alguns minutos) e também pode ser **disparado manualmente**. A cada execução faz a rodada completa e publica o resultado como arquivo da execução (artifact).
 
-- **Quando commita:** só quando a rodada é aceita e o `screener.csv` ou o `catalogo_emissores.csv` mudou (num feriado, por exemplo, não muda e nada é commitado). Aí grava o `screener.csv`, o `catalogo_emissores.csv` (catálogo enxuto de emissores: ticker, CNPJ e segmento, que a página de análise lê no lugar do catálogo de 36 páginas da B3) e o `macro_referencia.json` no `master`, com autor `github-actions[bot]` e mensagem "Atualiza o screener (rodada de AAAA-MM-DD)"; o corpo do commit traz o resumo da rodada.
+- **Quando commita:** só quando a rodada é aceita e o `screener.csv` ou o `catalogo_emissores.csv` mudou (num feriado, por exemplo, não muda e nada é commitado). Aí grava o `screener.csv`, o `catalogo_emissores.csv` (catálogo enxuto de emissores: ticker, CNPJ e segmento, que a página de análise lê no lugar do catálogo de 36 páginas da B3) e o `macro_referencia.json` no `master`, com autor `github-actions[bot]` e mensagem "Atualiza o screener (rodada de AAAA-MM-DD)"; o corpo do commit traz o resumo da rodada. O catálogo só substitui o anterior se cobrir todas as ações da rodada; se vier incompleto, o anterior é mantido (sem anterior, grava o que houver) e o resumo lista os tickers que faltaram.
 - **Quando falha:** se a rodada é rejeitada pela checagem ou termina com exceção, a execução fica em **falha** (vermelha na aba Actions; o GitHub avisa por e-mail conforme as notificações de quem mantém o agendamento) e nada é commitado, então o screener anterior continua valendo. Os arquivos da rodada, inclusive o `screener.rejeitado.csv`, continuam disponíveis como artifact.
 - **Sincronizar:** como o workflow commita no `master`, convém rodar `git pull` antes de começar a trabalhar.
 - **Agendamento parado:** em repositório público, o GitHub desliga os agendamentos depois de 60 dias sem atividade no repositório; para reativar, use a aba Actions.
