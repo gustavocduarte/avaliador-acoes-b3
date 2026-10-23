@@ -137,9 +137,11 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tinha FCD acima de 3 vezes o preç
   Em 04/10/2026, a API do Banco Central estava fora do ar, e a Selic de 13,75% e o IPCA de 4,2235% (referência 08/2026) vieram do serviço SOAP.
   - *Efeito:* com o valor guardado ou o de referência, a Selic pode estar desatualizada se o Copom mudou a meta nesse intervalo.
   - *Na tela:* quando o dado não vem da API do Banco Central, a página informa a fonte, e quando vem do valor guardado ou do arquivo de referência, mostra um aviso com a data. Se nenhuma fonte responde e não há valor aceitável, o FCD não é calculado.
-- **A página "Analisar uma ação" espera cerca de 1 minuto pelo catálogo de emissores da B3 quando o app acorda no Cloud.** O catálogo (`data/raw/b3/catalogo_emissores.csv`, 36 páginas da API) não é versionado, e o disco do Cloud é apagado quando o app dorme; sem ele, a página não acha o CNPJ nem o segmento da ação. Medido em 21/10/2026: 62 s sem cache e 0,17 s com cache.
-  - *Na tela:* a busca fica em "Buscando dados…" por cerca de 1 minuto no primeiro acesso depois de o app acordar.
-  - *Melhoria futura:* o workflow do screener gravar um catálogo enxuto (ticker, CNPJ e segmento) em `data/processed`, versionado, para o app ler sem buscar as 36 páginas. A página do Screener já não depende do catálogo: lê o segmento da coluna `segmento_setorial` do `screener.csv`.
+- **A página "Analisar uma ação" só espera cerca de 1 minuto pelo catálogo de emissores da B3 para uma ação fora do universo do screener.** O catálogo completo (`data/raw/b3/catalogo_emissores.csv`, 36 páginas da API) não é versionado, e o disco do Cloud é apagado quando o app dorme. Para as ações do universo, a página lê o CNPJ e o segmento setorial do catálogo enxuto `data/processed/catalogo_emissores.csv` (ticker, CNPJ e segmento), que a rodada do screener grava e o workflow versiona junto com o `screener.csv`; a Comparação setorial lê o segmento da coluna `segmento_setorial` do `screener.csv`. Medido em 23/10/2026, a busca do CNPJ e do segmento da PETR4 levou 0,02 s com o arquivo e 64 s sem ele.
+  - *O que continua:* uma ação que não esteja no arquivo (por exemplo, fora do Ibovespa, ou uma ação nova antes da próxima rodada) ainda cai na API do catálogo completo e espera cerca de 1 minuto no primeiro acesso depois de o app acordar.
+  - *Na tela:* nesse caso, o spinner diz "Buscando o catálogo completo da B3 (pode levar cerca de 1 minuto)…".
+  - *Defasagem:* o arquivo é regravado a cada rodada aceita, em dias úteis. Uma mudança de CNPJ ou de segmento aparece na rodada seguinte. Se o catálogo da rodada vier incompleto, o arquivo anterior é mantido e o resumo da rodada lista os tickers que faltaram.
+  - *Arquivo antigo do screener:* um `screener.csv` sem a coluna `segmento_setorial` faz a Comparação setorial pedir uma nova rodada.
 
 ## Screener e Simulador de carteira
 
