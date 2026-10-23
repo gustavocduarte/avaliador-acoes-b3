@@ -333,3 +333,22 @@ def test_ponto_de_interrogacao_do_titulo_ensina_a_abrir_a_analise():
     assert "Clique duas vezes no ticker para abrir a análise da ação numa nova aba." in (
         config.TEXTO_AJUDA_RANKING_SCREENER
     )
+
+
+def test_formas_minimas_gravadas_pela_rodada_passam_como_estao_e_juntam_so_o_comeco():
+    from avaliador_b3.app.main import _observacao_do_ranking
+
+    formas = [v for k, v in vars(config).items() if k.startswith("FORMA_MINIMA_FCD_")]
+    avisos = [
+        config.AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
+        config.AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+        config.AVISO_DESCONTO_EXTREMO_GENERICO,
+    ]
+    limite = config.LIMITE_CARACTERES_OBSERVACAO_RANKING
+
+    for forma in formas:
+        assert _observacao_do_ranking("", forma) == forma
+        for aviso in avisos:
+            junto = _observacao_do_ranking(aviso, forma)
+            assert junto.endswith(" · FCD não aplicável"), junto
+            assert len(junto) <= limite and "…" not in junto

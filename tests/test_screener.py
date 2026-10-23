@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 import requests
 
-from avaliador_b3 import rodar_screener, screener
+from avaliador_b3 import config, rodar_screener, screener
 from avaliador_b3.config import (
     CODIGO_SAIDA_RODADA_REJEITADA,
     MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
@@ -17,6 +17,7 @@ from avaliador_b3.config import (
 )
 from avaliador_b3.ingest import bcb_sgs
 from avaliador_b3.ingest.precos import FalhaFontePreco, TickerInvalido
+from avaliador_b3.modelos import fcd
 
 # Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
 # execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não é uma
@@ -300,7 +301,8 @@ def test_calcular_linha_ticker_fundamentus_com_erro_de_rede_nao_derruba_a_linha(
     )
 
     assert linha["sucesso"] is True
-    assert linha["erro"] is None
+    # A causa do FCD sem número de ações é a falha do Fundamentus, e é ela que a linha diz.
+    assert linha["erro"] == config.FORMA_MINIMA_FCD_FUNDAMENTUS
     assert linha["graham_valor_justo"] is None
     assert linha["fcd_valor_justo"] is None
     assert linha["bazin_preco_teto"] == pytest.approx(1.0 / 0.06)
@@ -2024,3 +2026,137 @@ def test_rodada_rejeitada_nao_grava_o_catalogo_enxuto(ambiente_feliz, tmp_path, 
 
     assert not (tmp_path / "catalogo_emissores.csv").exists()
     assert "catalogo" not in excecao.value.resultado.attrs
+
+
+def _fcd(**mudancas):
+    parametros = {"fcf_atual": 100.0, "numero_acoes": 10.0, "selic_meta": 0.10, "ipca_12m": 0.04}
+    return fcd.calcular_valor_justo_fcd(**(parametros | mudancas))
+
+
+@pytest.mark.parametrize(
+    ("mudancas", "esperado"),
+    [
+        ({"segmento_setorial": "Bancos"}, config.FORMA_MINIMA_FCD_BANCOS),
+        ({"segmento_setorial": "Seguradoras"}, config.FORMA_MINIMA_FCD_SEGURADORAS),
+        ({"ticker": "ITSA4"}, config.FORMA_MINIMA_FCD_HOLDING),
+        ({"fcf_atual": -5.0}, config.FORMA_MINIMA_FCD_FLUXO_NAO_POSITIVO),
+        (
+            {"fcf_atual": None, "motivo_sem_fcf_atual": config.MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO},
+            config.FORMA_MINIMA_FCD_INVESTIMENTO,
+        ),
+        ({"fcf_atual": None}, config.FORMA_MINIMA_FCD_SEM_DADOS),
+        ({"numero_acoes": None}, config.FORMA_MINIMA_FCD_NUMERO_DE_ACOES),
+        ({"selic_meta": 0.0, "beta": 0.0}, config.FORMA_MINIMA_FCD_WACC),
+        ({"fcf_atual": float("nan")}, config.FORMA_MINIMA_FCD_DADO_INVALIDO),
+    ],
+)
+def test_cada_motivo_real_de_fcd_nao_aplicavel_tem_a_sua_forma_minima(mudancas, esperado):
+    resultado = _fcd(**mudancas)
+
+    assert resultado["aplicavel"] is False
+    assert screener.forma_minima_do_motivo_fcd(resultado["motivo_nao_aplicavel"]) == esperado
+
+
+@pytest.mark.parametrize(
+    ("motivo", "esperado"),
+    [
+        (screener.MOTIVO_FUNDAMENTUS_INDISPONIVEL, config.FORMA_MINIMA_FCD_FUNDAMENTUS),
+        ("Selic/IPCA indisponíveis.", config.FORMA_MINIMA_FCD_MACRO),
+        (
+            "Detecção do ano mais recente da CVM falhou: tempo esgotado",
+            config.FORMA_MINIMA_FCD_SEM_DADOS,
+        ),
+        ("Um motivo novo que ninguém mapeou", config.FORMA_MINIMA_FCD_GENERICA),
+        (None, config.FORMA_MINIMA_FCD_GENERICA),
+    ],
+)
+def test_motivos_da_rodada_e_motivo_desconhecido_viram_a_forma_minima(motivo, esperado):
+    assert screener.forma_minima_do_motivo_fcd(motivo) == esperado
+
+
+def test_observacao_com_combinado_traz_o_motivo_do_fcd_so_quando_ele_ficou_de_fora():
+    aplicavel = {"aplicavel": True, "motivo_nao_aplicavel": None}
+    banco = _fcd(segmento_setorial="Bancos")
+    deducoes = {
+        "aplicavel": False,
+        "motivo_nao_aplicavel": "longo",
+        "motivo_nao_aplicavel_curto": "FCD não aplicável: dívida líquida (R$ 1 bi) superam o valor",
+    }
+
+    def observacao(fcd_resultado, tem_combinado=True):
+        return screener._observacao_da_linha({}, {}, fcd_resultado, tem_combinado)
+
+    assert observacao(aplicavel) is None
+    assert observacao(banco) == config.FORMA_MINIMA_FCD_BANCOS
+    assert observacao(deducoes) == deducoes["motivo_nao_aplicavel_curto"]
+
+
+def test_toda_forma_minima_cabe_no_limite_de_caracteres_da_coluna():
+    formas = [v for k, v in vars(config).items() if k.startswith("FORMA_MINIMA_FCD_")]
+
+    assert len(formas) == 12
+    assert max(len(forma) for forma in formas) <= config.LIMITE_CARACTERES_OBSERVACAO_RANKING
+    assert len(config.FORMA_MINIMA_FCD_FLUXO_NAO_POSITIVO) == 47
+    assert len(config.FORMA_MINIMA_FCD_INVESTIMENTO) == 48
+
+
+def _linha_com_bazin(tmp_path, monkeypatch, obter_indicadores, **mudancas):
+    monkeypatch.setattr(screener, "obter_indicadores", obter_indicadores)
+    ano_atual = pd.Timestamp.now().year
+    dividendos_validos = pd.DataFrame(
+        {
+            "data": [pd.Timestamp(year=ano_atual - i, month=12, day=1) for i in range(1, 6)],
+            "dividendo": [1.0] * 5,
+        }
+    )
+    monkeypatch.setattr(screener, "obter_dividendos", lambda ticker, **kw: dividendos_validos)
+    parametros = {
+        "catalogo_emissores": pd.DataFrame(),
+        "historico_ibovespa_beta": _historico([100.0, 101.0, 99.0, 102.0, 103.0]),
+        "selic_meta": 0.10,
+        "ipca_12m": 0.04,
+        "ano_mais_recente_fcd": ANO_FCD_MOCK,
+        "erro_deteccao_ano_fcd": None,
+        "diretorio_cache": tmp_path,
+    } | mudancas
+    return screener._calcular_linha_ticker("AAAA4", **parametros)
+
+
+def test_estrutura_da_pagina_do_fundamentus_mudou_conta_como_falha_da_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def estrutura_mudou(*args, **kwargs):
+        raise screener.EstruturaPaginaMudou("tabela sumiu")
+
+    linha = _linha_com_bazin(tmp_path, monkeypatch, estrutura_mudou)
+
+    assert linha["erro"] == config.FORMA_MINIMA_FCD_FUNDAMENTUS
+
+
+def test_ticker_que_o_fundamentus_nao_tem_fica_com_numero_de_acoes_como_motivo(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    def sem_o_ticker(*args, **kwargs):
+        raise screener.TickerNaoEncontrado("AAAA4")
+
+    linha = _linha_com_bazin(tmp_path, monkeypatch, sem_o_ticker)
+
+    assert linha["erro"] == config.FORMA_MINIMA_FCD_NUMERO_DE_ACOES
+
+
+def test_falha_da_cvm_e_do_banco_central_mostram_a_forma_minima_da_fonte(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        screener,
+        "obter_fluxo_caixa_livre_com_fallback",
+        lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("cvm fora do ar")),
+    )
+    # A CVM falhou: o cnpj existe (dublê do resolver) mas não vem fluxo de caixa.
+    linha = _linha_com_bazin(tmp_path, monkeypatch, lambda ticker, **kw: _indicadores())
+    assert linha["erro"] == config.FORMA_MINIMA_FCD_SEM_DADOS
+
+    linha = _linha_com_bazin(
+        tmp_path, monkeypatch, lambda ticker, **kw: _indicadores(), selic_meta=None, ipca_12m=None
+    )
+    assert linha["erro"] == config.FORMA_MINIMA_FCD_MACRO

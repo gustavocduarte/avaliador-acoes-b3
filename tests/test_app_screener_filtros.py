@@ -5,7 +5,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import _filtrar_tabela_screener
+from avaliador_b3.app.main import _filtrar_tabela_screener, _texto_sem_acao_nos_filtros
 from avaliador_b3.config import (
     OPCAO_TODOS_OS_SETORES,
     ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
@@ -14,6 +14,8 @@ from avaliador_b3.config import (
     ROTULO_FILTRO_SETOR,
     ROTULO_LIMPAR_FILTROS,
     ROTULO_RODAR_SCREENER,
+    TEXTO_LEGENDA_FILTRO_METODOS,
+    TEXTO_NENHUMA_ACAO_NOS_FILTROS,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_SCREENER,
@@ -78,6 +80,98 @@ def test_setor_filtra_pelo_rotulo_e_sem_catalogo_nao_filtra():
 
 def test_filtros_combinados_valem_todos_ao_mesmo_tempo():
     assert _filtrar(setor="Bancos", metodos_exigidos=["fcd"], potencial_minimo=0) == ["AAA3"]
+
+
+def _tabela_com_bancos_sem_fcd() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "ticker": ["BAN1", "BAN2", "ENE1", "ENE2", "VAR1"],
+            "valor_combinado": [10.0, 11.0, 12.0, 13.0, 14.0],
+            "desconto_percentual": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "metodos_utilizados": ["graham,bazin", "graham", "graham,fcd", "bazin,fcd", "fcd"],
+        }
+    )
+
+
+SETORES_BANCOS = {
+    "BAN1": "Bancos",
+    "BAN2": "Bancos",
+    "ENE1": "Energia Elétrica",
+    "ENE2": "Energia Elétrica",
+    "VAR1": "Varejo",
+}
+
+
+def _texto_vazio(**mudancas) -> str:
+    parametros = {
+        "setor_por_ticker": SETORES_BANCOS,
+        "setor": OPCAO_TODOS_OS_SETORES,
+        "potencial_minimo": -100,
+        "metodos_exigidos": [],
+        "esconder_sem_combinado": True,
+    } | mudancas
+    return _texto_sem_acao_nos_filtros(_tabela_com_bancos_sem_fcd(), **parametros)
+
+
+def test_bancos_com_fcd_marcado_explica_que_o_fcd_nao_se_aplica_a_bancos():
+    assert _texto_vazio(setor="Bancos", metodos_exigidos=["fcd"]) == (
+        "Nenhuma ação de Bancos tem FCD aplicável: o FCD não se aplica a bancos. "
+        "Desmarque FCD para ver 2 ações de Bancos."
+    )
+
+
+def test_com_as_tres_caixas_marcadas_em_bancos_a_causa_continua_sendo_o_fcd():
+    assert _texto_vazio(setor="Bancos", metodos_exigidos=["graham", "bazin", "fcd"]) == (
+        "Nenhuma ação de Bancos tem FCD aplicável: o FCD não se aplica a bancos. "
+        "Desmarque FCD para ver 1 ação de Bancos."
+    )
+
+
+def test_metodo_sem_motivo_de_setor_nao_inventa_motivo():
+    assert _texto_vazio(setor="Varejo", metodos_exigidos=["graham"]) == (
+        "Nenhuma ação de Varejo tem Graham aplicável. Desmarque Graham para ver 1 ação de Varejo."
+    )
+
+
+def test_sem_setor_a_mensagem_nao_cita_o_setor_e_conta_as_acoes():
+    assert _texto_vazio(metodos_exigidos=["graham", "fcd"], potencial_minimo=40) == (
+        "Nenhuma ação tem Graham aplicável com os outros filtros. "
+        "Desmarque Graham para ver 2 ações."
+    )
+
+
+def test_dois_metodos_que_liberam_sozinhos_aparecem_os_dois_com_as_quantidades():
+    tabela = pd.DataFrame(
+        {
+            "ticker": ["A1", "B1", "B2"],
+            "valor_combinado": [1.0, 2.0, 3.0],
+            "desconto_percentual": [1.0, 2.0, 3.0],
+            "metodos_utilizados": ["graham", "fcd", "fcd"],
+        }
+    )
+
+    texto = _texto_sem_acao_nos_filtros(
+        tabela, None, OPCAO_TODOS_OS_SETORES, -100, ["graham", "fcd"], True
+    )
+
+    assert texto == (
+        "Nenhuma ação tem todos os métodos marcados. Desmarque Graham para ver 2 ações "
+        "ou FCD para ver 1 ação."
+    )
+
+
+def test_varios_metodos_sem_nenhum_que_libere_sozinho_listam_todos_os_marcados():
+    assert _texto_vazio(setor="Varejo", metodos_exigidos=["graham", "bazin"]) == (
+        "Nenhuma ação tem todos os métodos marcados (Graham e Bazin). "
+        "Desmarque um ou mais para ver 1 ação de Varejo."
+    )
+
+
+def test_causa_em_outro_filtro_mantem_a_mensagem_de_sempre():
+    assert _texto_vazio(potencial_minimo=100) == TEXTO_NENHUMA_ACAO_NOS_FILTROS
+    assert _texto_vazio(setor="Bancos", potencial_minimo=100, metodos_exigidos=["fcd"]) == (
+        TEXTO_NENHUMA_ACAO_NOS_FILTROS
+    )
 
 
 def _preparar_screener(monkeypatch, tmp_path, com_setor=True) -> None:
@@ -185,7 +279,11 @@ def test_exigir_metodo_e_setor_reduzem_a_tabela(monkeypatch, tmp_path):
         timeout=60
     )
     assert _linhas_mostradas(at) == "Mostrando 0 de 4 ações"
-    assert any("Nenhuma ação passa pelos filtros." in i.value for i in at.info)
+    assert any(
+        "Nenhuma ação de Energia Elétrica tem FCD aplicável. Desmarque FCD para ver 1 ação de "
+        "Energia Elétrica." in i.value
+        for i in at.info
+    )
 
 
 def test_filtros_continuam_ao_trocar_de_pagina_e_voltar(monkeypatch, tmp_path):
@@ -270,3 +368,10 @@ def test_mediana_negativa_fica_rosa_e_sem_potencial_nenhum_fica_cinza_com_traco(
 
     vazia = _html_kpis_screener(tabela.assign(valor_combinado=None, desconto_percentual=None))
     assert 'ab-valor ab-cor-secundario">—<' in vazia
+
+
+def test_legenda_do_filtro_de_metodos_explica_que_a_acao_precisa_ter_todos(monkeypatch, tmp_path):
+    at = _abrir_screener(monkeypatch, tmp_path)
+
+    assert ROTULO_FILTRO_METODOS == "Só ações em que se aplicam:"
+    assert TEXTO_LEGENDA_FILTRO_METODOS in [c.value for c in at.sidebar.caption]

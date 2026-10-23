@@ -1480,7 +1480,8 @@ POTENCIAL_MINIMO_FILTRO_DESLIGADO = -100
 POTENCIAL_MINIMO_FILTRO_MAXIMO = 100
 POTENCIAL_MINIMO_FILTRO_PASSO = 5
 TEXTO_FILTRO_SEM_FILTRO = "Sem filtro"
-ROTULO_FILTRO_METODOS = "Exigir método"
+ROTULO_FILTRO_METODOS = "Só ações em que se aplicam:"
+TEXTO_LEGENDA_FILTRO_METODOS = "Marque um ou mais. A ação precisa ter todos os marcados."
 ROTULO_FILTRO_ESCONDER_SEM_COMBINADO = "Esconder sem valor combinado"
 ROTULO_LIMPAR_FILTROS = "Limpar filtros"
 ROTULO_RODAR_SCREENER = "Rodar screener agora"
@@ -1535,10 +1536,25 @@ SEPARADOR_OBSERVACAO_RANKING = " · "
 # sempre, nos tooltips, nos cartões e na página de análise): o FCD não aplicável sem valores nem
 # parcelas e, com mais de uma parte, só o começo de cada uma. Mais que o limite de caracteres
 # (cerca de 360 px na fonte da tabela) é cortado com reticências.
-PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA = "FCD não aplicável:"
+MARCA_FCD_DEDUCOES_NA_TABELA = "superam o valor da empresa"
+TEXTO_FCD_NAO_APLICAVEL_RESUMIDO = "FCD não aplicável"
 TEXTO_FCD_NAO_APLICAVEL_NA_TABELA = "FCD não aplicável: dívidas superam o valor da empresa"
 TEXTO_NENHUM_METODO_NA_TABELA = "Nenhum método se aplica"
 LIMITE_CARACTERES_OBSERVACAO_RANKING = 56
+# Forma mínima de cada motivo de FCD não aplicável, que a rodada grava na coluna Observação
+# quando a ação tem valor combinado (o das deduções acima do valor da empresa já tem o seu).
+FORMA_MINIMA_FCD_BANCOS = "FCD não se aplica a bancos"
+FORMA_MINIMA_FCD_SEGURADORAS = "FCD não se aplica a seguradoras"
+FORMA_MINIMA_FCD_HOLDING = "FCD não se aplica a holdings de participações"
+FORMA_MINIMA_FCD_FLUXO_NAO_POSITIVO = "FCD não aplicável: caixa livre negativo ou zero"
+FORMA_MINIMA_FCD_INVESTIMENTO = "FCD não aplicável: investimento não identificado"
+FORMA_MINIMA_FCD_SEM_DADOS = "FCD não aplicável: sem dados de fluxo de caixa"
+FORMA_MINIMA_FCD_NUMERO_DE_ACOES = "FCD não aplicável: número de ações indisponível"
+FORMA_MINIMA_FCD_WACC = "FCD não aplicável: WACC não positivo"
+FORMA_MINIMA_FCD_DADO_INVALIDO = "FCD não aplicável: dado inválido"
+FORMA_MINIMA_FCD_FUNDAMENTUS = "FCD não aplicável: Fundamentus indisponível"
+FORMA_MINIMA_FCD_MACRO = "FCD não aplicável: Selic ou IPCA indisponíveis"
+FORMA_MINIMA_FCD_GENERICA = "FCD não aplicável: veja a análise da ação"
 TEXTO_CORTE_DA_OBSERVACAO = "…"
 TEXTO_SEM_DADO_NA_TABELA = "—"
 ROTULO_COLUNAS_RANKING_SCREENER = {
@@ -1559,6 +1575,22 @@ TEXTO_NENHUM_ALERTA = "Nenhum alerta nesta rodada."
 ROTULO_KPI_COM_FCD = "Com FCD aplicável"
 TEXTO_KPI_COM_FCD = "Os demais usam Graham e/ou Bazin"
 TEXTO_NENHUMA_ACAO_NOS_FILTROS = "Nenhuma ação passa pelos filtros."
+# Quando nenhuma ação passa e a causa é um método marcado (o filtro exige todos os marcados).
+MOTIVOS_FCD_NAO_APLICAVEL_POR_SETOR = {
+    "Bancos": "o FCD não se aplica a bancos",
+    "Seguradoras": "o FCD não se aplica a seguradoras",
+}
+TEXTO_SEM_ACAO_METODO_NO_SETOR = "Nenhuma ação de {setor} tem {metodo} aplicável"
+TEXTO_SEM_ACAO_METODO = "Nenhuma ação tem {metodo} aplicável com os outros filtros."
+TEXTO_SEM_ACAO_TODOS_OS_METODOS = "Nenhuma ação tem todos os métodos marcados."
+TEXTO_SEM_ACAO_TODOS_OS_METODOS_LISTADOS = "Nenhuma ação tem todos os métodos marcados ({metodos})."
+TEXTO_DESMARQUE_UM = "Desmarque {metodo} para ver {acoes}."
+TEXTO_DESMARQUE_VARIOS = "Desmarque {opcoes}."
+TEXTO_DESMARQUE_OPCAO = "{metodo} para ver {acoes}"
+TEXTO_DESMARQUE_QUALQUER = "Desmarque um ou mais para ver {acoes}."
+TEXTO_ACAO_SINGULAR = "1 ação"
+TEXTO_ACOES_PLURAL = "{quantidade} ações"
+TEXTO_ACOES_DO_SETOR = "{acoes} de {setor}"
 
 # Blocos da barra lateral: o `key` vira a classe `.st-key-<key>` usada pelo CSS; o bloco da
 # página aberta ganha o sufixo de destaque.

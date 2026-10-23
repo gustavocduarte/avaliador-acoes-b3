@@ -61,10 +61,29 @@ from avaliador_b3.config import (
     FONTE_CVM,
     FONTE_FUNDAMENTUS,
     FONTE_YAHOO,
+    FORMA_MINIMA_FCD_BANCOS,
+    FORMA_MINIMA_FCD_DADO_INVALIDO,
+    FORMA_MINIMA_FCD_FLUXO_NAO_POSITIVO,
+    FORMA_MINIMA_FCD_FUNDAMENTUS,
+    FORMA_MINIMA_FCD_GENERICA,
+    FORMA_MINIMA_FCD_HOLDING,
+    FORMA_MINIMA_FCD_INVESTIMENTO,
+    FORMA_MINIMA_FCD_MACRO,
+    FORMA_MINIMA_FCD_NUMERO_DE_ACOES,
+    FORMA_MINIMA_FCD_SEGURADORAS,
+    FORMA_MINIMA_FCD_SEM_DADOS,
+    FORMA_MINIMA_FCD_WACC,
     LIMITE_ACOES_COM_FALHA_SCREENER,
     LIMITE_ACOES_SEM_PRECO_SCREENER,
     MENSAGEM_PRECO_INDISPONIVEL_SCREENER,
     MINIMO_ACOES_UNIVERSO_SCREENER,
+    MOTIVO_ENTRADA_NAO_FINITA,
+    MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO,
+    MOTIVO_FCD_FLUXO_NAO_POSITIVO,
+    MOTIVO_FCD_HOLDING_FINANCEIRA,
+    MOTIVO_FCD_SEGURADORA,
+    MOTIVO_FCD_WACC_NAO_POSITIVO,
+    MOTIVO_RESULTADO_NAO_FINITO,
     MOTIVO_RODADA_COM_FALHA_DE_FONTE,
     MOTIVO_RODADA_LINHAS_FALTANDO,
     MOTIVO_RODADA_SEM_LINHAS,
@@ -116,6 +135,7 @@ from avaliador_b3.modelos.combinado import (
     linhas_motivos_metodos,
 )
 from avaliador_b3.modelos.fcd import (
+    MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA,
     calcular_caixa_operacional_fcd,
     calcular_proporcao_capex_caixa_operacional_percentual,
     calcular_valor_justo_fcd,
@@ -278,13 +298,44 @@ def _aviso_desconto_extremo(
     return ""
 
 
+# Começo de cada motivo de FCD não aplicável e a sua forma mínima (a primeira que casar vale).
+_FORMAS_MINIMAS_DO_MOTIVO_FCD = (
+    (MOTIVO_NAO_APLICAVEL_INSTITUICAO_FINANCEIRA, FORMA_MINIMA_FCD_BANCOS),
+    (MOTIVO_FCD_SEGURADORA, FORMA_MINIMA_FCD_SEGURADORAS),
+    (MOTIVO_FCD_HOLDING_FINANCEIRA, FORMA_MINIMA_FCD_HOLDING),
+    (MOTIVO_FCD_FLUXO_NAO_POSITIVO, FORMA_MINIMA_FCD_FLUXO_NAO_POSITIVO),
+    (MOTIVO_FCD_CAPEX_NAO_IDENTIFICADO, FORMA_MINIMA_FCD_INVESTIMENTO),
+    ("Sem dado de fluxo de caixa livre da CVM", FORMA_MINIMA_FCD_SEM_DADOS),
+    ("Detecção do ano mais recente da CVM falhou", FORMA_MINIMA_FCD_SEM_DADOS),
+    ("Número de ações indisponível", FORMA_MINIMA_FCD_NUMERO_DE_ACOES),
+    (MOTIVO_FCD_WACC_NAO_POSITIVO.split("{")[0], FORMA_MINIMA_FCD_WACC),
+    (MOTIVO_ENTRADA_NAO_FINITA.split("{")[0], FORMA_MINIMA_FCD_DADO_INVALIDO),
+    (MOTIVO_RESULTADO_NAO_FINITO, FORMA_MINIMA_FCD_DADO_INVALIDO),
+    (MOTIVO_FUNDAMENTUS_INDISPONIVEL, FORMA_MINIMA_FCD_FUNDAMENTUS),
+    ("Selic/IPCA indisponíveis", FORMA_MINIMA_FCD_MACRO),
+)
+
+
+def forma_minima_do_motivo_fcd(motivo: str | None) -> str:
+    """Forma mínima do motivo de o FCD não se aplicar (cabe na coluna Observação)."""
+    for comeco, forma in _FORMAS_MINIMAS_DO_MOTIVO_FCD:
+        if motivo and motivo.startswith(comeco):
+            return forma
+    return FORMA_MINIMA_FCD_GENERICA
+
+
 def _observacao_da_linha(
     resultado_graham: dict, resultado_bazin: dict, resultado_fcd: dict, tem_combinado: bool
 ) -> str | None:
     """Coluna "erro" ("Observação" na tela): sem nenhum método, uma linha por método; com
-    combinado, só o motivo curto do FCD quando ele ficou de fora por deduções acima do valor."""
+    combinado, o motivo do FCD quando ele ficou de fora: o curto, se as deduções passam o valor
+    da empresa, ou a forma mínima do motivo."""
     if tem_combinado:
-        return resultado_fcd.get("motivo_nao_aplicavel_curto")
+        if resultado_fcd.get("aplicavel"):
+            return None
+        return resultado_fcd.get("motivo_nao_aplicavel_curto") or forma_minima_do_motivo_fcd(
+            resultado_fcd.get("motivo_nao_aplicavel")
+        )
     linhas = linhas_motivos_metodos(resultado_graham, resultado_bazin, resultado_fcd)
     return " ".join([f"{TEXTO_NENHUM_METODO_SE_APLICA}.", *linhas])
 
@@ -360,6 +411,8 @@ def _calcular_linha_ticker(
 
     indicadores = None
     fundamentus_pulado = disjuntor_fundamentus is not None and disjuntor_fundamentus.aberto
+    # O Fundamentus falhou (e não só deixou de ter a ação): é a causa do FCD sem número de ações.
+    fundamentus_falhou = fundamentus_pulado
     if fundamentus_pulado:
         falhas.registrar(ticker, FONTE_FUNDAMENTUS)
     else:
@@ -372,8 +425,10 @@ def _calcular_linha_ticker(
                 disjuntor_fundamentus.registrar_resposta()
             if isinstance(erro, EstruturaPaginaMudou):
                 falhas.registrar(ticker, FONTE_FUNDAMENTUS)
+                fundamentus_falhou = True
         except requests.RequestException:
             falhas.registrar(ticker, FONTE_FUNDAMENTUS)
+            fundamentus_falhou = True
             if disjuntor_fundamentus is not None:
                 disjuntor_fundamentus.registrar_falha_de_rede()
 
@@ -495,7 +550,7 @@ def _calcular_linha_ticker(
     # fcf_atual=None: sem essa checagem explícita, a causa real (detecção
     # do ano quebrada) ficaria indistinguível de uma empresa que
     # simplesmente não tem FCD na CVM.
-    if fundamentus_pulado:
+    if fundamentus_falhou:
         resultado_fcd = {
             "aplicavel": False,
             "valor_justo": None,

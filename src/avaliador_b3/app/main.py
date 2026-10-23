@@ -100,7 +100,9 @@ from avaliador_b3.config import (
     LIMITE_DIVERGENCIA_METODOS_ALTA,
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
     LIMITE_SINAL_INDICADOR,
+    MARCA_FCD_DEDUCOES_NA_TABELA,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
+    MOTIVOS_FCD_NAO_APLICAVEL_POR_SETOR,
     NOME_LINHA_CARTEIRA,
     NOME_LINHA_CDI,
     NOME_LINHA_IPCA,
@@ -118,7 +120,6 @@ from avaliador_b3.config import (
     POTENCIAL_MINIMO_FILTRO_DESLIGADO,
     POTENCIAL_MINIMO_FILTRO_MAXIMO,
     POTENCIAL_MINIMO_FILTRO_PASSO,
-    PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA,
     PREFIXO_FONTE_ARQUIVO_REFERENCIA,
     QUANTIDADE_PADRAO_CARTEIRA,
     RAZAO_DIVIDENDOS_ATIPICA_BAZIN,
@@ -160,6 +161,9 @@ from avaliador_b3.config import (
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_ACAO_DA_URL_INVALIDA,
+    TEXTO_ACAO_SINGULAR,
+    TEXTO_ACOES_DO_SETOR,
+    TEXTO_ACOES_PLURAL,
     TEXTO_AJUDA_CORRELACAO,
     TEXTO_AJUDA_INDICADORES_AUSENTES,
     TEXTO_AJUDA_LPA_VPA_AJUSTADOS,
@@ -177,12 +181,17 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_LIMITADO_PELA_RECEITA,
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_DEMAIS_ACOES_NA_CARTEIRA,
+    TEXTO_DESMARQUE_OPCAO,
+    TEXTO_DESMARQUE_QUALQUER,
+    TEXTO_DESMARQUE_UM,
+    TEXTO_DESMARQUE_VARIOS,
     TEXTO_DIVERGENCIA_NENHUM_METODO,
     TEXTO_DIVERGENCIA_UM_METODO,
     TEXTO_EXPANDER_SIMULADOR,
     TEXTO_FAIXA_ACIMA_DO_LIMITE,
     TEXTO_FCD_AJUSTES_DO_BALANCO,
     TEXTO_FCD_NAO_APLICAVEL_NA_TABELA,
+    TEXTO_FCD_NAO_APLICAVEL_RESUMIDO,
     TEXTO_FILTRO_SEM_FILTRO,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_FORA_DA_LINHA_CARTEIRA,
@@ -196,6 +205,7 @@ from avaliador_b3.config import (
     TEXTO_KPI_SEM_METODO,
     TEXTO_KPI_SOBRE_COM_COMBINADO,
     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL,
+    TEXTO_LEGENDA_FILTRO_METODOS,
     TEXTO_LINHA_INVESTIDO_NO_GRAFICO,
     TEXTO_LINK_ACAO_REGEX,
     TEXTO_MAIS_DE_METADE_NUM_SETOR,
@@ -225,6 +235,10 @@ from avaliador_b3.config import (
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL,
     TEXTO_SELECIONE_PERIODO_HISTORICO,
+    TEXTO_SEM_ACAO_METODO,
+    TEXTO_SEM_ACAO_METODO_NO_SETOR,
+    TEXTO_SEM_ACAO_TODOS_OS_METODOS,
+    TEXTO_SEM_ACAO_TODOS_OS_METODOS_LISTADOS,
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
@@ -2698,6 +2712,73 @@ def _filtrar_tabela_screener(
     return tabela[mascara]
 
 
+def _acoes_por_extenso(quantidade: int, setor: str) -> str:
+    texto = (
+        TEXTO_ACAO_SINGULAR if quantidade == 1 else TEXTO_ACOES_PLURAL.format(quantidade=quantidade)
+    )
+    if setor == OPCAO_TODOS_OS_SETORES:
+        return texto
+    return TEXTO_ACOES_DO_SETOR.format(acoes=texto, setor=setor)
+
+
+def _texto_sem_acao_nos_filtros(
+    tabela: pd.DataFrame,
+    setor_por_ticker: dict[str, str] | None,
+    setor: str,
+    potencial_minimo: float,
+    metodos_exigidos: list[str],
+    esconder_sem_combinado: bool,
+) -> str:
+    """Mensagem para quando nenhuma ação passa pelos filtros. Se a causa é um método marcado (o
+    filtro exige todos os marcados), diz qual e quantas ações aparecem ao desmarcá-lo; se é
+    outro filtro, o texto genérico."""
+
+    def contar(metodos: list[str]) -> int:
+        return len(
+            _filtrar_tabela_screener(
+                tabela,
+                setor_por_ticker,
+                setor,
+                potencial_minimo,
+                metodos,
+                esconder_sem_combinado,
+            )
+        )
+
+    liberam = {
+        metodo: quantidade
+        for metodo in metodos_exigidos
+        if (quantidade := contar([m for m in metodos_exigidos if m != metodo]))
+    }
+    if len(liberam) == 1:
+        ((metodo, quantidade),) = liberam.items()
+        nome = NOMES_METODOS[metodo]
+        if setor == OPCAO_TODOS_OS_SETORES:
+            inicio = TEXTO_SEM_ACAO_METODO.format(metodo=nome)
+        else:
+            inicio = TEXTO_SEM_ACAO_METODO_NO_SETOR.format(setor=setor, metodo=nome)
+            motivo = MOTIVOS_FCD_NAO_APLICAVEL_POR_SETOR.get(setor) if metodo == "fcd" else None
+            inicio += f": {motivo}." if motivo else "."
+        fim = TEXTO_DESMARQUE_UM.format(metodo=nome, acoes=_acoes_por_extenso(quantidade, setor))
+        return f"{inicio} {fim}"
+    if liberam:
+        opcoes = " ou ".join(
+            TEXTO_DESMARQUE_OPCAO.format(
+                metodo=NOMES_METODOS[metodo], acoes=_acoes_por_extenso(quantidade, setor)
+            )
+            for metodo, quantidade in liberam.items()
+        )
+        return f"{TEXTO_SEM_ACAO_TODOS_OS_METODOS} {TEXTO_DESMARQUE_VARIOS.format(opcoes=opcoes)}"
+    sem_metodos = contar([]) if metodos_exigidos else 0
+    if sem_metodos:
+        nomes = " e ".join(NOMES_METODOS[m] for m in metodos_exigidos)
+        return (
+            f"{TEXTO_SEM_ACAO_TODOS_OS_METODOS_LISTADOS.format(metodos=nomes)} "
+            f"{TEXTO_DESMARQUE_QUALQUER.format(acoes=_acoes_por_extenso(sem_metodos, setor))}"
+        )
+    return TEXTO_NENHUMA_ACAO_NOS_FILTROS
+
+
 def _padroes_filtros_screener() -> dict[str, object]:
     """Chave do session_state de cada filtro e o valor padrão."""
     return {
@@ -2887,10 +2968,10 @@ def _html_atencao_screener(tabela: pd.DataFrame) -> str:
     return f'<div class="ab-atencao">{"".join(cartoes)}</div>'
 
 
-def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
+def _desenhar_filtros_screener(tabela: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     """Desenha os filtros no bloco atual da barra lateral e devolve as linhas que passam por
-    eles. Os valores escolhidos são copiados para `CHAVE_FILTROS_GUARDADOS` e restaurados ao
-    voltar à página."""
+    eles, com o texto para quando nenhuma passa. Os valores escolhidos são copiados para
+    `CHAVE_FILTROS_GUARDADOS` e restaurados ao voltar à página."""
     padroes = _padroes_filtros_screener()
     for chave, valor in {**padroes, **st.session_state.get(CHAVE_FILTROS_GUARDADOS, {})}.items():
         st.session_state.setdefault(chave, valor)
@@ -2927,6 +3008,7 @@ def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
         key=CHAVE_FILTRO_POTENCIAL_MINIMO,
     )
     st.html(f'<div class="ab-rotulo-filtro">{escape(ROTULO_FILTRO_METODOS)}</div>')
+    st.caption(TEXTO_LEGENDA_FILTRO_METODOS)
     for metodo, nome in NOMES_METODOS.items():
         st.checkbox(nome, key=CHAVE_FILTRO_METODO_PREFIXO + metodo)
     st.checkbox(ROTULO_FILTRO_ESCONDER_SEM_COMBINADO, key=CHAVE_FILTRO_ESCONDER_SEM_COMBINADO)
@@ -2934,7 +3016,7 @@ def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
 
     valores = {chave: st.session_state.get(chave, padrao) for chave, padrao in padroes.items()}
     st.session_state[CHAVE_FILTROS_GUARDADOS] = valores
-    return _filtrar_tabela_screener(
+    argumentos = (
         tabela,
         setor_por_ticker,
         valores[CHAVE_FILTRO_SETOR],
@@ -2942,6 +3024,9 @@ def _desenhar_filtros_screener(tabela: pd.DataFrame) -> pd.DataFrame:
         [m for m in NOMES_METODOS if valores[CHAVE_FILTRO_METODO_PREFIXO + m]],
         valores[CHAVE_FILTRO_ESCONDER_SEM_COMBINADO],
     )
+    filtrada = _filtrar_tabela_screener(*argumentos)
+    texto_vazio = _texto_sem_acao_nos_filtros(*argumentos) if filtrada.empty else ""
+    return filtrada, texto_vazio
 
 
 def _cor_do_potencial(valor: float) -> str:
@@ -2952,9 +3037,10 @@ def _cor_do_potencial(valor: float) -> str:
 
 
 def _observacao_minima(observacao: str) -> str:
-    """Observação da rodada na forma mínima da tabela: o FCD não aplicável sem valores nem
-    parcelas e "Nenhum método se aplica" sem a lista de motivos; o resto, como veio."""
-    if observacao.startswith(PREFIXO_FCD_NAO_APLICAVEL_NA_TABELA):
+    """Observação da rodada na forma mínima da tabela: o FCD sem aplicação por deduções, sem
+    valores nem parcelas, e "Nenhum método se aplica" sem a lista de motivos; o resto, como veio
+    (a rodada já grava os outros motivos de FCD na forma mínima)."""
+    if MARCA_FCD_DEDUCOES_NA_TABELA in observacao:
         return TEXTO_FCD_NAO_APLICAVEL_NA_TABELA
     if observacao.startswith(TEXTO_NENHUM_METODO_SE_APLICA):
         return TEXTO_NENHUM_METODO_NA_TABELA
@@ -2968,7 +3054,10 @@ def _observacao_do_ranking(aviso: str, observacao: str) -> str:
     caracteres é cortado com reticências."""
     partes = [_resumo_do_aviso(aviso) if aviso else "", _observacao_minima(observacao)]
     if all(partes):
-        partes = [parte.split(":")[0] for parte in partes]
+        partes = [
+            TEXTO_FCD_NAO_APLICAVEL_RESUMIDO if parte.startswith("FCD n") else parte.split(":")[0]
+            for parte in partes
+        ]
     texto = SEPARADOR_OBSERVACAO_RANKING.join(parte for parte in partes if parte)
     if len(texto) > LIMITE_CARACTERES_OBSERVACAO_RANKING:
         texto = (
@@ -3129,8 +3218,9 @@ def pagina_screener() -> None:
     # Filtros e botão da rodada ficam no bloco da barra lateral, depois do link da página.
     with _bloco_barra_screener:
         tabela_exibida = None
+        texto_sem_acao = TEXTO_NENHUMA_ACAO_NOS_FILTROS
         if tabela_screener is not None:
-            tabela_exibida = _desenhar_filtros_screener(tabela_screener)
+            tabela_exibida, texto_sem_acao = _desenhar_filtros_screener(tabela_screener)
         if rodar_screener_permitido:
             st.button(ROTULO_RODAR_SCREENER, on_click=_solicitar_rodada_screener)
 
@@ -3172,7 +3262,7 @@ def pagina_screener() -> None:
                 )
             )
             if tabela_exibida.empty:
-                st.info(TEXTO_NENHUMA_ACAO_NOS_FILTROS)
+                st.info(texto_sem_acao)
             tabela_ranking, colunas_ranking = _tabela_ranking_screener(tabela_exibida)
             st.dataframe(
                 tabela_ranking,
