@@ -3212,7 +3212,7 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
         "Quanto a carteira valeria se o preço de cada ação chegasse ao valor justo do "
         "cenário, em reais de hoje, sem prazo e sem contar dividendos. Não é previsão."
     ) in cabecalho
-    assert "Mostra o potencial de cada cenário (pessimista/base/otimista)" in cabecalho
+    assert "Calculado com a quantidade de cada ação montada na barra lateral" in cabecalho
 
     # Sem prazo, taxa anual nem ganho real.
     textos = [c.value for c in aba.caption] + [m.value for m in aba.markdown]

@@ -255,3 +255,10 @@ def test_abrir_pagina_avisa_quando_o_apptest_perde_os_atributos_privados():
 
     with pytest.raises(AssertionError, match="AppTest mudou"):
         abrir_pagina(AppTestSemAtributos(), TITULO_PAGINA_SCREENER)  # type: ignore[arg-type]
+
+
+def test_texto_de_abertura_do_simulador_fala_da_montagem_por_quantidade():
+    assert "quantidade de cada ação" in TEXTO_ABERTURA_SIMULADOR
+    assert "valor investido em cada ação" not in TEXTO_ABERTURA_SIMULADOR
+    # Não repete a descrição da página nem a instrução do aviso "Adicione ações…".
+    assert "Monte" not in TEXTO_ABERTURA_SIMULADOR

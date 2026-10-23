@@ -1773,8 +1773,7 @@ TITULO_EXPANDER_CENARIOS_POR_ACAO = "Cenários por ação"
 # de hoje, sem prazo e sem contar dividendos — nada de taxa anual nem ganho
 # real.
 TEXTO_ABERTURA_SIMULADOR = (
-    "Mostra o potencial de cada cenário (pessimista/base/otimista) para o "
-    "valor investido em cada ação — a partir do resultado já salvo do "
+    "Calculado com a quantidade de cada ação montada na barra lateral e o resultado já salvo do "
     "screener, sem recalcular nada ao vivo."
 )
 AVISO_SIMULADOR_SEM_PREVISAO = (
@@ -1797,10 +1796,10 @@ TEXTO_EXPANDER_SIMULADOR = (
     "calculados para cada ação (o menor, a média, e o maior entre os "
     "métodos de valor justo aplicáveis — Graham, Bazin e FCD). O potencial "
     "é o valor justo do cenário dividido pelo preço atual, menos 1, e o "
-    "valor ao convergir é o valor investido multiplicado por esse valor "
-    "justo ÷ preço: quanto o dinheiro valeria se o preço chegasse ao valor "
-    "justo, em reais de hoje, sem prazo e sem contar dividendos. Valor "
-    "justo zero ou negativo conta como perda total (-100%).\n\n"
+    "valor ao convergir é o valor investido (quantidade × preço de cada "
+    "ação) multiplicado por esse valor justo ÷ preço: quanto o dinheiro valeria "
+    "se o preço chegasse ao valor justo, em reais de hoje, sem prazo e sem contar "
+    "dividendos. Valor justo zero ou negativo conta como perda total (-100%).\n\n"
     "O cenário base é o valor combinado, a mesma média simples explicada "
     "na página Analisar uma ação. O pessimista e o otimista são o menor e o "
     "maior valor entre os métodos aplicáveis — e o menor pode ser o preço "
