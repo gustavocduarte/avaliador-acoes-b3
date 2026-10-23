@@ -24,6 +24,9 @@ from avaliador_b3.config import (
     RESUMO_ACOES,
     RESUMO_ARQUIVO_REJEITADO,
     RESUMO_AVISO,
+    RESUMO_CATALOGO_ATUALIZADO,
+    RESUMO_CATALOGO_MANTIDO,
+    RESUMO_CATALOGO_PARCIAL,
     RESUMO_DATA_PRECOS,
     RESUMO_DATA_PRECOS_INDISPONIVEL,
     RESUMO_FALHAS,
@@ -35,6 +38,8 @@ from avaliador_b3.config import (
     RESUMO_RODADA_EXCECAO,
     RESUMO_RODADA_REJEITADA,
     RESUMO_SEM_FALHAS,
+    SITUACAO_CATALOGO_MANTIDO,
+    SITUACAO_CATALOGO_PARCIAL,
     TTL_CACHE_RESUMO_RODADA_SEGUNDOS,
 )
 from avaliador_b3.ingest.precos import FalhaFontePreco, TickerInvalido, obter_historico
@@ -95,6 +100,17 @@ def _linhas_do_resultado(resultado: pd.DataFrame | None) -> list[str]:
         )
         if macro.usou_valor_guardado:
             linhas.append(RESUMO_MACRO_GUARDADO)
+    catalogo = resultado.attrs.get("catalogo")
+    if catalogo is not None:
+        modelo = {
+            SITUACAO_CATALOGO_MANTIDO: RESUMO_CATALOGO_MANTIDO,
+            SITUACAO_CATALOGO_PARCIAL: RESUMO_CATALOGO_PARCIAL,
+        }.get(catalogo["situacao"], RESUMO_CATALOGO_ATUALIZADO)
+        linhas.append(
+            modelo.format(
+                quantidade=catalogo["quantidade"], tickers=", ".join(catalogo["faltantes"])
+            )
+        )
     data_precos = _data_dos_precos(resultado)
     linhas.append(
         RESUMO_DATA_PRECOS.format(data=data_precos)

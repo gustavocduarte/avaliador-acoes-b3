@@ -1727,7 +1727,7 @@ def test_rodada_aceita_troca_o_csv_e_a_referencia_sem_deixar_temporarios(ambient
     _rodar_com_oficial_antigo(tmp_path)
 
     arquivos = sorted(p.name for p in tmp_path.iterdir() if p.is_file())
-    assert arquivos == ["macro_referencia.json", "screener.csv"]
+    assert arquivos == ["catalogo_emissores.csv", "macro_referencia.json", "screener.csv"]
     assert (
         json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))["fonte_selic"]
         == "BCB (SOAP)"
@@ -1784,7 +1784,11 @@ def test_falha_na_troca_do_csv_deixa_o_csv_anterior_e_a_referencia_nova_sem_temp
     assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
     publicada = json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))
     assert publicada["fonte_selic"] == "BCB (SOAP)"
-    assert _arquivos(tmp_path) == ["macro_referencia.json", "screener.csv"]
+    assert _arquivos(tmp_path) == [
+        "catalogo_emissores.csv",
+        "macro_referencia.json",
+        "screener.csv",
+    ]
 
 
 def test_falha_ao_gravar_o_rejeitado_limpa_o_temporario(ambiente_feliz, tmp_path, monkeypatch):
@@ -1861,7 +1865,11 @@ def test_rodada_parada_no_meio_nao_atrapalha_outra_que_termina_antes(
     publicado = pd.read_csv(oficial)
     assert list(publicado["ticker"]) == ["AAAA4", "BBBB4"]
     assert publicado["sucesso"].all()
-    assert _arquivos(tmp_path) == ["macro_referencia.json", "screener.csv"]
+    assert _arquivos(tmp_path) == [
+        "catalogo_emissores.csv",
+        "macro_referencia.json",
+        "screener.csv",
+    ]
 
 
 def test_universo_vazio_rejeita_a_rodada_e_preserva_o_resultado_anterior(
@@ -1930,3 +1938,89 @@ def test_lista_de_tickers_vazia_rejeita_a_rodada_por_nao_ter_linhas(ambiente_fel
 
     assert excecao.value.motivo == MOTIVO_RODADA_SEM_LINHAS
     assert (tmp_path / "screener.csv").read_text(encoding="utf-8") == CONTEUDO_ANTIGO
+
+
+def _sem_bbbb4_no_catalogo(monkeypatch):
+    def resolver(ticker, catalogo):
+        if ticker == "BBBB4":
+            raise screener.EmissorNaoEncontrado("BBBB4 fora do catálogo")
+        return {"cnpj": f"CNPJ-{ticker}", "segmento_setorial": "Setor Genérico"}
+
+    monkeypatch.setattr(screener, "resolver_cnpj", resolver)
+
+
+def test_rodada_aceita_grava_o_catalogo_enxuto_ao_lado_do_screener(ambiente_feliz, tmp_path):
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    catalogo = pd.read_csv(tmp_path / "catalogo_emissores.csv", dtype=str)
+    assert list(catalogo.columns) == ["ticker", "cnpj", "segmento_setorial"]
+    assert list(catalogo["ticker"]) == ["AAAA4", "BBBB4"]
+    assert list(catalogo["cnpj"]) == ["CNPJ-AAAA4", "CNPJ-BBBB4"]
+    assert set(catalogo["segmento_setorial"]) == {"Setor Genérico"}
+    assert resultado.attrs["catalogo"] == {
+        "situacao": "atualizado",
+        "quantidade": 2,
+        "faltantes": [],
+    }
+    assert not list(tmp_path.glob("catalogo_emissores.csv.*"))
+
+
+def test_catalogo_incompleto_mantem_o_arquivo_anterior_e_nao_rejeita_a_rodada(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    anterior = "ticker,cnpj,segmento_setorial\nAAAA4,00000000000191,Antigo\n"
+    (tmp_path / "catalogo_emissores.csv").write_text(anterior, encoding="utf-8")
+    _sem_bbbb4_no_catalogo(monkeypatch)
+
+    oficial, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "catalogo_emissores.csv").read_text(encoding="utf-8") == anterior
+    assert list(pd.read_csv(oficial)["ticker"]) == ["AAAA4", "BBBB4"]
+    assert resultado.attrs["catalogo"] == {
+        "situacao": "mantido",
+        "quantidade": 1,
+        "faltantes": ["BBBB4"],
+    }
+
+
+def test_catalogo_incompleto_sem_arquivo_anterior_grava_o_que_houver(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _sem_bbbb4_no_catalogo(monkeypatch)
+
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    catalogo = pd.read_csv(tmp_path / "catalogo_emissores.csv", dtype=str)
+    assert list(catalogo["ticker"]) == ["AAAA4"]
+    assert resultado.attrs["catalogo"]["situacao"] == "parcial"
+    assert resultado.attrs["catalogo"]["faltantes"] == ["BBBB4"]
+
+
+@pytest.mark.parametrize("vazio", ["", None, float("nan"), "  "])
+def test_ticker_com_cnpj_ou_segmento_vazio_conta_como_faltante(
+    ambiente_feliz, tmp_path, monkeypatch, vazio
+):
+    monkeypatch.setattr(
+        screener,
+        "resolver_cnpj",
+        lambda ticker, catalogo: {
+            "cnpj": vazio if ticker == "BBBB4" else "123",
+            "segmento_setorial": "Setor",
+        },
+    )
+
+    _, resultado = _rodar_com_oficial_antigo(tmp_path)
+
+    assert resultado.attrs["catalogo"]["faltantes"] == ["BBBB4"]
+    assert list(pd.read_csv(tmp_path / "catalogo_emissores.csv", dtype=str)["ticker"]) == ["AAAA4"]
+
+
+def test_rodada_rejeitada_nao_grava_o_catalogo_enxuto(ambiente_feliz, tmp_path, monkeypatch):
+    monkeypatch.setattr(screener, "LIMITE_ACOES_SEM_PRECO_SCREENER", 0)
+    _sem_preco_no_bbbb4(monkeypatch)
+
+    with pytest.raises(screener.RodadaScreenerRejeitada) as excecao:
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert not (tmp_path / "catalogo_emissores.csv").exists()
+    assert "catalogo" not in excecao.value.resultado.attrs

@@ -1,0 +1,29 @@
+from pathlib import Path
+
+WORKFLOW = Path(__file__).parent.parent / ".github" / "workflows" / "atualiza-screener.yml"
+ARQUIVOS = ("screener.csv", "catalogo_emissores.csv", "macro_referencia.json")
+
+
+def _passo_de_commit() -> str:
+    texto = WORKFLOW.read_text(encoding="utf-8")
+    inicio = texto.index("- name: Commita o screener atualizado")
+    return texto[inicio : texto.index("- name:", inicio + 1)]
+
+
+def test_o_commit_automatico_inclui_o_catalogo_enxuto_no_git_add():
+    linha = next(
+        linha for linha in _passo_de_commit().splitlines() if linha.strip().startswith("git add")
+    )
+
+    for arquivo in ARQUIVOS:
+        assert f"data/processed/{arquivo}" in linha
+
+
+def test_a_checagem_de_mudanca_enxerga_o_catalogo_mesmo_sendo_arquivo_novo():
+    passo = _passo_de_commit()
+
+    # `git diff` ignora arquivo ainda fora do git; `git status --porcelain` não.
+    assert "git diff --quiet" not in passo
+    checagem = next(linha for linha in passo.splitlines() if "git status --porcelain" in linha)
+    assert "data/processed/screener.csv" in checagem
+    assert "data/processed/catalogo_emissores.csv" in checagem

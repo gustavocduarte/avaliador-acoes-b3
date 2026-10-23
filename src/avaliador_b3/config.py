@@ -986,6 +986,14 @@ RESUMO_MACRO_INDISPONIVEL = "Selic meta e IPCA 12m: indisponíveis"
 RESUMO_DATA_PRECOS = "Data dos preços: {data}"
 RESUMO_DATA_PRECOS_INDISPONIVEL = "Data dos preços: indisponível"
 RESUMO_AVISO = "Aviso: {aviso}"
+RESUMO_CATALOGO_ATUALIZADO = "Catálogo de emissores: {quantidade} ações gravadas"
+RESUMO_CATALOGO_MANTIDO = (
+    "Catálogo de emissores: incompleto, o arquivo anterior foi mantido (faltaram: {tickers})"
+)
+RESUMO_CATALOGO_PARCIAL = (
+    "Catálogo de emissores: incompleto e sem arquivo anterior, gravado com {quantidade} ações "
+    "(faltaram: {tickers})"
+)
 
 TEXTO_RODADA_DESCARTADA = (
     "Rodada descartada: {motivo} O resultado anterior foi mantido. A rodada "
@@ -1825,6 +1833,16 @@ VALIDADE_MACRO_GUARDADO_DIAS = 45
 NOME_ARQUIVO_MACRO_REFERENCIA = "macro_referencia.json"
 CAMINHO_MACRO_REFERENCIA = DATA_PROCESSED_DIR / NOME_ARQUIVO_MACRO_REFERENCIA
 VALIDADE_MACRO_REFERENCIA_DIAS = 90
+
+# Catálogo enxuto de emissores, versionado com o screener.csv: a cada rodada aceita grava o
+# CNPJ e o segmento setorial de cada ação do resultado, para a página de análise não baixar o
+# catálogo inteiro da B3 (36 páginas, cerca de 1 minuto) quando o app acorda no Cloud.
+NOME_ARQUIVO_CATALOGO_EMISSORES = "catalogo_emissores.csv"
+CAMINHO_CATALOGO_EMISSORES = DATA_PROCESSED_DIR / NOME_ARQUIVO_CATALOGO_EMISSORES
+COLUNAS_CATALOGO_ENXUTO = ("ticker", "cnpj", "segmento_setorial")
+SITUACAO_CATALOGO_ATUALIZADO = "atualizado"
+SITUACAO_CATALOGO_MANTIDO = "mantido"
+SITUACAO_CATALOGO_PARCIAL = "parcial"
 PREFIXO_FONTE_ARQUIVO_REFERENCIA = "arquivo de referência"
 FONTE_ARQUIVO_REFERENCIA = PREFIXO_FONTE_ARQUIVO_REFERENCIA + " de {data}"
 

@@ -50,6 +50,7 @@ from avaliador_b3.config import (
     AVISO_DESCONTO_EXTREMO_GENERICO,
     AVISO_DESCONTO_EXTREMO_POSITIVO_COM_FCD,
     AVISO_DESCONTO_EXTREMO_POSITIVO_SEM_FCD,
+    COLUNAS_CATALOGO_ENXUTO,
     COLUNAS_VALOR_FINITO_SCREENER,
     DATA_PROCESSED_DIR,
     DATA_RAW_DIR,
@@ -70,12 +71,17 @@ from avaliador_b3.config import (
     MOTIVO_RODADA_SEM_PRECO,
     MOTIVO_RODADA_UNIVERSO_PEQUENO,
     MOTIVO_RODADA_VALOR_NAO_FINITO,
+    NOME_ARQUIVO_CATALOGO_EMISSORES,
     NOME_ARQUIVO_MACRO_REFERENCIA,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
+    SITUACAO_CATALOGO_ATUALIZADO,
+    SITUACAO_CATALOGO_MANTIDO,
+    SITUACAO_CATALOGO_PARCIAL,
     TEXTO_NENHUM_METODO_SE_APLICA,
 )
 from avaliador_b3.empresa.comportamento import calcular_beta
+from avaliador_b3.ingest._cache import gravar_texto_atomico
 from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
 from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
 from avaliador_b3.ingest.bcb_sgs import ResultadoMacro, obter_selic_e_ipca, salvar_macro_referencia
@@ -726,11 +732,55 @@ def _executar_rodada(
     # nova chamada de rede.
     resultado_ordenado.to_csv(caminho_saida, index=False)
     resultado_ordenado.attrs["macro"] = macro_da_rodada
+    (
+        resultado_ordenado.attrs["catalogo_enxuto"],
+        resultado_ordenado.attrs["catalogo_faltantes"],
+    ) = _montar_catalogo_enxuto(list(resultado_ordenado["ticker"]), catalogo_emissores)
     resultado_ordenado.attrs["valores_nao_finitos"] = {
         linha["ticker"]: colunas for linha in linhas if (colunas := _colunas_nao_finitas(linha))
     }
 
     return resultado_ordenado
+
+
+def _montar_catalogo_enxuto(
+    tickers: list[str], catalogo_emissores: pd.DataFrame
+) -> tuple[list[dict], list[str]]:
+    """CNPJ e segmento setorial de cada ticker do resultado, e os tickers que ficaram de fora
+    (fora do catálogo ou com CNPJ ou segmento vazio)."""
+    registros: list[dict] = []
+    faltantes: list[str] = []
+    for ticker in tickers:
+        try:
+            emissor = resolver_cnpj(ticker, catalogo_emissores)
+        except EmissorNaoEncontrado:
+            faltantes.append(ticker)
+            continue
+        cnpj, segmento = emissor["cnpj"], emissor["segmento_setorial"]
+        if pd.isna(cnpj) or pd.isna(segmento) or not str(cnpj).strip() or not str(segmento).strip():
+            faltantes.append(ticker)
+            continue
+        registros.append({"ticker": ticker, "cnpj": str(cnpj), "segmento_setorial": str(segmento)})
+    return registros, faltantes
+
+
+def _publicar_catalogo_enxuto(resultado: pd.DataFrame, caminho_catalogo: Path) -> None:
+    """Grava o catálogo enxuto da rodada aceita. Só substitui o anterior se cobrir todos os
+    tickers do resultado; incompleto, o anterior fica (e sem anterior grava o que houver).
+    A situação vai em `attrs["catalogo"]`, para o resumo da rodada."""
+    registros = resultado.attrs.pop("catalogo_enxuto", [])
+    faltantes = resultado.attrs.pop("catalogo_faltantes", [])
+    if faltantes and caminho_catalogo.exists():
+        situacao = SITUACAO_CATALOGO_MANTIDO
+    else:
+        tabela = pd.DataFrame(registros, columns=list(COLUNAS_CATALOGO_ENXUTO))
+        gravar_texto_atomico(caminho_catalogo, tabela.to_csv(index=False), estrito=True)
+        situacao = SITUACAO_CATALOGO_PARCIAL if faltantes else SITUACAO_CATALOGO_ATUALIZADO
+    resultado.attrs["catalogo"] = {
+        "situacao": situacao,
+        "quantidade": len(registros),
+        "faltantes": faltantes,
+    }
 
 
 def rodar_screener(
@@ -766,6 +816,7 @@ def rodar_screener(
     caminho_novo = caminho_saida.with_name(f"{caminho_saida.name}.{identificador}.novo")
     caminho_macro = caminho_saida.with_name(NOME_ARQUIVO_MACRO_REFERENCIA)
     caminho_macro_novo = caminho_macro.with_name(f"{caminho_macro.name}.{identificador}.novo")
+    caminho_catalogo = caminho_saida.with_name(NOME_ARQUIVO_CATALOGO_EMISSORES)
     caminho_rejeitado = caminho_saida.with_name(caminho_saida.stem + ".rejeitado.csv")
 
     try:
@@ -776,6 +827,7 @@ def rodar_screener(
             diretorio_cache=diretorio_cache,
             caminhos=(caminho_novo, caminho_saida, caminho_rejeitado, caminho_macro_novo),
             caminho_macro=caminho_macro,
+            caminho_catalogo=caminho_catalogo,
             falhas_de_fonte=falhas_de_fonte,
         )
     finally:
@@ -789,6 +841,7 @@ def _publicar_rodada(
     diretorio_cache: Path,
     caminhos: tuple[Path, Path, Path, Path],
     caminho_macro: Path,
+    caminho_catalogo: Path,
     falhas_de_fonte: FalhasDeFonte,
 ) -> pd.DataFrame:
     """Roda a rodada em `caminho_novo`, checa e publica (ou rejeita); ver `rodar_screener`."""
@@ -843,6 +896,8 @@ def _publicar_rodada(
 
     resultado.attrs["falhas_de_fonte"] = falhas_de_fonte.por_ticker()
     if motivos:
+        resultado.attrs.pop("catalogo_enxuto", None)
+        resultado.attrs.pop("catalogo_faltantes", None)
         os.replace(caminho_novo, caminho_rejeitado)
         raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado, resultado)
 
@@ -853,5 +908,6 @@ def _publicar_rodada(
     if macro is not None and not macro.usou_valor_guardado:
         salvar_macro_referencia(macro, caminho_macro_novo)
         os.replace(caminho_macro_novo, caminho_macro)
+    _publicar_catalogo_enxuto(resultado, caminho_catalogo)
     os.replace(caminho_novo, caminho_saida)
     return resultado

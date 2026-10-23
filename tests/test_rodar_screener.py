@@ -146,3 +146,42 @@ def test_avisos_da_rodada_entram_no_resumo(monkeypatch, capsys):
         rodar_screener.main([])
 
     assert "Aviso: Fundamentus indisponível: 5 ações seguidas falharam." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("catalogo", "esperado"),
+    [
+        (
+            {"situacao": "atualizado", "quantidade": 76, "faltantes": []},
+            "Catálogo de emissores: 76 ações gravadas",
+        ),
+        (
+            {"situacao": "mantido", "quantidade": 74, "faltantes": ["AAAA4", "BBBB4"]},
+            "Catálogo de emissores: incompleto, o arquivo anterior foi mantido "
+            "(faltaram: AAAA4, BBBB4)",
+        ),
+        (
+            {"situacao": "parcial", "quantidade": 74, "faltantes": ["AAAA4"]},
+            "Catálogo de emissores: incompleto e sem arquivo anterior, gravado com 74 ações "
+            "(faltaram: AAAA4)",
+        ),
+    ],
+)
+def test_resumo_informa_a_situacao_do_catalogo_de_emissores(
+    monkeypatch, capsys, catalogo, esperado
+):
+    resultado = _resultado()
+    resultado.attrs["catalogo"] = catalogo
+    monkeypatch.setattr(screener, "rodar_screener", lambda: resultado)
+
+    rodar_screener.main([])
+
+    assert esperado in capsys.readouterr().out
+
+
+def test_resumo_sem_situacao_do_catalogo_nao_menciona_o_catalogo(monkeypatch, capsys):
+    monkeypatch.setattr(screener, "rodar_screener", lambda: _resultado())
+
+    rodar_screener.main([])
+
+    assert "Catálogo de emissores" not in capsys.readouterr().out
