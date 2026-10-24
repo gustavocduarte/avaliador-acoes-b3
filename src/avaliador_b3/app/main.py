@@ -252,6 +252,7 @@ from avaliador_b3.config import (
     TEXTO_SEM_DADO_NA_TABELA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
     TEXTO_SEM_HISTORICO_DE_PRECOS,
+    TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO,
     TEXTO_SEM_PATRIMONIO_TOTAL_NOS_PESOS,
     TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO,
     TEXTO_SETOR_APOS_PROXIMA_ATUALIZACAO,
@@ -1290,8 +1291,10 @@ def _html_tabela_setorial(tabela: pd.DataFrame, ticker_destacado: str) -> str:
             f"<td>{_html_barra_potencial(linha.desconto_percentual)}</td></tr>"
         )
     ajuda = f'<span class="ab-ajuda" title="{escape(TOOLTIP_POTENCIAL_COLUNA)}">?</span>'
+    # Com uma linha só, a tabela não estica até a altura do painel.
+    curta = " ab-tabela-curta" if len(tabela) == 1 else ""
     return (
-        '<div class="ab-tabela-caixa"><table class="ab-tabela"><thead><tr>'
+        f'<div class="ab-tabela-caixa{curta}"><table class="ab-tabela"><thead><tr>'
         '<th>Ticker</th><th class="ab-num">Preço atual</th>'
         '<th class="ab-num">Valor combinado</th>'
         f"<th>{escape(ROTULO_POTENCIAL)}{ajuda}</th></tr></thead>"
@@ -1577,11 +1580,12 @@ _CSS_DA_PAGINA = Template("""<style>
 /* A tabela da comparação setorial ocupa a altura do painel (que acompanha o vizinho). Se o
    Streamlit renomear as classes .stElementContainer/.stHtml, só o esticamento se perde: a
    tabela continua visível, com a altura do conteúdo. */
-.st-key-painel_comparacao_setorial .stElementContainer:has(.ab-tabela-caixa) {
+.st-key-painel_comparacao_setorial .stElementContainer:has(.ab-tabela-caixa:not(.ab-tabela-curta)) {
   flex: 1 1 auto; min-height: 0; }
-.st-key-painel_comparacao_setorial .stHtml,
-.st-key-painel_comparacao_setorial .ab-tabela-caixa,
-.st-key-painel_comparacao_setorial .ab-tabela { height: 100%; }
+.st-key-painel_comparacao_setorial .stHtml:has(.ab-tabela-caixa:not(.ab-tabela-curta)),
+.st-key-painel_comparacao_setorial .ab-tabela-caixa:not(.ab-tabela-curta),
+.st-key-painel_comparacao_setorial .ab-tabela-caixa:not(.ab-tabela-curta) .ab-tabela {
+  height: 100%; }
 .ab-tabela-caixa { overflow-x: auto; }
 .ab-tabela { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .ab-tabela th { padding: .35rem .5rem; text-align: left; font-size: .72rem; font-weight: 400;
@@ -2633,6 +2637,8 @@ def pagina_analisar() -> None:
                             nome_segmento = _rotulo_segmento_setorial(segmento_setorial)
                             st.caption(f"Segmento setorial (B3): {nome_segmento}")
                             st.html(_html_tabela_setorial(tabela_pares, ticker))
+                            if set(tabela_pares["ticker"]) <= {ticker}:
+                                st.caption(TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO)
                             macro_screener = carregar_macro_referencia()
                             if macro_screener is not None:
                                 st.caption(

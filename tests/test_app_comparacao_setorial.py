@@ -93,6 +93,52 @@ def test_tabela_sem_a_acao_analisada_nao_destaca_nenhuma_linha():
     assert "ab-linha-destaque" not in _html_tabela_setorial(_tabela(), "VALE3")
 
 
+def test_tabela_de_uma_linha_so_nao_estica_e_a_de_varias_estica():
+    assert "ab-tabela-curta" in _html_tabela_setorial(_tabela().head(1), "PETR4")
+    assert "ab-tabela-curta" not in _html_tabela_setorial(_tabela(), "PETR4")
+
+
+def test_acao_sozinha_no_segmento_mostra_a_linha_curta_e_avisa_que_nao_ha_outra(
+    monkeypatch, tmp_path
+):
+    app._preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
+    base = {c: None for c in COLUNAS_RESULTADO} | {
+        "sucesso": True,
+        "erro": "",
+        "aviso_desconto_extremo": "",
+        "metodos_utilizados": "graham",
+    }
+    linhas = [
+        base
+        | {
+            "ticker": ticker,
+            "segmento_setorial": segmento,
+            "preco_atual": 58.0,
+            "valor_combinado": 65.82,
+            "desconto_percentual": 13.5,
+        }
+        for ticker, segmento in (("PETR4", SEGMENTO), ("VALE3", "Mineração"))
+    ]
+    caminho = tmp_path / "screener.csv"
+    pd.DataFrame(linhas, columns=COLUNAS_RESULTADO).to_csv(caminho, index=False)
+    monkeypatch.setattr(screener_mod, "CAMINHO_SAIDA_PADRAO", caminho)
+    monkeypatch.setattr(
+        "avaliador_b3.ingest.crosswalk_cnpj.obter_catalogo_emissores",
+        lambda *a, **k: app._catalogo_emissores_vazio(),
+    )
+
+    at = AppTest.from_file(app.CAMINHO_APP)
+    at.run(timeout=60)
+
+    assert not at.exception
+    tabelas = [e.proto.body for e in at.get("html") if "<table" in e.proto.body]
+    assert len(tabelas) == 1 and "ab-tabela-curta" in tabelas[0] and "PETR4" in tabelas[0]
+    assert [c.value for c in at.caption].count(config.TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO) == 1
+    assert (
+        config.TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO == "Nenhuma outra ação do Ibovespa neste segmento."
+    )
+
+
 def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch, tmp_path):
     app._preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     base = {c: None for c in COLUNAS_RESULTADO} | {
@@ -138,6 +184,7 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
     html = tabelas[0]
     assert re.search(r'<tr class="ab-linha-destaque"><td>PETR4</td>', html)
     assert "BRAV3" in html and "VALE3" not in html
+    assert config.TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO not in [c.value for c in at.caption]
     assert "+13,5%" in html and "-30,0%" in html
     # A tabela antiga (st.dataframe) saiu do painel.
     assert not any("desconto_percentual" in df.value.columns for df in at.dataframe)

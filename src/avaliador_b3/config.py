@@ -1477,6 +1477,7 @@ URL_PAGINA_CARTEIRA = "simulador"
 URL_REPOSITORIO = "https://github.com/gustavocduarte/avaliador-acoes-b3"
 TEXTO_RODAPE_SCREENER_ATUALIZADO = "Screener atualizado em {data}"
 TEXTO_LEGENDA_DATA_SCREENER_SETORIAL = "Preços e potenciais do screener de {data}"
+TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO = "Nenhuma outra ação do Ibovespa neste segmento."
 TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL = (
     "O resultado salvo do screener não traz o segmento setorial: rode o screener de novo "
     "para comparar com as ações do mesmo setor."
