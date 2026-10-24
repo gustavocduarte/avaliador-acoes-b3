@@ -213,3 +213,11 @@ def test_concentracao_mostra_uma_casa_para_o_corte_de_cinquenta_nao_parecer_erra
     resumo = _resumo(setor_de_maior_peso="Bancos", peso_do_maior_setor_percentual=peso)
 
     assert f'ab-valor {classe}">{texto}<' in _html_kpis_carteira(resumo)
+
+
+def test_cartao_do_valor_investido_usa_singular_com_uma_posicao_e_plural_com_mais():
+    uma = _html_kpis_carteira(resumir_carteira(_tabela(), {"AAA3": 100}))
+    duas = _html_kpis_carteira(resumir_carteira(_tabela(), {"AAA3": 100, "BBB4": 50}))
+
+    assert "1 posição<" in uma and "1 posições" not in uma
+    assert "2 posições<" in duas

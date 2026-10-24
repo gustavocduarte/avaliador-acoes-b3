@@ -362,5 +362,16 @@ def test_fatia_abaixo_de_5_por_cento_nao_mostra_o_percentual_dentro_mas_o_hover_
 
     assert list(rosca.labels) == ["AAA3", "BBB4"]
     assert list(rosca.text) == [f"{pesos[0]:.1f}%".replace(".", ","), ""]
-    assert [c[1] for c in rosca.customdata] == [f"{p:.1f}%".replace(".", ",") for p in pesos]
-    assert "%{customdata[1]}" in rosca.hovertemplate
+    assert [c.split("(")[1] for c in rosca.customdata] == [
+        f"{p:.1f}%)".replace(".", ",") for p in pesos
+    ]
+
+
+def test_rosca_com_uma_acao_so_usa_virgula_decimal_no_rotulo_e_no_hover():
+    comp = _composicao({"AAA3": 100})
+
+    rosca = _figura_composicao_por_acao(comp, _cores_das_acoes(comp)).data[0]
+
+    assert list(rosca.text) == ["100,0%"]
+    assert list(rosca.customdata) == ["R$ 1.000,00 (100,0%)"]
+    assert rosca.hovertemplate == "%{label}: %{customdata}<extra></extra>"

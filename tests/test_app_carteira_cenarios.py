@@ -179,3 +179,13 @@ def test_so_com_acao_sem_cenario_os_paineis_avisam_em_vez_de_desenhar(monkeypatc
 @pytest.mark.parametrize("cenario", ["pessimista", "base", "otimista"])
 def test_rotulos_dos_cenarios_existem_no_config(cenario):
     assert config.ROTULOS_CENARIOS_CARTEIRA[cenario]
+
+
+def _ancora_do_investido(**mudancas) -> str:
+    return _figura_faixa_cenarios(TOTAIS | mudancas).layout.annotations[0].xanchor
+
+
+def test_rotulo_do_investido_se_alinha_por_dentro_quando_a_linha_esta_numa_ponta():
+    assert _ancora_do_investido(soma_investida_com_cenario=2100.0) == "center"
+    assert _ancora_do_investido(soma_investida_com_cenario=9000.0) == "right"
+    assert _ancora_do_investido(soma_investida_com_cenario=100.0) == "left"

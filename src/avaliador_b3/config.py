@@ -1545,6 +1545,8 @@ TEXTO_FAIXA_ACIMA_DO_LIMITE = ">100%"
 TEXTO_MEDIANA_NO_GRAFICO = "mediana {mediana}"
 # Folga acima da barra mais alta do histograma (fração da altura dela).
 FOLGA_TOPO_HISTOGRAMA = 1.25
+# Altura do número de cada barra, como fração do eixo vertical.
+FRACAO_ROTULO_BARRA_HISTOGRAMA = 0.16
 TITULO_EIXO_POTENCIAL = "Potencial (%)"
 TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO = "Nenhuma ação com potencial para mostrar."
 TITULO_ATENCAO = "Atenção"
@@ -1684,6 +1686,7 @@ TEXTO_CARTEIRA_VAZIA = "Adicione ações à carteira na barra lateral para simul
 
 # Cartões do topo do Simulador.
 ROTULO_KPI_VALOR_INVESTIDO = "Valor investido"
+TEXTO_KPI_POSICAO_SINGULAR = "1 posição"
 TEXTO_KPI_POSICOES = "{quantidade} posições"
 TEXTO_KPI_SEM_COMBINADO = "{quantidade} sem valor combinado ({valor})"
 ROTULO_KPI_VALOR_JUSTO_CARTEIRA = "Valor justo da carteira"
@@ -1709,6 +1712,10 @@ LIMITE_CONCENTRACAO_SETOR_PERCENTUAL = 50.0
 TITULO_CENARIOS_CARTEIRA = "Cenários"
 ROTULOS_CENARIOS_CARTEIRA = {"pessimista": "Pessimista", "base": "Base", "otimista": "Otimista"}
 TEXTO_LINHA_INVESTIDO_NO_GRAFICO = "Investido {valor}"
+# Posição da linha do investido na faixa (0 a 1) a partir da qual o rótulo dela se alinha pela
+# borda de dentro (à direita ou à esquerda da linha) para não sair cortado.
+LIMITE_ROTULO_INVESTIDO_ESQUERDA = 0.25
+LIMITE_ROTULO_INVESTIDO_DIREITA = 0.75
 TEXTO_NENHUMA_ACAO_COM_CENARIO = (
     "Nenhuma das ações selecionadas tem cenário disponível, então não há o que somar."
 )

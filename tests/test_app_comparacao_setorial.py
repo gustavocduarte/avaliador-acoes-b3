@@ -89,6 +89,19 @@ def test_tabela_destaca_so_a_linha_da_acao_analisada_e_formata_os_valores():
     assert "Potencial" in html and 'class="ab-ajuda"' in html
 
 
+def test_valor_ausente_na_tabela_setorial_aparece_como_traco_e_nao_como_nd():
+    tabela = _tabela()
+    tabela.loc[2, "valor_combinado"] = float("nan")
+    tabela.loc[2, "desconto_percentual"] = float("nan")
+
+    html = _html_tabela_setorial(tabela, "PETR4")
+
+    assert "N/D" not in html
+    assert re.search(
+        r'<td>CSAN3</td><td class="ab-num">R\$ 5,11</td><td class="ab-num">—</td>', html
+    )
+
+
 def test_tabela_sem_a_acao_analisada_nao_destaca_nenhuma_linha():
     assert "ab-linha-destaque" not in _html_tabela_setorial(_tabela(), "VALE3")
 

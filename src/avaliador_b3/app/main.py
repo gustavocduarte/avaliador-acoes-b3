@@ -85,6 +85,7 @@ from avaliador_b3.config import (
     FAIXA_POTENCIAL_LIMITE,
     FOLGA_ROTULO_BARRA,
     FOLGA_TOPO_HISTOGRAMA,
+    FRACAO_ROTULO_BARRA_HISTOGRAMA,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     ICONE_PAGINA_ANALISAR,
@@ -104,6 +105,8 @@ from avaliador_b3.config import (
     LIMITE_CONCENTRACAO_SETOR_PERCENTUAL,
     LIMITE_DIVERGENCIA_METODOS_ALTA,
     LIMITE_LIQUIDEZ_CORRENTE_BAIXA,
+    LIMITE_ROTULO_INVESTIDO_DIREITA,
+    LIMITE_ROTULO_INVESTIDO_ESQUERDA,
     LIMITE_SINAL_INDICADOR,
     MARCA_FCD_DEDUCOES_NA_TABELA,
     MENSAGEM_TRADINGVIEW_TICKER_INVALIDO,
@@ -209,6 +212,7 @@ from avaliador_b3.config import (
     TEXTO_KPI_ABAIXO_DO_VALOR_JUSTO,
     TEXTO_KPI_COM_COMBINADO,
     TEXTO_KPI_COM_FCD,
+    TEXTO_KPI_POSICAO_SINGULAR,
     TEXTO_KPI_POSICOES,
     TEXTO_KPI_SEM_COMBINADO,
     TEXTO_KPI_SEM_METODO,
@@ -1292,8 +1296,8 @@ def _html_tabela_setorial(tabela: pd.DataFrame, ticker_destacado: str) -> str:
         classe = ' class="ab-linha-destaque"' if linha.ticker == ticker_destacado else ""
         linhas.append(
             f"<tr{classe}><td>{escape(str(linha.ticker))}</td>"
-            f'<td class="ab-num">{escape(_fmt_bilhoes(linha.preco_atual))}</td>'
-            f'<td class="ab-num">{escape(_fmt_bilhoes(linha.valor_combinado))}</td>'
+            f'<td class="ab-num">{escape(_fmt_bilhoes_ou_traco(linha.preco_atual))}</td>'
+            f'<td class="ab-num">{escape(_fmt_bilhoes_ou_traco(linha.valor_combinado))}</td>'
             f"<td>{_html_barra_potencial(linha.desconto_percentual)}</td></tr>"
         )
     ajuda = f'<span class="ab-ajuda" title="{escape(TOOLTIP_POTENCIAL_COLUNA)}">?</span>'
@@ -1317,6 +1321,11 @@ def _nomes_dos_metodos(metodos: list[str]) -> str:
 def _nomes_dos_metodos_do_csv(valor: str) -> str:
     """O mesmo para a célula do CSV do screener, onde os métodos vêm separados por vírgula."""
     return _nomes_dos_metodos([m for m in valor.split(",") if m])
+
+
+def _fmt_bilhoes_ou_traco(valor: float | None) -> str:
+    """`_fmt_bilhoes`, mas com "—" (e não "N/D") quando o valor não existe."""
+    return "—" if valor is None or pd.isna(valor) else _fmt_bilhoes(valor)
 
 
 def _lista_em_texto(itens: list[str]) -> str:
@@ -2917,14 +2926,30 @@ def _figura_distribuicao_potencial(potencial: pd.Series) -> go.Figure:
         )
     )
     figura.add_vline(x=faixas_negativas - 0.5, line_width=1, line_color=COR_TEXTO_SECUNDARIO)
+    # A linha da mediana desce do topo só até acima do número da barra que ela cruza, e o rótulo
+    # fica acima da área do gráfico: nada passa por cima de número de barra.
     mediana = float(valores.median())
-    figura.add_vline(
-        x=_posicao_no_histograma(mediana),
-        line_dash="dash",
-        line_color=COR_ALERTA,
-        annotation_text=TEXTO_MEDIANA_NO_GRAFICO.format(mediana=_fmt_potencial(mediana)),
-        annotation_position="top",
-        annotation_font_color=COR_ALERTA,
+    posicao_mediana = _posicao_no_histograma(mediana)
+    topo = max(contagens, default=0) * FOLGA_TOPO_HISTOGRAMA + 1
+    barra = min(max(round(posicao_mediana), 0), len(contagens) - 1)
+    corte = contagens[barra] + topo * FRACAO_ROTULO_BARRA_HISTOGRAMA
+    figura.add_shape(
+        type="line",
+        x0=posicao_mediana,
+        x1=posicao_mediana,
+        y0=corte,
+        y1=topo,
+        yref="y",
+        line={"color": COR_ALERTA, "dash": "dash", "width": 2},
+    )
+    figura.add_annotation(
+        x=posicao_mediana,
+        y=1,
+        yref="paper",
+        yanchor="bottom",
+        text=TEXTO_MEDIANA_NO_GRAFICO.format(mediana=_fmt_potencial(mediana)),
+        showarrow=False,
+        font={"color": COR_ALERTA},
     )
     # Rótulos nas bordas das faixas (-100 ... +80) e ">100" sob a última barra; o "%" vai no título.
     bordas = range(-FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LIMITE, FAIXA_POTENCIAL_LARGURA)
@@ -2938,9 +2963,7 @@ def _figura_distribuicao_potencial(potencial: pd.Series) -> go.Figure:
         title={"text": TITULO_EIXO_POTENCIAL, "font": {"size": 10}, "standoff": 8},
     )
     # Folga no topo: o número da barra mais alta não encosta no rótulo da mediana.
-    figura.update_yaxes(
-        showticklabels=False, range=[0, max(contagens, default=0) * FOLGA_TOPO_HISTOGRAMA + 1]
-    )
+    figura.update_yaxes(showticklabels=False, range=[0, topo])
     figura.update_layout(height=300, margin={"t": 36, "b": 10, "l": 24, "r": 10}, showlegend=False)
     return aplicar_template_grafico(figura)
 
@@ -3363,7 +3386,11 @@ def _html_kpis_carteira(resumo: dict) -> str:
             quantidade=sem_combinado, valor=_fmt_bilhoes(resumo["investido_sem_combinado"])
         )
         if sem_combinado
-        else TEXTO_KPI_POSICOES.format(quantidade=resumo["quantidade_posicoes"])
+        else (
+            TEXTO_KPI_POSICAO_SINGULAR
+            if resumo["quantidade_posicoes"] == 1
+            else TEXTO_KPI_POSICOES.format(quantidade=resumo["quantidade_posicoes"])
+        )
     )
     cartoes = [
         _html_kpi(
@@ -3493,8 +3520,8 @@ def _figura_composicao_por_acao(composicao: pd.DataFrame, cores: dict[str, str])
                 for f in fatias
             ],
             textinfo="text",
-            customdata=[[_fmt_bilhoes(f[1]), _fmt_percentual(f[2], 1)] for f in fatias],
-            hovertemplate="%{label}: %{customdata[0]} (%{customdata[1]})<extra></extra>",
+            customdata=[f"{_fmt_bilhoes(f[1])} ({_fmt_percentual(f[2], 1)})" for f in fatias],
+            hovertemplate="%{label}: %{customdata}<extra></extra>",
             textfont={"color": COR_FUNDO_PAGINA},
         )
     )
@@ -3695,18 +3722,29 @@ def _figura_faixa_cenarios(totais: dict) -> go.Figure:
             hovertemplate="Base: %{customdata}<extra></extra>",
         )
     )
+    menor, maior = min(pessimista, investido), max(otimista, investido)
+    folga = (maior - menor) * 0.12 or 1.0
+    inicio, fim = menor - folga, maior + folga
+    # Na ponta do eixo o rótulo do investido se alinha pelo lado de dentro da linha.
+    posicao = (investido - inicio) / (fim - inicio)
+    ancora = (
+        "right"
+        if posicao > LIMITE_ROTULO_INVESTIDO_DIREITA
+        else "left"
+        if posicao < LIMITE_ROTULO_INVESTIDO_ESQUERDA
+        else "center"
+    )
     figura.add_vline(
         x=investido,
         line_dash="dash",
         line_color=COR_ALERTA,
         annotation_text=TEXTO_LINHA_INVESTIDO_NO_GRAFICO.format(valor=_fmt_bilhoes(investido)),
         annotation_position="top",
+        annotation_xanchor=ancora,
         annotation_font_color=COR_ALERTA,
     )
-    menor, maior = min(pessimista, investido), max(otimista, investido)
-    folga = (maior - menor) * 0.12 or 1.0
     figura.update_xaxes(
-        range=[menor - folga, maior + folga],
+        range=[inicio, fim],
         tickprefix="R$ ",
         tickformat=",.0f",
         automargin=True,

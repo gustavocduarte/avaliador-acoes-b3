@@ -217,3 +217,16 @@ def test_eixo_y_do_histograma_deixa_folga_acima_da_barra_mais_alta_para_a_median
 
     assert figura.layout.yaxis.range[0] == 0
     assert figura.layout.yaxis.range[1] > max(figura.data[0].y) * config.FOLGA_TOPO_HISTOGRAMA
+
+
+def test_linha_da_mediana_nao_passa_por_cima_do_numero_da_barra_e_o_rotulo_fica_acima_do_grafico():
+    # A mediana cai na barra mais alta (">100").
+    figura = _figura_distribuicao_potencial(pd.Series([150.0, 160.0, 170.0, 180.0, 70.0]))
+
+    _, mediana = figura.layout.shapes
+    topo = figura.layout.yaxis.range[1]
+    contagem_da_barra = 4
+    assert mediana.y1 == topo
+    assert mediana.y0 > contagem_da_barra  # termina acima do número da barra
+    rotulo = figura.layout.annotations[0]
+    assert rotulo.yref == "paper" and rotulo.y == 1 and rotulo.yanchor == "bottom"
