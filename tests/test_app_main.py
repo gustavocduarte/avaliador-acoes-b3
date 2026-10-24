@@ -36,6 +36,7 @@ from avaliador_b3.config import (
     TEXTO_CRESCIMENTO_SEM_LIMITE_DA_RECEITA,
     TEXTO_FIRMA_SEM_COMPONENTES,
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
+    TEXTO_SEM_CENARIO_SINGULAR,
     TICKER_PETROLEO_BRENT,
     TITULO_PAGINA_CARTEIRA,
     TITULO_PAGINA_SCREENER,
@@ -3186,9 +3187,7 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
         "Quanto o valor justo do cenário está acima (+) ou abaixo (-) do preço atual "
         "(valor justo ÷ preço - 1). Não é retorno esperado nem tem prazo."
     )
-    assert any(
-        "NEGA4: cenário(s) Pessimista limitado(s) a perda total" in c.value for c in aba.caption
-    )
+    assert any("NEGA4: cenário Pessimista limitado a perda total" in c.value for c in aba.caption)
 
     # Frase-resumo: só DOBR4 e NEGA4 têm cenário (R$ 1.500,00 investidos);
     # pessimista = 2.000 (DOBR4) + 0 (NEGA4, piso); otimista = 2.000 + 1.000.
@@ -3207,7 +3206,9 @@ def test_simulador_mostra_potencial_sem_prazo_e_limita_a_perda_a_100_por_cento(
         "R$ 3.000,00 (otimista) se os preços convergissem aos valores justos, sem prazo "
         "definido."
     ) in cabecalho
-    assert any("ficaram de fora desse cálculo" in c.value for c in aba.caption)
+    assert not aba.warning
+    legenda = TEXTO_SEM_CENARIO_SINGULAR.format(tickers="SEMC3")
+    assert [c.value for c in aba.caption].count(legenda) == 1
     assert (
         "Quanto a carteira valeria se o preço de cada ação chegasse ao valor justo do "
         "cenário, em reais de hoje, sem prazo e sem contar dividendos. Não é previsão."

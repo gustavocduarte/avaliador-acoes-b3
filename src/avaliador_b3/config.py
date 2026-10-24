@@ -570,10 +570,14 @@ UNITS_COMPOSICAO = {
 }
 # Diferença relativa entre o fator do Fundamentus e o da tabela acima da qual a tela avisa.
 TOLERANCIA_FATOR_UNIT_TABELA = 0.05
+TEXTO_ORDINARIA_SINGULAR = "{quantidade} ordinária"
+TEXTO_ORDINARIAS_PLURAL = "{quantidade} ordinárias"
+TEXTO_PREFERENCIAL_SINGULAR = "{quantidade} preferencial"
+TEXTO_PREFERENCIAIS_PLURAL = "{quantidade} preferenciais"
 AVISO_UNIT_FATOR_DIFERENTE = (
     "O fator de unit do Fundamentus ({fundamentus}) não bate com a composição registrada para "
-    "{ticker} ({esperado:g} ações ordinárias equivalentes por unit: {ordinarias} ordinária(s) e "
-    "{preferenciais} preferencial(is), cada preferencial valendo {peso:g} da ordinária). O "
+    "{ticker} ({esperado:g} ações ordinárias equivalentes por unit: {ordinarias} e "
+    "{preferenciais}, cada preferencial valendo {peso:g} da ordinária). O "
     "valor por unit pode estar errado; confira a composição da unit."
 )
 AVISO_UNIT_FORA_DA_TABELA = (
@@ -1706,8 +1710,27 @@ TITULO_CENARIOS_CARTEIRA = "Cenários"
 ROTULOS_CENARIOS_CARTEIRA = {"pessimista": "Pessimista", "base": "Base", "otimista": "Otimista"}
 TEXTO_LINHA_INVESTIDO_NO_GRAFICO = "Investido {valor}"
 TEXTO_NENHUMA_ACAO_COM_CENARIO = (
-    "Nenhuma das ações selecionadas tem cenário disponível — sem projeção pra somar (ver avisos "
-    "acima)."
+    "Nenhuma das ações selecionadas tem cenário disponível, então não há o que somar."
+)
+# Legenda do painel Cenários para as ações sem valor combinado.
+TEXTO_SEM_CENARIO_SINGULAR = (
+    "{tickers} não tem valor combinado (nenhum método se aplica) e fica fora dos cenários; o "
+    "valor investido nela entra no total."
+)
+TEXTO_SEM_CENARIO_PLURAL = (
+    "{tickers} não têm valor combinado (nenhum método se aplica) e ficam fora dos cenários; o "
+    "valor investido nelas entra no total."
+)
+# Ação com cenário limitado a perda total (valor justo do método abaixo de zero).
+TEXTO_CENARIO_LIMITADO_SINGULAR = (
+    "{ticker}: cenário {cenarios} limitado a perda total (R$ 0, -100%) — o método "
+    "correspondente deu um valor justo abaixo do preço atual o bastante para resultar numa perda "
+    "maior que 100%, o que não existe economicamente."
+)
+TEXTO_CENARIOS_LIMITADOS_PLURAL = (
+    "{ticker}: cenários {cenarios} limitados a perda total (R$ 0, -100%) — os métodos "
+    "correspondentes deram um valor justo abaixo do preço atual o bastante para resultar numa "
+    "perda maior que 100%, o que não existe economicamente."
 )
 TITULO_CONTRIBUICAO_CARTEIRA = "Contribuição de cada ação para o potencial"
 TOOLTIP_CONTRIBUICAO_CARTEIRA = (

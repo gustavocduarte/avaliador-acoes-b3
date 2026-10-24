@@ -51,9 +51,7 @@ def derivar_cenarios_ticker(linha: dict) -> dict:
             "otimista": None,
             "base": None,
             "pessimista": None,
-            "motivo_nao_aplicavel": (
-                "Nenhum método (Graham, Bazin, FCD) aplicável — sem cenário pra projetar."
-            ),
+            "motivo_nao_aplicavel": ("Nenhum método (Graham, Bazin, FCD) aplicável."),
         }
 
     if not _valor_valido(linha.get("valor_combinado")):
@@ -62,9 +60,7 @@ def derivar_cenarios_ticker(linha: dict) -> dict:
             "otimista": None,
             "base": None,
             "pessimista": None,
-            "motivo_nao_aplicavel": (
-                "Valor combinado indisponível ou inválido — sem cenário base pra projetar."
-            ),
+            "motivo_nao_aplicavel": ("Valor combinado indisponível ou inválido."),
         }
 
     return {
@@ -108,7 +104,7 @@ def simular_investimento_ticker(linha_screener: dict, valor_investido: float) ->
     if not cenarios["aplicavel"] or not _valor_valido(preco_atual):
         linha["aplicavel"] = False
         linha["motivo_nao_aplicavel"] = cenarios["motivo_nao_aplicavel"] or (
-            "Preço atual indisponível — não dá pra projetar retorno sem ele."
+            "Preço atual indisponível — não dá para projetar retorno sem ele."
         )
         for cenario in CENARIOS:
             linha[f"projecao_{cenario}"] = None

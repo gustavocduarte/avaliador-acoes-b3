@@ -606,7 +606,7 @@ def test_aviso_de_unit_quando_o_fator_do_fundamentus_nao_bate_com_a_tabela():
 
     assert aviso == (
         "O fator de unit do Fundamentus (3) não bate com a composição registrada para IGTI11 "
-        "(7 ações ordinárias equivalentes por unit: 1 ordinária(s) e 2 preferencial(is), cada "
+        "(7 ações ordinárias equivalentes por unit: 1 ordinária e 2 preferenciais, cada "
         "preferencial valendo 3 da ordinária). O valor por unit pode estar errado; confira a "
         "composição da unit."
     )

@@ -157,8 +157,10 @@ def test_pagina_mostra_os_paineis_de_cenarios_e_contribuicao(monkeypatch, tmp_pa
     assert contribuicao["data"][0]["y"] == ["DOBR4", "NEGA4"]
     assert app._valores_plotly(contribuicao["data"][0]["x"]) == [1000.0, -125.0]
     assert "Sem contribuição: SEMC3" in [c.value for c in at.caption]
-    # As ações sem cenário continuam avisadas, uma a uma.
-    assert any("SEMC3" in w.value and "sem cenário" in w.value for w in at.warning)
+    # A ação sem cenário é explicada numa legenda só, sem faixa amarela.
+    assert not at.warning
+    legenda = config.TEXTO_SEM_CENARIO_SINGULAR.format(tickers="SEMC3")
+    assert [c.value for c in at.caption].count(legenda) == 1
 
 
 def test_so_com_acao_sem_cenario_os_paineis_avisam_em_vez_de_desenhar(monkeypatch, tmp_path):

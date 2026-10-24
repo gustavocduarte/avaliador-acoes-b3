@@ -19,6 +19,7 @@ from avaliador_b3.config import (
     ROTULO_CARTEIRA_QUANTIDADE,
     ROTULO_LIMPAR_CARTEIRA,
     TEXTO_CARTEIRA_VAZIA,
+    TEXTO_SEM_CENARIO_SINGULAR,
     TITULO_PAGINA_ANALISAR,
     TITULO_PAGINA_CARTEIRA,
 )
@@ -165,7 +166,9 @@ def test_acao_sem_valor_combinado_fica_marcada_na_lista(monkeypatch, tmp_path):
     adicionar_a_carteira(at, "SEMC3", 30)
 
     assert _posicoes_na_barra(at) == ["**SEMC3** × 30 · sem valor combinado"]
-    assert any("SEMC3" in w.value and "sem cenário" in w.value for w in at.warning)
+    assert not at.warning
+    legenda = TEXTO_SEM_CENARIO_SINGULAR.format(tickers="SEMC3")
+    assert [c.value for c in at.caption].count(legenda) == 1
 
 
 def test_acao_que_saiu_do_screener_fica_na_lista_marcada_e_fora_das_contas(monkeypatch, tmp_path):

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -49,6 +50,10 @@ from avaliador_b3.config import (
     PREFIXOS_CONTAS_PASSIVO,
     TERMO_NAO_CONTROLADORES,
     TERMOS_PASSIVO_ARRENDAMENTO,
+    TEXTO_ORDINARIA_SINGULAR,
+    TEXTO_ORDINARIAS_PLURAL,
+    TEXTO_PREFERENCIAIS_PLURAL,
+    TEXTO_PREFERENCIAL_SINGULAR,
     TOLERANCIA_FATOR_UNIT_TABELA,
     TOLERANCIA_INTEGRALIZADO_LIQUIDO,
     UNITS_COMPOSICAO,
@@ -282,6 +287,10 @@ def _fmt_acoes(valor: float) -> str:
     return texto.replace(",", "_").replace(".", ",").replace("_", ".") + " mi"
 
 
+def _contagem(quantidade: Any, singular: str, plural: str) -> str:
+    return (singular if quantidade == 1 else plural).format(quantidade=quantidade)
+
+
 def _ordinarias_equivalentes_por_unit(composicao_unit: dict) -> float:
     """Ordinárias equivalentes de uma unit: ON + peso econômico da PN × PN."""
     return (
@@ -308,8 +317,12 @@ def montar_aviso_unit(ticker: str | None, acoes_por_cotacao: int | None) -> str 
         fundamentus=acoes_por_cotacao,
         ticker=ticker,
         esperado=esperado,
-        ordinarias=composicao["ordinarias"],
-        preferenciais=composicao["preferenciais"],
+        ordinarias=_contagem(
+            composicao["ordinarias"], TEXTO_ORDINARIA_SINGULAR, TEXTO_ORDINARIAS_PLURAL
+        ),
+        preferenciais=_contagem(
+            composicao["preferenciais"], TEXTO_PREFERENCIAL_SINGULAR, TEXTO_PREFERENCIAIS_PLURAL
+        ),
         peso=composicao["peso_preferencial"],
     )
 

@@ -182,6 +182,8 @@ from avaliador_b3.config import (
     TEXTO_CARTAO_SEM_METODO,
     TEXTO_CARTEIRA_ACAO_PLACEHOLDER,
     TEXTO_CARTEIRA_VAZIA,
+    TEXTO_CENARIO_LIMITADO_SINGULAR,
+    TEXTO_CENARIOS_LIMITADOS_PLURAL,
     TEXTO_COMPLEMENTO_SEM_METODO,
     TEXTO_CORTE_DA_OBSERVACAO,
     TEXTO_CRESCIMENTO_IPCA,
@@ -250,6 +252,8 @@ from avaliador_b3.config import (
     TEXTO_SEM_ACOES_EM_CIRCULACAO,
     TEXTO_SEM_AJUSTES_DO_BALANCO,
     TEXTO_SEM_ARRENDAMENTO_NA_DIVIDA,
+    TEXTO_SEM_CENARIO_PLURAL,
+    TEXTO_SEM_CENARIO_SINGULAR,
     TEXTO_SEM_CONTRIBUICAO,
     TEXTO_SEM_DADO_NA_TABELA,
     TEXTO_SEM_DESCONTO_NAO_CONTROLADORES,
@@ -1313,6 +1317,13 @@ def _nomes_dos_metodos(metodos: list[str]) -> str:
 def _nomes_dos_metodos_do_csv(valor: str) -> str:
     """O mesmo para a célula do CSV do screener, onde os métodos vêm separados por vírgula."""
     return _nomes_dos_metodos([m for m in valor.split(",") if m])
+
+
+def _lista_em_texto(itens: list[str]) -> str:
+    """ "A", "A e B" ou "A, B e C"."""
+    if len(itens) <= 1:
+        return "".join(itens)
+    return f"{', '.join(itens[:-1])} e {itens[-1]}"
 
 
 def _fmt_bilhoes(valor: float | None) -> str:
@@ -4014,22 +4025,15 @@ def pagina_carteira() -> None:
                 else:
                     st.html(_html_cenarios_carteira(totais_carteira))
                     exibir_grafico(_figura_faixa_cenarios(totais_carteira))
-                    if totais_carteira["quantidade_sem_cenario"]:
-                        sem_cenario = totais_carteira["quantidade_sem_cenario"]
-                        st.caption(
-                            f"{sem_cenario} ação(ões) sem cenário não entram nos totais por "
-                            "cenário, mas o valor investido nelas está incluído em "
-                            f'"{ROTULO_KPI_VALOR_INVESTIDO}".'
-                        )
-                        soma_investida = totais_carteira["soma_investida"]
-                        fora_da_conta = (
-                            soma_investida - totais_carteira["soma_investida_com_cenario"]
-                        )
-                        st.caption(
-                            f"De um total de {_fmt_bilhoes_md(soma_investida)} investidos, "
-                            f"{_fmt_bilhoes_md(fora_da_conta)} ({sem_cenario} ação(ões)) ficaram "
-                            "de fora desse cálculo — ver avisos acima."
-                        )
+                sem_cenario = list(tabela_carteira[~tabela_carteira["aplicavel"]]["ticker"])
+                if sem_cenario:
+                    st.caption(
+                        (
+                            TEXTO_SEM_CENARIO_SINGULAR
+                            if len(sem_cenario) == 1
+                            else TEXTO_SEM_CENARIO_PLURAL
+                        ).format(tickers=_lista_em_texto(sem_cenario))
+                    )
             with (
                 coluna_contribuicao,
                 st.container(border=True, key="painel_contribuicao_carteira", height="stretch"),
@@ -4043,19 +4047,6 @@ def pagina_carteira() -> None:
                 if sem_contribuicao:
                     st.caption(TEXTO_SEM_CONTRIBUICAO.format(tickers=", ".join(sem_contribuicao)))
 
-            # Ações sem nenhum método aplicável (ex: HAPV3/MRVE3 no screener
-            # real) não entram na tabela de projeção — mostrar zero ali seria
-            # um valor inventado. Em vez disso, cada uma ganha um aviso
-            # explícito, nomeando a ação e o motivo, nunca ignorada em
-            # silêncio.
-            linhas_sem_cenario = tabela_carteira[~tabela_carteira["aplicavel"]]
-            for _, linha_sem_cenario in linhas_sem_cenario.iterrows():
-                st.warning(
-                    f"{linha_sem_cenario['ticker']}: "
-                    f"{_fmt_bilhoes(linha_sem_cenario['valor_investido'])} "
-                    f"investidos, mas sem cenário — {linha_sem_cenario['motivo_nao_aplicavel']}"
-                )
-
             # Cenário com valor de método ≤ 0 (ex: FCD negativo) é limitado a
             # perda total (R$0, -100%) em vez de projeção negativa — ver
             # carteira.simular_investimento_ticker. Avisa qual(is) cenário(s)
@@ -4064,12 +4055,16 @@ def pagina_carteira() -> None:
             for _, linha_com_cenario in tabela_carteira_aplicavel.iterrows():
                 cenarios_limitados = linha_com_cenario["cenarios_limitados_perda_total"]
                 if cenarios_limitados:
-                    rotulos = ", ".join(c.capitalize() for c in cenarios_limitados)
+                    texto = (
+                        TEXTO_CENARIO_LIMITADO_SINGULAR
+                        if len(cenarios_limitados) == 1
+                        else TEXTO_CENARIOS_LIMITADOS_PLURAL
+                    )
                     st.caption(
-                        f"{linha_com_cenario['ticker']}: cenário(s) {rotulos} limitado(s) a "
-                        "perda total (R$ 0, -100%) — o método correspondente deu um valor "
-                        "abaixo do preço atual o bastante pra resultar numa perda maior que "
-                        "100%, o que não existe economicamente."
+                        texto.format(
+                            ticker=linha_com_cenario["ticker"],
+                            cenarios=_lista_em_texto([c.capitalize() for c in cenarios_limitados]),
+                        )
                     )
 
             composicao = compor_posicoes(tabela_screener_carteira, posicoes)
