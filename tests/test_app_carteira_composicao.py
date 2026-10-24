@@ -351,3 +351,16 @@ def test_altura_do_grafico_de_contribuicao_acompanha_o_numero_de_acoes_com_minim
     assert altura(2) == config.ALTURA_MINIMA_CONTRIBUICAO
     assert altura(6) == 6 * config.ALTURA_POR_BARRA_CONTRIBUICAO + 40
     assert altura(10) > altura(6) > altura(3)
+
+
+def test_fatia_abaixo_de_5_por_cento_nao_mostra_o_percentual_dentro_mas_o_hover_sim():
+    comp = _composicao({"AAA3": 1000, "BBB4": 1})
+    pesos = comp.sort_values("investido", ascending=False)["peso_percentual"].tolist()
+    assert pesos[1] < 5 <= pesos[0]
+
+    rosca = _figura_composicao_por_acao(comp, _cores_das_acoes(comp)).data[0]
+
+    assert list(rosca.labels) == ["AAA3", "BBB4"]
+    assert list(rosca.text) == [f"{pesos[0]:.1f}%".replace(".", ","), ""]
+    assert [c[1] for c in rosca.customdata] == [f"{p:.1f}%".replace(".", ",") for p in pesos]
+    assert "%{customdata[1]}" in rosca.hovertemplate

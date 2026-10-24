@@ -210,3 +210,10 @@ def test_resumo_do_aviso(aviso, resumo):
     from avaliador_b3.app.main import _resumo_do_aviso
 
     assert _resumo_do_aviso(aviso) == resumo
+
+
+def test_eixo_y_do_histograma_deixa_folga_acima_da_barra_mais_alta_para_a_mediana():
+    figura = _figura_distribuicao_potencial(pd.Series([10.0] * 8 + [-10.0]))
+
+    assert figura.layout.yaxis.range[0] == 0
+    assert figura.layout.yaxis.range[1] > max(figura.data[0].y) * config.FOLGA_TOPO_HISTOGRAMA

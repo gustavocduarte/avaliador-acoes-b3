@@ -84,6 +84,7 @@ from avaliador_b3.config import (
     FAIXA_POTENCIAL_LARGURA,
     FAIXA_POTENCIAL_LIMITE,
     FOLGA_ROTULO_BARRA,
+    FOLGA_TOPO_HISTOGRAMA,
     FRASE_FONTE_MACRO,
     FRASE_RESUMO_SIMULADOR,
     ICONE_PAGINA_ANALISAR,
@@ -121,6 +122,7 @@ from avaliador_b3.config import (
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     PERIODO_PRECO_ATUAL,
+    PESO_MINIMO_TEXTO_NA_FATIA,
     POTENCIAL_MINIMO_FILTRO_DESLIGADO,
     POTENCIAL_MINIMO_FILTRO_MAXIMO,
     POTENCIAL_MINIMO_FILTRO_PASSO,
@@ -2924,7 +2926,10 @@ def _figura_distribuicao_potencial(potencial: pd.Series) -> go.Figure:
         automargin=True,
         title={"text": TITULO_EIXO_POTENCIAL, "font": {"size": 10}, "standoff": 8},
     )
-    figura.update_yaxes(showticklabels=False, rangemode="tozero")
+    # Folga no topo: o número da barra mais alta não encosta no rótulo da mediana.
+    figura.update_yaxes(
+        showticklabels=False, range=[0, max(contagens, default=0) * FOLGA_TOPO_HISTOGRAMA + 1]
+    )
     figura.update_layout(height=300, margin={"t": 36, "b": 10, "l": 24, "r": 10}, showlegend=False)
     return aplicar_template_grafico(figura)
 
@@ -3471,10 +3476,14 @@ def _figura_composicao_por_acao(composicao: pd.DataFrame, cores: dict[str, str])
             sort=False,
             direction="clockwise",
             marker={"colors": [cores.get(f[0], COR_NEUTRO) for f in fatias]},
-            text=[_fmt_percentual(f[2], 1) for f in fatias],
+            # Fatia pequena não mostra o % por dentro; ele fica na legenda e no hover.
+            text=[
+                _fmt_percentual(f[2], 1) if f[2] >= PESO_MINIMO_TEXTO_NA_FATIA else ""
+                for f in fatias
+            ],
             textinfo="text",
-            customdata=[_fmt_bilhoes(f[1]) for f in fatias],
-            hovertemplate="%{label}: %{customdata} (%{text})<extra></extra>",
+            customdata=[[_fmt_bilhoes(f[1]), _fmt_percentual(f[2], 1)] for f in fatias],
+            hovertemplate="%{label}: %{customdata[0]} (%{customdata[1]})<extra></extra>",
             textfont={"color": COR_FUNDO_PAGINA},
         )
     )

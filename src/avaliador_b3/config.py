@@ -1539,6 +1539,8 @@ FAIXA_POTENCIAL_LARGURA = 20
 FAIXA_POTENCIAL_LIMITE = 100
 TEXTO_FAIXA_ACIMA_DO_LIMITE = ">100%"
 TEXTO_MEDIANA_NO_GRAFICO = "mediana {mediana}"
+# Folga acima da barra mais alta do histograma (fração da altura dela).
+FOLGA_TOPO_HISTOGRAMA = 1.25
 TITULO_EIXO_POTENCIAL = "Potencial (%)"
 TEXTO_SEM_POTENCIAL_PARA_O_GRAFICO = "Nenhuma ação com potencial para mostrar."
 TITULO_ATENCAO = "Atenção"
@@ -1623,6 +1625,8 @@ TEXTO_DESMARQUE_UM = "Desmarque {metodo} para ver {acoes}."
 TEXTO_DESMARQUE_VARIOS = "Desmarque {opcoes}."
 TEXTO_DESMARQUE_OPCAO = "{metodo} para ver {acoes}"
 TEXTO_DESMARQUE_QUALQUER = "Desmarque um ou mais para ver {acoes}."
+# Fatias da rosca com peso (%) abaixo deste não mostram o % dentro da fatia.
+PESO_MINIMO_TEXTO_NA_FATIA = 5.0
 TEXTO_ACAO_SINGULAR = "1 ação"
 TEXTO_ACOES_PLURAL = "{quantidade} ações"
 TEXTO_ACOES_DO_SETOR = "{acoes} de {setor}"
