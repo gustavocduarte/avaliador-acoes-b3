@@ -416,7 +416,7 @@ def test_configuracao_aplica_a_largura_so_na_coluna_setor():
 
 
 def test_lista_aberta_das_caixas_de_selecao_cabe_o_maior_rotulo_de_setor():
-    from avaliador_b3.app.main import _CSS_DA_PAGINA
+    from avaliador_b3.app.css import _CSS_DA_PAGINA
 
     maior = max(len(r) for r in config.CORRECOES_EXIBICAO_SEGMENTO_SETORIAL.values())
     assert config.LARGURA_MINIMA_LISTA_SELECAO_PX >= (
