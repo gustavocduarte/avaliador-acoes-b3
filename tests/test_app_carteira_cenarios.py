@@ -17,6 +17,7 @@ from avaliador_b3.app.main import (
     _figura_faixa_cenarios,
     _html_cenarios_carteira,
 )
+from avaliador_b3.carteira import calcular_totais_carteira, montar_tabela_carteira
 from tests import test_app_main as app
 from tests.helpers_app import abrir_pagina, adicionar_a_carteira
 
@@ -40,6 +41,28 @@ def test_tres_linhas_de_cenario_com_o_base_em_destaque_e_o_potencial_colorido():
     assert 'ab-cenario-valor ab-cor-negativo">-20,0%<' in html  # 1.200 sobre 1.500
     assert 'ab-cenario-valor ab-cor-positivo">+20,0%<' in html  # 1.800 sobre 1.500
     assert 'ab-cenario-valor ab-cor-positivo">+100,0%<' in html
+
+
+def test_potencial_dos_cenarios_ignora_o_capital_da_acao_sem_cenario():
+    tabela = pd.DataFrame(
+        {
+            "ticker": ["AAAA4", "BBBB4"],
+            "preco_atual": [40.0, 10.0],
+            "valor_combinado": [50.0, None],
+            "graham_valor_justo": [50.0, None],
+            "bazin_preco_teto": [None, None],
+            "fcd_valor_justo": [50.0, None],
+        }
+    )
+    # R$ 400 na ação com cenário (base +25%) e R$ 1.000 na sem cenário.
+    totais = calcular_totais_carteira(
+        montar_tabela_carteira(tabela, {"AAAA4": 400.0, "BBBB4": 1000.0})
+    )
+
+    html = _html_cenarios_carteira(totais)
+
+    assert totais["soma_investida"] == pytest.approx(1400.0)
+    assert 'ab-cenario-valor ab-cor-positivo">+25,0%<' in html
 
 
 def test_ponto_de_interrogacao_do_painel_junta_abertura_aviso_e_frase_resumo():

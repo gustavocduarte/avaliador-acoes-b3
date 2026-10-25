@@ -1780,6 +1780,45 @@ def test_a_data_da_rodada_so_e_gravada_depois_da_troca_do_csv(
     assert not (tmp_path / "rodada.json").exists()
 
 
+# --- Contrato do screener.csv ---
+
+COLUNAS_DO_SCREENER_CSV = [
+    "ticker",
+    "sucesso",
+    "erro",
+    "preco_atual",
+    "valor_combinado",
+    "desconto_percentual",
+    "divergencia_percentual_metodos",
+    "metodos_utilizados",
+    "graham_valor_justo",
+    "bazin_preco_teto",
+    "bazin_razao_dividendos_percentual",
+    "fcd_valor_justo",
+    "proporcao_reinvestimento_percentual",
+    "ano_referencia_fcd",
+    "data_balanco_fundamentus",
+    "beta_utilizado",
+    "aviso_desconto_extremo",
+    "segmento_setorial",
+]
+
+
+def test_as_colunas_do_resultado_sao_estas_e_nesta_ordem():
+    # Quem lê o arquivo (o app e o Simulador) depende destes nomes; mudar um exige decidir o que
+    # fazer com o screener.csv já versionado.
+    assert screener.COLUNAS_RESULTADO == COLUNAS_DO_SCREENER_CSV
+
+
+def test_o_csv_gravado_pela_rodada_tem_exatamente_as_colunas_do_contrato(ambiente_feliz, tmp_path):
+    caminho = tmp_path / "screener.csv"
+
+    screener.rodar_screener(tickers=["AAAA4"], diretorio_cache=tmp_path, caminho_saida=caminho)
+
+    cabecalho = caminho.read_text(encoding="utf-8").splitlines()[0]
+    assert cabecalho.split(",") == COLUNAS_DO_SCREENER_CSV
+
+
 # --- Publicação da rodada: ordem, temporários e universo mínimo ---
 
 

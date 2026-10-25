@@ -283,3 +283,59 @@ def test_totais_da_carteira_somam_so_a_parte_com_cenario_nos_valores_ao_convergi
     assert totais["total_base"] == pytest.approx(2000.0)  # só DOBR4, que dobrou
     potencial_base = totais["total_base"] / totais["soma_investida_com_cenario"] - 1
     assert potencial_base == pytest.approx(1.0)
+
+
+# --- Ação sem cenário: fora do denominador do potencial, dentro da concentração ----------------
+
+
+def _tabela_com_acao_sem_cenario() -> pd.DataFrame:
+    tabela = _tabela_screener_exemplo()
+    tabela["segmento_setorial"] = ["Bancos", "Energia", "Bancos"]
+    return tabela
+
+
+POSICOES_COM_ACAO_SEM_CENARIO = {"AAAA4": 10, "BBBB4": 20, "CCCC4": 100}  # R$ 400, 400 e 1.000
+
+
+def test_potencial_da_carteira_usa_so_o_capital_das_posicoes_com_valor_combinado():
+    resumo = carteira.resumir_carteira(
+        _tabela_com_acao_sem_cenario(), POSICOES_COM_ACAO_SEM_CENARIO
+    )
+
+    assert resumo["investido_total"] == pytest.approx(1800.0)
+    assert resumo["investido_com_combinado"] == pytest.approx(800.0)
+    assert resumo["valor_justo"] == pytest.approx(10 * 50.0 + 20 * 25.0)
+    # (1.000 / 800 - 1): com os R$ 1.800 no denominador seria -44,4%.
+    assert resumo["potencial_percentual"] == pytest.approx(25.0)
+    assert resumo["quantidade_sem_combinado"] == 1
+    assert resumo["investido_sem_combinado"] == pytest.approx(1000.0)
+
+
+def test_concentracao_e_composicao_incluem_a_acao_sem_cenario():
+    tabela = _tabela_com_acao_sem_cenario()
+
+    resumo = carteira.resumir_carteira(tabela, POSICOES_COM_ACAO_SEM_CENARIO)
+    composicao = carteira.compor_posicoes(tabela, POSICOES_COM_ACAO_SEM_CENARIO)
+
+    # Bancos = AAAA4 (400) + CCCC4 (1.000, sem cenário) sobre os R$ 1.800 investidos.
+    assert resumo["setor_de_maior_peso"] == "Bancos"
+    assert resumo["peso_do_maior_setor_percentual"] == pytest.approx(1400 / 1800 * 100)
+    pesos = dict(zip(composicao["ticker"], composicao["peso_percentual"], strict=True))
+    assert pesos["CCCC4"] == pytest.approx(1000 / 1800 * 100)
+    assert sum(pesos.values()) == pytest.approx(100.0)
+    assert list(composicao.loc[composicao["sem_combinado"], "ticker"]) == ["CCCC4"]
+    setores = dict(zip(composicao["ticker"], composicao["setor"], strict=True))
+    assert setores["CCCC4"] == "Bancos"
+
+
+def test_totais_dos_cenarios_separam_o_investido_total_do_investido_com_cenario():
+    tabela = carteira.montar_tabela_carteira(
+        _tabela_screener_exemplo(), {"AAAA4": 400.0, "BBBB4": 400.0, "CCCC4": 1000.0}
+    )
+
+    totais = carteira.calcular_totais_carteira(tabela)
+
+    assert totais["soma_investida"] == pytest.approx(1800.0)
+    assert totais["soma_investida_com_cenario"] == pytest.approx(800.0)
+    assert totais["total_base"] == pytest.approx(400 * 50 / 40 + 400 * 25 / 20)
+    assert totais["total_base"] / totais["soma_investida_com_cenario"] - 1 == pytest.approx(0.25)

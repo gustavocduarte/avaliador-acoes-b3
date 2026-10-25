@@ -1,5 +1,6 @@
 import pytest
 
+from avaliador_b3 import config
 from avaliador_b3.config import (
     ALIQUOTA_IR_CSLL_PADRAO,
     MOTIVO_CRESCIMENTO_IPCA_BASE_AUSENTE,
@@ -1351,3 +1352,45 @@ def test_resultado_do_fcd_sem_deducoes_traz_zero_nelas():
     assert resultado["deducao_arrendamento"] == 0.0
     assert resultado["deducao_nao_controladores"] == 0.0
     assert resultado["valor_empresa"] / 100.0 == pytest.approx(resultado["valor_justo"])
+
+
+def test_valor_por_acao_com_divida_arrendamento_e_nao_controladores_bate_com_a_conta_a_mao():
+    # Entradas escolhidas para a conta caber à mão: fluxo estável (crescimento explícito zero),
+    # sem razão dívida/patrimônio (peso da dívida zero, WACC = custo do capital próprio) e Beta 1.
+    assert config.HORIZONTE_PROJECAO_FCD_ANOS == 5
+    assert config.ANO_FIM_CONVERGENCIA_CRESCIMENTO_FCD == 5
+    assert config.SPREAD_DEFAULT_BRASIL == 0.0213
+    assert config.PREMIO_RISCO_MERCADO_BRASIL == 0.0747
+    assert config.MARGEM_SEGURANCA_PERPETUIDADE_FCD == 0.01
+
+    # WACC = Ke = (Selic - spread) + Beta x prêmio = (0,10 - 0,0213) + 1 x 0,0747 = 0,1534.
+    wacc = 0.1534
+    # Perpetuidade = IPCA (0,04), abaixo do WACC menos 1 p.p. (0,1434).
+    g = 0.04
+    # O crescimento sai de 0 (ano 1) e converge em passos de 1 p.p. até g no ano 5.
+    fluxos = [10_000.0]
+    for taxa in (0.01, 0.02, 0.03, 0.04):
+        fluxos.append(fluxos[-1] * (1 + taxa))
+    assert fluxos == pytest.approx([10_000.0, 10_100.0, 10_302.0, 10_611.06, 11_035.5024])
+    valor_presente = sum(fluxo / (1 + wacc) ** ano for ano, fluxo in enumerate(fluxos, start=1))
+    valor_terminal = fluxos[-1] * (1 + g) / (wacc - g) / (1 + wacc) ** 5
+    valor_da_empresa = valor_presente + valor_terminal
+
+    divida_liquida, arrendamento, nao_controladores, acoes = 20_000.0, 6_000.0, 4_000.0, 100.0
+    esperado = (valor_da_empresa - divida_liquida - arrendamento - nao_controladores) / acoes
+
+    resultado = fcd.calcular_valor_justo_fcd(
+        fcf_atual=10_000.0,
+        fcf_ha_n_anos=10_000.0,
+        numero_acoes=acoes,
+        selic_meta=0.10,
+        ipca_12m=g,
+        beta=1.0,
+        divida_liquida=divida_liquida,
+        arrendamento_fora_da_divida=arrendamento,
+        nao_controladores=nao_controladores,
+    )
+
+    assert resultado["aplicavel"] is True
+    assert resultado["wacc"] == pytest.approx(wacc)
+    assert resultado["valor_justo"] == pytest.approx(esperado)
