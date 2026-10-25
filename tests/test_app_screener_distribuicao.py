@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import (
+from avaliador_b3.app.paginas.screener import (
     _faixa_do_potencial,
     _figura_distribuicao_potencial,
     _html_atencao_screener,
@@ -207,7 +207,7 @@ def test_histograma_segue_os_filtros_e_a_atencao_descreve_o_universo_inteiro(mon
     ],
 )
 def test_resumo_do_aviso(aviso, resumo):
-    from avaliador_b3.app.main import _resumo_do_aviso
+    from avaliador_b3.app.paginas.screener import _resumo_do_aviso
 
     assert _resumo_do_aviso(aviso) == resumo
 

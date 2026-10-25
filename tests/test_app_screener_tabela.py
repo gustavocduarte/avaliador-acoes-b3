@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import (
+from avaliador_b3.app.paginas.screener import (
     COLUNAS_TABELA_SCREENER,
     _configuracao_colunas_ranking,
     _largura_coluna_setor,
@@ -275,7 +275,7 @@ def test_mensagem_livre_acima_do_limite_e_cortada_com_reticencias():
 
 
 def test_todos_os_textos_fixos_possiveis_da_observacao_cabem_no_limite_de_caracteres():
-    from avaliador_b3.app.main import _observacao_do_ranking
+    from avaliador_b3.app.paginas.screener import _observacao_do_ranking
 
     avisos = [
         "",
@@ -337,7 +337,7 @@ def test_ponto_de_interrogacao_do_titulo_ensina_a_abrir_a_analise():
 
 
 def test_formas_minimas_gravadas_pela_rodada_passam_como_estao_e_juntam_so_o_comeco():
-    from avaliador_b3.app.main import _observacao_do_ranking
+    from avaliador_b3.app.paginas.screener import _observacao_do_ranking
 
     formas = [v for k, v in vars(config).items() if k.startswith("FORMA_MINIMA_FCD_")]
     avisos = [

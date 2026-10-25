@@ -5,7 +5,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import _filtrar_tabela_screener, _texto_sem_acao_nos_filtros
+from avaliador_b3.app.paginas.screener import _filtrar_tabela_screener, _texto_sem_acao_nos_filtros
 from avaliador_b3.config import (
     OPCAO_TODOS_OS_SETORES,
     ROTULO_FILTRO_ESCONDER_SEM_COMBINADO,
@@ -352,7 +352,7 @@ def test_botao_da_rodada_so_aparece_com_opt_in_e_fica_no_fim_do_bloco(monkeypatc
 
 
 def test_mediana_negativa_fica_rosa_e_sem_potencial_nenhum_fica_cinza_com_traco():
-    from avaliador_b3.app.main import _html_kpis_screener
+    from avaliador_b3.app.paginas.screener import _html_kpis_screener
 
     tabela = pd.DataFrame(
         {
