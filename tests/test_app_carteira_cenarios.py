@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import (
+from avaliador_b3.app.paginas.carteira import (
     _ajuda_cenarios_carteira,
     _figura_contribuicao_carteira,
     _figura_faixa_cenarios,

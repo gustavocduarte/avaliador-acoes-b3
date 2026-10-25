@@ -6,7 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import _html_kpis_carteira
+from avaliador_b3.app.paginas.carteira import _html_kpis_carteira
 from avaliador_b3.carteira import resumir_carteira
 from avaliador_b3.config import TITULO_PAGINA_CARTEIRA
 from avaliador_b3.screener import COLUNAS_RESULTADO

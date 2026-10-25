@@ -9,7 +9,10 @@ import streamlit
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import _adicionar_posicao_da_carteira, _investimentos_da_carteira
+from avaliador_b3.app.paginas.carteira import (
+    _adicionar_posicao_da_carteira,
+    _investimentos_da_carteira,
+)
 from avaliador_b3.config import (
     CHAVE_CARTEIRA_POSICOES,
     CHAVE_CARTEIRA_REMOVER_PREFIXO,

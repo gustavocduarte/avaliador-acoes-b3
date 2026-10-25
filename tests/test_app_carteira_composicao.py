@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
-from avaliador_b3.app.main import (
+from avaliador_b3.app.paginas.carteira import (
     _cores_das_acoes,
     _fatias_da_composicao,
     _figura_composicao_por_acao,
@@ -335,7 +335,7 @@ def test_potencial_do_total_ganha_um_ponto_de_interrogacao_so_com_posicao_sem_co
 
 
 def test_altura_do_grafico_de_contribuicao_acompanha_o_numero_de_acoes_com_minimo():
-    from avaliador_b3.app.main import _figura_contribuicao_carteira
+    from avaliador_b3.app.paginas.carteira import _figura_contribuicao_carteira
 
     def altura(n: int) -> int:
         tabela = pd.DataFrame(
