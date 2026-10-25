@@ -42,6 +42,25 @@ flowchart LR
     fontes -. "página de uma ação (ao vivo)" .-> APP
 ```
 
+### Estrutura do app
+
+O `app/main.py` é só a entrada (cerca de 100 linhas): configura a página, monta a navegação e a barra lateral e roda a página aberta. O resto fica em módulos de `src/avaliador_b3/app/`:
+
+| Módulo | O que tem |
+|---|---|
+| `main.py` | `st.set_page_config`, CSS, navegação, cabeçalho e rodapé |
+| `css.py` | o único bloco de CSS da página |
+| `barra_lateral.py` | menu das páginas, o bloco da barra de cada página e o rodapé |
+| `formatacao.py` | formatadores de números, datas e textos em português (sem Streamlit) |
+| `componentes.py` | gráfico com o tema do app, KPI, cabeçalho de painel, barra de potencial e tabela formatada |
+| `dados.py` | busca com cache de preços, indicadores, macro, CNPJ e balanço, e leitura do screener salvo |
+| `paginas/analise.py` | página "Analisar uma ação" |
+| `paginas/analise_blocos.py` | gráficos e trechos de HTML que só a análise usa |
+| `paginas/screener.py` | página Screener: filtros, distribuição e ranking |
+| `paginas/carteira.py` | página Simulador de carteira |
+
+Os módulos chamam os adaptadores de `ingest/` pelo módulo (`precos.obter_historico(...)`, e não `from ... import obter_historico`), para os testes poderem substituí-los; `tests/test_app_importacoes_de_adaptadores.py` guarda essa regra.
+
 ## Destaques técnicos
 
 - **Cadeia de fontes com fallback:** a Selic e o IPCA passam pela API do Banco Central, pelo serviço SOAP, pelo IBGE (só o IPCA), pelo último valor guardado e pelo arquivo de referência versionado; a tela informa a fonte efetiva. O ano da demonstração da CVM é detectado por empresa, e a empresa que ainda não entregou o ano mais recente usa o anterior.
@@ -343,7 +362,6 @@ O que ficou para depois:
 
 - **Normalização das cíclicas.** Decidida (critério, método e janela estão em `docs/decisoes-de-metodologia.md`), mas aguardando a série histórica de 2010 a 2025 por empresa. Hoje é uma limitação documentada.
 - **Banco de dados (Supabase)** para o histórico das rodadas do screener e para a série histórica que a normalização das cíclicas precisa. Hoje o resultado é só o `screener.csv` mais recente.
-- **Divisão do `app/main.py` em módulos.** É o maior arquivo do projeto.
 - **Pesos do WACC a valor de mercado**, junto com o passivo de arrendamento nos pesos (hoje os pesos são contábeis).
 - **Backtest do modelo** (comparar o valor justo calculado no passado com o preço que veio depois) está fora do escopo: exige dado fundamentalista histórico, que é difícil de obter de graça.
 

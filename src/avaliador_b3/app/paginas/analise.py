@@ -429,7 +429,7 @@ def pagina_analisar() -> None:
 
         # Graham é chamado direto (calcular_valor_justo_graham aceita
         # lpa/vpa como `float | None` e já trata ausência internamente).
-        # Bazin e FCD, abaixo, precisam desse pré-check aqui em main.py
+        # Bazin e FCD, abaixo, precisam desse pré-check aqui
         # porque as duas funções EXIGEM tipo não-None nesses parâmetros
         # específicos — calcular_preco_teto_bazin quer um `pd.DataFrame`
         # de verdade (não `None`, mesmo vazio serve) pra `dividendos`, e
