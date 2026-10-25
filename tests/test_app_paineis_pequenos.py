@@ -4,7 +4,7 @@ import re
 
 from streamlit.testing.v1 import AppTest
 
-from avaliador_b3.app.main import _html_indicador
+from avaliador_b3.app.paginas.analise_blocos import _html_indicador
 from tests import test_app_main as app
 
 

@@ -19,14 +19,20 @@ CAMINHO_APP = Path(app.CAMINHO_APP)
 
 def _funcao_do_widget():
     """A função do app, sem importar `app/main.py` (que executa a tela inteira)."""
-    arvore = ast.parse(CAMINHO_APP.read_text(encoding="utf-8"))
-    funcao = next(
-        no
-        for no in arvore.body
-        if isinstance(no, ast.FunctionDef) and no.name == "_widget_avancado_tradingview"
-    )
+    for arquivo in sorted(CAMINHO_APP.parent.rglob("*.py")):
+        arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+        funcao = next(
+            (
+                no
+                for no in arvore.body
+                if isinstance(no, ast.FunctionDef) and no.name == "_widget_avancado_tradingview"
+            ),
+            None,
+        )
+        if funcao is not None:
+            break
     espaco = {"re": re, "json": json, "PADRAO_TICKER_B3": PADRAO_TICKER_B3}
-    exec(compile(ast.Module([funcao], []), str(CAMINHO_APP), "exec"), espaco)
+    exec(compile(ast.Module([funcao], []), str(arquivo), "exec"), espaco)
     return espaco["_widget_avancado_tradingview"]
 
 

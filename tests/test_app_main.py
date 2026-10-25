@@ -769,7 +769,7 @@ def _macro_de_teste(**campos):
 
 
 def test_aviso_de_fonte_do_macro_por_combinacao_de_fontes():
-    from avaliador_b3.app.main import _aviso_fonte_macro
+    from avaliador_b3.app.paginas.analise_blocos import _aviso_fonte_macro
 
     assert _aviso_fonte_macro(_macro_de_teste()) == ""  # API REST: nada a avisar
     assert (
@@ -2183,7 +2183,7 @@ def test_linha_de_destaque_mostra_preco_valor_combinado_e_potencial(
     ],
 )
 def test_cartao_de_divergencia_destaca_a_partir_do_limite(maior, valor_esperado, classe_esperada):
-    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.app.paginas.analise_blocos import _kpi_divergencia
     from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
 
     valores = {"fcd": 50.0, "graham": maior}
@@ -2196,7 +2196,7 @@ def test_cartao_de_divergencia_destaca_a_partir_do_limite(maior, valor_esperado,
 
 
 def test_cartao_de_divergencia_com_um_metodo_ou_nenhum():
-    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.app.paginas.analise_blocos import _kpi_divergencia
     from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
 
     um = {"graham": 47.0}
@@ -2208,7 +2208,7 @@ def test_cartao_de_divergencia_com_um_metodo_ou_nenhum():
 
 
 def test_cartao_de_divergencia_sem_preco_mantem_menor_e_maior():
-    from avaliador_b3.app.main import _kpi_divergencia
+    from avaliador_b3.app.paginas.analise_blocos import _kpi_divergencia
     from avaliador_b3.modelos.combinado import calcular_divergencia_metodos
 
     valores = {"fcd": 43.17, "graham": 93.22}
@@ -2218,7 +2218,7 @@ def test_cartao_de_divergencia_sem_preco_mantem_menor_e_maior():
 
 
 def test_pilulas_mostram_so_o_que_existe_e_escapam_o_texto():
-    from avaliador_b3.app.main import _html_pilulas
+    from avaliador_b3.app.paginas.analise_blocos import _html_pilulas
 
     assert _html_pilulas(None, None) == ""
     so_setor = _html_pilulas("Petróleo & Gás", None)
@@ -2229,7 +2229,7 @@ def test_pilulas_mostram_so_o_que_existe_e_escapam_o_texto():
 
 def test_figura_do_valor_justo_cores_rotulos_e_linha_do_preco():
     from avaliador_b3 import config
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     figura = _figura_valor_justo({"graham": 160.0, "fcd": 40.0}, 100.0, 100.0)
     barras = figura.data[0]
@@ -2254,7 +2254,7 @@ def test_figura_do_valor_justo_cores_rotulos_e_linha_do_preco():
 
 def test_figura_do_valor_justo_poe_o_nome_na_barra_e_no_eixo_so_o_que_nao_cabe():
     from avaliador_b3 import config
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     figura = _figura_valor_justo({"graham": 60.0, "bazin": 10.92, "fcd": 30.0}, 33.6, 50.0)
     nomes_na_barra = {a.text: a for a in figura.layout.annotations if a.text.startswith("<b>")}
@@ -2268,7 +2268,7 @@ def test_figura_do_valor_justo_poe_o_nome_na_barra_e_no_eixo_so_o_que_nao_cabe()
 
 def test_figura_do_valor_justo_poe_o_valor_numa_anotacao_com_fundo_sobre_a_linha_do_preco():
     from avaliador_b3 import config
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     # O rótulo do Graham termina perto do preço: o fundo da anotação cobre a linha tracejada.
     figura = _figura_valor_justo({"graham": 98.0, "fcd": 40.0}, 69.0, 100.0)
@@ -2289,7 +2289,7 @@ def test_template_dos_graficos_usa_virgula_decimal_e_ponto_de_milhar():
 
 
 def test_figura_do_valor_justo_aguenta_barra_muito_curta():
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     figura = _figura_valor_justo({"graham": 0.01, "fcd": 200.0}, 100.0, 50.0)
     assert list(figura.layout.yaxis.ticktext) == ["Graham"]
@@ -2297,7 +2297,7 @@ def test_figura_do_valor_justo_aguenta_barra_muito_curta():
 
 
 def test_figura_do_valor_justo_sem_nome_no_eixo_quando_todas_as_barras_comportam():
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     figura = _figura_valor_justo({"graham": 60.0, "fcd": 50.0}, 55.0, 50.0)
     assert figura.layout.yaxis.showticklabels is False
@@ -2305,7 +2305,7 @@ def test_figura_do_valor_justo_sem_nome_no_eixo_quando_todas_as_barras_comportam
 
 def test_figura_do_valor_justo_sem_preco_nao_tem_linha_nem_diferenca():
     from avaliador_b3 import config
-    from avaliador_b3.app.main import _figura_valor_justo
+    from avaliador_b3.app.paginas.analise_blocos import _figura_valor_justo
 
     figura = _figura_valor_justo({"graham": 47.43}, 47.43, None)
     assert list(figura.layout.shapes) == []
@@ -2332,7 +2332,7 @@ def test_painel_de_valor_justo_tem_grafico_selos_e_legenda_dos_nao_aplicaveis(mo
 
 def test_segmento_setorial_exibido_corrige_so_o_texto_conhecido():
     from avaliador_b3.app.formatacao import _rotulo_segmento_setorial
-    from avaliador_b3.app.main import _html_pilulas
+    from avaliador_b3.app.paginas.analise_blocos import _html_pilulas
 
     assert (
         _rotulo_segmento_setorial("Exploração. Refino e Distribuição")
@@ -2363,7 +2363,7 @@ def test_segmento_setorial_exibido_corrige_so_o_texto_conhecido():
     ],
 )
 def test_cor_dos_indicadores_da_saude_financeira(regra, valor, esperada):
-    from avaliador_b3.app.main import _cor_indicador
+    from avaliador_b3.app.paginas.analise_blocos import _cor_indicador
 
     assert _cor_indicador(valor, regra) == esperada
 
@@ -2396,7 +2396,7 @@ def test_grade_da_saude_financeira_colore_so_onde_ajuda(monkeypatch):
 
 
 def test_indicador_da_grade_escapa_o_texto_e_poe_a_ajuda_no_tooltip():
-    from avaliador_b3.app.main import _html_indicador
+    from avaliador_b3.app.paginas.analise_blocos import _html_indicador
 
     html_indicador = _html_indicador("Dív. <b>", "R$ 1,0 bi", ajuda='Diz "x" & y')
     assert "Dív. &lt;b&gt;" in html_indicador
@@ -2415,7 +2415,7 @@ def test_titulo_de_painel_e_html_pequeno_sem_ancora_e_com_ajuda_opcional():
 
 
 def test_grafico_de_linha_sem_titulo_no_eixo_x_e_com_legenda_horizontal_abaixo():
-    from avaliador_b3.app.main import _grafico_comparacao_normalizada
+    from avaliador_b3.app.paginas.analise_blocos import _grafico_comparacao_normalizada
 
     datas = pd.date_range("2026-01-01", periods=5, freq="D")
     acao = pd.DataFrame({"data": datas, "Close": [10.0, 11.0, 12.0, 11.0, 13.0]})
@@ -3412,7 +3412,7 @@ def _valores_plotly(serie):
 
 
 def test_nota_de_lpa_e_vpa_ajustados_aparece_quando_o_arredondamento_muda():
-    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.app.paginas.analise_blocos import _ajuda_lpa_vpa_ajustados
     from avaliador_b3.modelos.graham import reescalar_lpa_vpa
 
     # CSAN3: ações do Fundamentus 3.966.570.000, em circulação 3.944.366.465.
@@ -3427,7 +3427,7 @@ def test_nota_de_lpa_e_vpa_ajustados_aparece_quando_o_arredondamento_muda():
 
 
 def test_nota_de_lpa_e_vpa_ajustados_some_quando_o_arredondamento_nao_muda():
-    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.app.paginas.analise_blocos import _ajuda_lpa_vpa_ajustados
     from avaliador_b3.modelos.graham import reescalar_lpa_vpa
 
     lpa_g, vpa_g = reescalar_lpa_vpa(10.35, 37.32, 1_000_000.0, 999_990.0)  # razão 1,00001
@@ -3436,7 +3436,7 @@ def test_nota_de_lpa_e_vpa_ajustados_some_quando_o_arredondamento_nao_muda():
 
 
 def test_nota_de_lpa_e_vpa_ajustados_aparece_so_no_indicador_que_muda():
-    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.app.paginas.analise_blocos import _ajuda_lpa_vpa_ajustados
     from avaliador_b3.modelos.graham import reescalar_lpa_vpa
 
     lpa_g, vpa_g = reescalar_lpa_vpa(10.35, 37.32, 1_000_000.0, 999_600.0)  # razão 1,0004
@@ -3447,7 +3447,7 @@ def test_nota_de_lpa_e_vpa_ajustados_aparece_so_no_indicador_que_muda():
 
 
 def test_nota_de_lpa_e_vpa_ajustados_sem_graham_nao_aparece():
-    from avaliador_b3.app.main import _ajuda_lpa_vpa_ajustados
+    from avaliador_b3.app.paginas.analise_blocos import _ajuda_lpa_vpa_ajustados
 
     assert _ajuda_lpa_vpa_ajustados(None, 1.0, None, None) == {"lpa": "", "vpa": ""}
 
