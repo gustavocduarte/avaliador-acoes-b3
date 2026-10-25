@@ -6,7 +6,8 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import carteira, screener
-from avaliador_b3.app.main import _carregar_screener_salvo, _tabela_ranking_screener
+from avaliador_b3.app.dados import _carregar_screener_salvo
+from avaliador_b3.app.main import _tabela_ranking_screener
 from avaliador_b3.screener import COLUNAS_RESULTADO
 from tests import test_app_main as app
 

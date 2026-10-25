@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from avaliador_b3 import config
-from avaliador_b3.app import main
+from avaliador_b3.app import dados
 from avaliador_b3.ingest import crosswalk_cnpj
 
 CONTEUDO = (
@@ -48,29 +48,29 @@ def _gravar(monkeypatch, tmp_path, conteudo=CONTEUDO):
 def test_ticker_no_arquivo_nao_chama_a_api_do_catalogo(api, monkeypatch, tmp_path):
     _gravar(monkeypatch, tmp_path)
 
-    assert main._buscar_cnpj("PETR4") == ("33000167000101", None)
-    assert main._buscar_segmento_setorial("PETR4") == ("Exploração. Refino e Distribuição", None)
+    assert dados._buscar_cnpj("PETR4") == ("33000167000101", None)
+    assert dados._buscar_segmento_setorial("PETR4") == ("Exploração. Refino e Distribuição", None)
     assert api.chamadas == 0
 
 
 def test_sem_o_arquivo_chama_a_api_do_catalogo(api, monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
 
-    assert main._buscar_cnpj("BBAS3") == ("00000000000191", None)
+    assert dados._buscar_cnpj("BBAS3") == ("00000000000191", None)
     assert api.chamadas == 1
 
 
 def test_ticker_fora_do_arquivo_cai_na_api(api, monkeypatch, tmp_path):
     _gravar(monkeypatch, tmp_path)
 
-    assert main._buscar_segmento_setorial("BBAS3") == ("Bancos", None)
+    assert dados._buscar_segmento_setorial("BBAS3") == ("Bancos", None)
     assert api.chamadas == 1
 
 
 def test_ticker_com_cnpj_vazio_no_arquivo_cai_na_api(api, monkeypatch, tmp_path):
     _gravar(monkeypatch, tmp_path)
 
-    cnpj, erro = main._buscar_cnpj("SEMCNPJ3")
+    cnpj, erro = dados._buscar_cnpj("SEMCNPJ3")
 
     assert cnpj is None and "não encontrado" in erro
     assert api.chamadas == 1
@@ -88,14 +88,14 @@ def test_ticker_com_cnpj_vazio_no_arquivo_cai_na_api(api, monkeypatch, tmp_path)
 def test_arquivo_invalido_cai_na_api_sem_erro(api, monkeypatch, tmp_path, conteudo):
     _gravar(monkeypatch, tmp_path, conteudo)
 
-    assert main._buscar_cnpj("BBAS3") == ("00000000000191", None)
+    assert dados._buscar_cnpj("BBAS3") == ("00000000000191", None)
     assert api.chamadas == 1
 
 
 def test_ticker_sem_emissor_em_lugar_nenhum_vira_o_motivo_de_sempre(api, monkeypatch, tmp_path):
     _gravar(monkeypatch, tmp_path)
 
-    cnpj, erro = main._buscar_cnpj("XXXX3")
+    cnpj, erro = dados._buscar_cnpj("XXXX3")
 
     assert cnpj is None
     assert "XXXX3" in erro and "catálogo de emissores da B3" in erro
@@ -123,10 +123,10 @@ def test_o_spinner_da_api_avisa_do_tempo_do_catalogo_completo(api, monkeypatch, 
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(main.st, "spinner", Spinner)
+    monkeypatch.setattr(dados.st, "spinner", Spinner)
     monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
 
-    main._buscar_cnpj("BBAS3")
+    dados._buscar_cnpj("BBAS3")
 
     assert textos == [config.TEXTO_SPINNER_CATALOGO_COMPLETO]
     assert "cerca de 1 minuto" in textos[0]
