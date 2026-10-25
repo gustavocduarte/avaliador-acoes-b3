@@ -2331,7 +2331,8 @@ def test_painel_de_valor_justo_tem_grafico_selos_e_legenda_dos_nao_aplicaveis(mo
 
 
 def test_segmento_setorial_exibido_corrige_so_o_texto_conhecido():
-    from avaliador_b3.app.main import _html_pilulas, _rotulo_segmento_setorial
+    from avaliador_b3.app.formatacao import _rotulo_segmento_setorial
+    from avaliador_b3.app.main import _html_pilulas
 
     assert (
         _rotulo_segmento_setorial("Exploração. Refino e Distribuição")
@@ -2580,7 +2581,7 @@ def _indicadores_falsos_com(numero_acoes: float, divida_liquida: float) -> dict:
 
 
 def test_fmt_bilhoes_usa_ponto_de_milhar_na_parte_abreviada():
-    from avaliador_b3.app.main import _fmt_bilhoes
+    from avaliador_b3.app.formatacao import _fmt_bilhoes
 
     assert _fmt_bilhoes(1_234_500_000_000.0) == "R$ 1.234,5 bi"
     assert _fmt_bilhoes(-1_234_500_000_000.0) == "R$ -1.234,5 bi"

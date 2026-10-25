@@ -9,8 +9,8 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
+from avaliador_b3.app.formatacao import _fmt_potencial
 from avaliador_b3.app.main import (
-    _fmt_potencial,
     _html_barra_potencial,
     _html_linha_correlacao,
     _html_tabela_setorial,
