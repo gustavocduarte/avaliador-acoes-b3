@@ -978,7 +978,7 @@ def _notas_do_metodo(resultado: dict) -> tuple[list[str], list[str]]:
     detalhes: list[str] = []
     if resultado.get("divida_liquida_deduzida") is False:
         visiveis.append(
-            "Dívida líquida indisponível pra essa empresa — sem ela pra "
+            "Dívida líquida indisponível para essa empresa — sem ela para "
             "deduzir, este valor não desconta a dívida da empresa, então "
             "tende a ficar mais alto do que se a dedução fosse possível."
         )
@@ -2244,8 +2244,8 @@ def pagina_analisar() -> None:
                 "*Do valor da empresa ao valor por ação*\n\n"
                 "Esse valor presente é o da empresa como um todo, dívida incluída — "
                 "por isso a dívida líquida é deduzida antes de dividir pelo número "
-                "de ações, chegando no valor que sobra pros acionistas; quando a "
-                "dívida líquida não está disponível pra uma empresa, o cálculo usa "
+                "de ações, chegando no valor que sobra para os acionistas; quando a "
+                "dívida líquida não está disponível para uma empresa, o cálculo usa "
                 "o valor da empresa inteira como aproximação, sem deduzir nada, e "
                 "mostra um aviso na tela.\n\n"
                 f"{TEXTO_FCD_AJUSTES_DO_BALANCO}\n\n"
@@ -2447,7 +2447,7 @@ def pagina_analisar() -> None:
             elif erro_historico_ibovespa_beta:
                 motivo_beta = f"Ibovespa indisponível: {erro_historico_ibovespa_beta}"
             elif beta is None:
-                motivo_beta = "Histórico curto demais pra calcular (poucas datas em comum)."
+                motivo_beta = "Histórico curto demais para calcular (poucas datas em comum)."
             indicadores_comportamento.append(
                 _html_indicador(
                     "Beta (vs. Ibovespa, 1a)",
@@ -2498,7 +2498,7 @@ def pagina_analisar() -> None:
                 key="janela_comparacao_petroleo",
             )
             if not janela_petroleo_selecionada:
-                st.info("Selecione uma janela acima pra ver o gráfico.")
+                st.info("Selecione uma janela acima para ver o gráfico.")
             else:
                 periodo_petroleo = JANELAS_COMPARACAO_PETROLEO[janela_petroleo_selecionada]
                 with st.spinner(
@@ -2614,11 +2614,11 @@ def pagina_analisar() -> None:
                     elif dividend_yield_por_ano.empty:
                         st.caption(
                             "Dividend Yield indisponível — sem preço histórico "
-                            "suficiente pros anos com dividendo pago."
+                            "suficiente para os anos com dividendo pago."
                         )
                     elif len(dividend_yield_por_ano) < len(dividendos_por_ano):
                         st.caption(
-                            "Dividend Yield mostrado só pros anos com preço "
+                            "Dividend Yield mostrado só para os anos com preço "
                             "histórico disponível — ação listada há menos "
                             "tempo que o histórico de dividendos."
                         )
@@ -3295,7 +3295,7 @@ def pagina_screener() -> None:
             atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
             st.caption(
                 f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
-                "dado salvo em disco, não ao vivo. Use o botão acima pra atualizar."
+                "dado salvo em disco, não ao vivo. Use o botão acima para atualizar."
             )
 
         with st.container(border=True, key="painel_destaque_screener"):

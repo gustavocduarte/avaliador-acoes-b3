@@ -1490,7 +1490,7 @@ TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL = (
 # catálogo enxuto, cerca de 25 s; o catálogo completo da B3 levava cerca de 1 minuto a mais).
 TEXTO_RODAPE_APP_DORMINDO = (
     'Hospedado no Streamlit Community Cloud — se o app estiver "dormindo", vai aparecer uma tela '
-    "pedindo um clique pra acordar; depois disso, a primeira abertura leva cerca de 25 segundos."
+    "pedindo um clique para acordar; depois disso, a primeira abertura leva cerca de 25 segundos."
 )
 TEXTO_RODAPE_LINK_REPOSITORIO = "Código no GitHub"
 TEXTO_RODAPE_SELIC = "Selic de referência {selic}"
@@ -1775,7 +1775,7 @@ TOOLTIP_HISTORICO_CARTEIRA = (
 )
 TEXTO_BUSCANDO_HISTORICO = "Buscando o histórico das ações…"
 ROTULO_SELETOR_PERIODO_HISTORICO = "Período do histórico"
-TEXTO_SELECIONE_PERIODO_HISTORICO = "Selecione um período acima pra ver o gráfico."
+TEXTO_SELECIONE_PERIODO_HISTORICO = "Selecione um período acima para ver o gráfico."
 NOME_LINHA_CARTEIRA = "Carteira"
 NOME_LINHA_IPCA = "Inflação (IPCA)"
 NOME_LINHA_CDI = "CDI"

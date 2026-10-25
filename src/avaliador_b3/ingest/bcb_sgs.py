@@ -393,7 +393,7 @@ def _ipca_12m_do_dataframe(ipca_df: pd.DataFrame) -> tuple[float, pd.Timestamp]:
     if len(ipca_df) < MESES_IPCA_ACUMULADO:
         raise DadosMacroInsuficientesError(
             f"IPCA voltou com {len(ipca_df)} leitura(s), precisa de pelo "
-            f"menos {MESES_IPCA_ACUMULADO} pra acumular 12 meses."
+            f"menos {MESES_IPCA_ACUMULADO} para acumular 12 meses."
         )
     janela_ipca = ipca_df.tail(MESES_IPCA_ACUMULADO)
     ipca_12m = float((1 + janela_ipca["valor"] / 100).prod() - 1)

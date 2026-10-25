@@ -262,7 +262,7 @@ def _baixar_zip_ano(
     except requests.RequestException:
         if caminho.exists():
             warnings.warn(
-                f"Falha ao atualizar o zip da CVM pra {ano} (cache expirado) — "
+                f"Falha ao atualizar o zip da CVM para {ano} (cache expirado) — "
                 "usando a versão em cache, possivelmente desatualizada.",
                 stacklevel=2,
             )

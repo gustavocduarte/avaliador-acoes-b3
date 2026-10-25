@@ -98,7 +98,7 @@ def calcular_correlacao(
             "correlacao": None,
             "observacoes": len(retornos),
             "motivo_nao_aplicavel": (
-                f"Overlap de datas insuficiente pra uma correlação confiável "
+                f"Overlap de datas insuficiente para uma correlação confiável "
                 f"({len(retornos)} pontos em comum, mínimo {minimo_observacoes})."
             ),
         }
