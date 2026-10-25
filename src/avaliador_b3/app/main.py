@@ -23,9 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from streamlit.delta_generator import DeltaGenerator
 
 from avaliador_b3 import screener as screener_mod
+from avaliador_b3.app import barra_lateral
 from avaliador_b3.app.componentes import (
     _html_barra_potencial,
     _html_cabecalho_painel,
@@ -57,7 +57,6 @@ from avaliador_b3.app.dados import (
     _carregar_screener_ou_avisar,
     _data_da_ultima_rodada,
     _rodar_screener_permitido,
-    _texto_screener_atualizado_pelo_workflow,
 )
 from avaliador_b3.app.formatacao import (
     _acoes_por_extenso,
@@ -97,7 +96,6 @@ from avaliador_b3.config import (
     AVISO_SIMULADOR_SEM_PREVISAO,
     CHAVE_BARRA_ANALISAR,
     CHAVE_BARRA_CARTEIRA,
-    CHAVE_BARRA_RODAPE,
     CHAVE_BARRA_SCREENER,
     CHAVE_CARTEIRA_ACAO,
     CHAVE_CARTEIRA_POSICOES,
@@ -205,7 +203,6 @@ from avaliador_b3.config import (
     ROTULOS_COMPONENTES_VALOR_FIRMA,
     ROTULOS_METODOS_GRAFICO,
     SEPARADOR_OBSERVACAO_RANKING,
-    SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
     TEXTO_ACAO_DA_URL_INVALIDA,
     TEXTO_AJUDA_CORRELACAO,
@@ -271,10 +268,6 @@ from avaliador_b3.config import (
     TEXTO_RISCO_SACADO_RECLASSIFICADO,
     TEXTO_RODADA_DESCARTADA,
     TEXTO_RODAPE_APP_DORMINDO,
-    TEXTO_RODAPE_LINK_REPOSITORIO,
-    TEXTO_RODAPE_SCREENER_ATUALIZADO,
-    TEXTO_RODAPE_SCREENER_SEM_DATA,
-    TEXTO_RODAPE_SELIC,
     TEXTO_SCREENER_CONCLUIDO,
     TEXTO_SCREENER_CONCLUIDO_COM_FALHAS,
     TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL,
@@ -300,7 +293,6 @@ from avaliador_b3.config import (
     TEXTO_ULTIMO_DADO_GPR,
     TEXTOS_CURTOS_AVISO_DESCONTO_EXTREMO,
     TITULO_ABA_NAVEGADOR,
-    TITULO_APP,
     TITULO_ATENCAO,
     TITULO_CARTAO_SEM_METODO,
     TITULO_CENARIOS_CARTEIRA,
@@ -338,7 +330,6 @@ from avaliador_b3.config import (
     URL_PAGINA_ANALISAR,
     URL_PAGINA_CARTEIRA,
     URL_PAGINA_SCREENER,
-    URL_REPOSITORIO,
     YIELD_MINIMO_BAZIN,
 )
 from avaliador_b3.correlacao import calcular_correlacoes_fatores, classificar_magnitude_correlacao
@@ -359,9 +350,6 @@ from avaliador_b3.historico_carteira import (
     montar_historico,
     serie_cdi,
     serie_ipca,
-)
-from avaliador_b3.ingest import (
-    bcb_sgs,
 )
 from avaliador_b3.ingest.bcb_sgs import (
     ResultadoMacro,
@@ -979,7 +967,7 @@ def pagina_analisar() -> None:
     # A ação escolhida fica guardada à parte: o Streamlit apaga o estado de um widget que não é
     # desenhado numa rodada (ao sair da página), e a seleção é restaurada ao voltar.
     ticker_guardado = st.session_state.get(CHAVE_TICKER_GUARDADO)
-    with _bloco_barra_analisar:
+    with barra_lateral.bloco_da_barra(CHAVE_BARRA_ANALISAR):
         if usando_dropdown:
             assert universo_ibovespa is not None, "o dropdown só é usado com o universo carregado"
             nomes_por_ticker = dict(
@@ -2528,7 +2516,7 @@ def pagina_screener() -> None:
     )
 
     # Filtros e botão da rodada ficam no bloco da barra lateral, depois do link da página.
-    with _bloco_barra_screener:
+    with barra_lateral.bloco_da_barra(CHAVE_BARRA_SCREENER):
         tabela_exibida = None
         texto_sem_acao = TEXTO_NENHUMA_ACAO_NOS_FILTROS
         if tabela_screener is not None:
@@ -3253,7 +3241,7 @@ def pagina_carteira() -> None:
     )
 
     # Os campos de montagem ficam no bloco da barra lateral, depois do link da página.
-    with _bloco_barra_carteira:
+    with barra_lateral.bloco_da_barra(CHAVE_BARRA_CARTEIRA):
         posicoes: dict[str, int] = {}
         fora_do_screener: list[str] = []
         if tabela_screener_carteira is not None:
@@ -3406,31 +3394,6 @@ def pagina_carteira() -> None:
 # Sem esse aviso, o clique extra pareceria um link quebrado.
 
 
-def _rodape_da_barra_lateral() -> None:
-    """Data da última atualização do screener (a mesma do aviso do workflow) e o link do
-    repositório."""
-    macro = bcb_sgs.carregar_macro_referencia()
-    data_rodada = _data_da_ultima_rodada()
-    with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
-        if data_rodada is not None:
-            st.caption(
-                TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(data_rodada)),
-                help=None
-                if _rodar_screener_permitido()
-                else _texto_screener_atualizado_pelo_workflow(),
-            )
-            if macro is not None and macro.get("selic_meta") is not None:
-                st.caption(
-                    TEXTO_RODAPE_SELIC.format(selic=_fmt_percentual(macro["selic_meta"] * 100, 2))
-                )
-        elif not _rodar_screener_permitido():
-            st.caption(
-                TEXTO_RODAPE_SCREENER_SEM_DATA,
-                help=_texto_screener_atualizado_pelo_workflow(),
-            )
-        st.markdown(f"[{TEXTO_RODAPE_LINK_REPOSITORIO}]({URL_REPOSITORIO})")
-
-
 _paginas = {
     CHAVE_BARRA_ANALISAR: st.Page(
         pagina_analisar,
@@ -3452,11 +3415,6 @@ _paginas = {
         url_path=URL_PAGINA_CARTEIRA,
     ),
 }
-_ROTULOS_DO_MENU = [
-    (TITULO_PAGINA_ANALISAR, ICONE_PAGINA_ANALISAR),
-    (TITULO_PAGINA_SCREENER, ICONE_PAGINA_SCREENER),
-    (TITULO_PAGINA_CARTEIRA, ICONE_PAGINA_CARTEIRA),
-]
 # Menu próprio (um bloco por página), no lugar do menu padrão do Streamlit.
 pagina_atual = st.navigation(list(_paginas.values()), position="hidden")
 # Fora de uma execução do Streamlit (importação nos testes) a página não tem título.
@@ -3469,25 +3427,14 @@ st.set_page_config(
 )
 # Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
 st.html(_CSS_DA_PAGINA)
-st.sidebar.html(f'<div class="ab-app-marca">{escape(TITULO_APP)}</div>')
-_blocos_barra: dict[str, DeltaGenerator] = {}
-for (_chave, _pagina), (_titulo, _icone) in zip(_paginas.items(), _ROTULOS_DO_MENU, strict=True):
-    _ativa = _pagina is pagina_atual
-    _blocos_barra[_chave] = st.sidebar.container(
-        border=True, key=_chave + (SUFIXO_BARRA_ATIVA if _ativa else "")
-    )
-    with _blocos_barra[_chave]:
-        st.page_link(_pagina, label=_titulo, icon=_icone)
+barra_lateral.montar_barra_lateral(_paginas, pagina_atual)
 # A caixa da ação e o Buscar entram no bloco da análise, só quando a página de análise roda; os
 # filtros e o botão da rodada, no bloco do Screener, só quando a página do Screener roda.
-_bloco_barra_analisar = _blocos_barra[CHAVE_BARRA_ANALISAR]
-_bloco_barra_screener = _blocos_barra[CHAVE_BARRA_SCREENER]
-_bloco_barra_carteira = _blocos_barra[CHAVE_BARRA_CARTEIRA]
 # Cabeçalho: o título é o da página aberta; abaixo, o que ela faz e o aviso de estimativas.
 st.html(f'<div class="ab-app-titulo">{escape(_titulo_da_pagina_atual)}</div>')
 st.caption(f"{DESCRICOES_DAS_PAGINAS[_titulo_da_pagina_atual]}  \n{TEXTO_AVISO_ESTIMATIVAS}")
 st.html('<div class="ab-app-divisoria"></div>')
 pagina_atual.run()
-_rodape_da_barra_lateral()
+barra_lateral._rodape_da_barra_lateral()
 
 st.caption(TEXTO_RODAPE_APP_DORMINDO)
