@@ -1,6 +1,6 @@
 """Funções puras de preparação de dado pros gráficos do dashboard — só
 transforma o dado já buscado no formato que o gráfico precisa, sem
-desenhar nada (isso fica em `app/main.py`, com plotly).
+desenhar nada (isso fica nos módulos de `app/`, com plotly).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ def ticks_mensais_pt_br(datas: pd.Series, max_ticks: int = 8) -> tuple[list, lis
     o locale en-US (nenhum outro registrado), então passar
     `config={"locale": "pt-BR"}` pro `st.plotly_chart` não teria efeito
     nenhum. Mesmo princípio já usado pra vírgula decimal (`_fmt_bilhoes`
-    em app/main.py): não depender de locale automático de sistema/
+    em app/formatacao.py): não depender de locale automático de sistema/
     biblioteca, traduzir explicitamente no nosso código.
 
     O passo entre ticks é calculado em MESES, não em dias — usar

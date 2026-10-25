@@ -125,7 +125,7 @@ def _caminho_cache(
     codigo: int, data_inicial: str | None, data_final: str | None, diretorio_cache: Path
 ) -> Path:
     # data_inicial/data_final fazem parte da chave de cache: um chamador com
-    # janela ROLANTE (ex: app/main.py recalcula "hoje - N dias" a "hoje" a cada
+    # janela ROLANTE (ex: app/dados.py recalcula "hoje - N dias" a "hoje" a cada
     # execução) ficaria preso à janela do primeiro fetch, já que a única
     # checagem de validade é `caminho.exists()`. Mesma ideia da chave por
     # `periodo` em ingest/precos.py. As datas trocam "/" por "-" pra virarem

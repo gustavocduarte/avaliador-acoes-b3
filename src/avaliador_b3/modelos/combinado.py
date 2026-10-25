@@ -120,7 +120,7 @@ def calcular_divergencia_metodos(
     depende do preço) fica `None` nesse caso, pra quem exibe poder cair
     num texto alternativo sem o percentual, em vez de esconder tudo.
 
-    Compartilhada entre `app/main.py` (caption do cartão "Valor
+    Compartilhada entre `app/paginas/analise.py` (caption do cartão "Valor
     combinado") e `screener.py` (coluna `divergencia_percentual_
     metodos`), pra não duplicar a conta nem correr o risco dos dois
     lugares divergirem entre si sobre o que "divergência" significa.

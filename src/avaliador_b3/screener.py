@@ -4,10 +4,10 @@ devolve uma tabela ordenada por potencial de valorização — quanto o valor
 justo combinado está acima (potencial positivo) ou abaixo (negativo) do preço atual.
 
 Não reimplementa nenhuma lógica de cálculo: só chama os mesmos
-adapters/modelos já usados em app/main.py, orquestrando a busca pra cada
+adapters/modelos já usados em app/paginas/analise.py, orquestrando a busca pra cada
 ação. As funções de busca-com-tratamento-de-erro daqui são próprias deste
-módulo (não importadas de app/main.py, que é um script Streamlit — não dá
-pra importar sem rodar a UI), mas seguem o mesmo padrão.
+módulo (não importadas de app/dados.py, que depende do Streamlit — não dá
+pra importar sem a UI), mas seguem o mesmo padrão.
 
 Processamento incremental (restrição de RAM documentada desde o início do
 projeto): cada ação é buscada, calculada e gravada no CSV de saída antes
@@ -155,7 +155,7 @@ CAMINHO_SAIDA_PADRAO = DATA_PROCESSED_DIR / "screener.csv"
 class DeteccaoAnoCvmFalhouWarning(UserWarning):
     """Categoria própria (não `UserWarning` genérico) pro aviso que
     `rodar_screener` emite quando `resolver_ano_mais_recente_disponivel`
-    falha — permite que `app/main.py` capture especificamente ESSE aviso
+    falha — permite que `app/paginas/screener.py` capture especificamente ESSE aviso
     (via `category=DeteccaoAnoCvmFalhouWarning`) e mostre na tela pra
     quem clicou em "Rodar screener agora", sem confundir com os demais
     `warnings.warn` que podem disparar na mesma rodada (ex: cache do zip
@@ -442,7 +442,7 @@ def _calcular_linha_ticker(
     )
     # Dívida líquida em valor ABSOLUTO (não a proporção acima) — pra
     # converter o FCD de Enterprise Value pra Equity Value, mesmo campo
-    # usado em app/main.py (ver modelos/fcd.py).
+    # usado em app/paginas/analise.py (ver modelos/fcd.py).
     divida_liquida = indicadores["divida_liquida"] if indicadores else None
     # Data-base ("Últ balanço processado") dos indicadores acima — varia
     # por empresa (balanços trimestrais saem em datas diferentes), por

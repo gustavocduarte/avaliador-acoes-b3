@@ -1108,7 +1108,7 @@ def test_calcular_valor_justo_fcd_sem_divida_liquida_continua_aplicavel_sem_dedu
     # valor_justo =
     # Enterprise Value / número de ações, sem nenhuma dedução — e o
     # retorno sinaliza isso explicitamente (divida_liquida_deduzida=False)
-    # pra app/main.py avisar na UI. Mesmos parâmetros do teste "caminho
+    # pra app/paginas/analise.py avisar na UI. Mesmos parâmetros do teste "caminho
     # feliz sem crescimento" acima, pra reaproveitar a fórmula fechada.
     resultado = fcd.calcular_valor_justo_fcd(
         fcf_atual=1000.0,

@@ -1,7 +1,7 @@
 """Correlação estatística entre o retorno diário de uma ação e três
 fatores externos — petróleo (Brent), câmbio USD/BRL e risco geopolítico
 (GPR) — numa janela de 2 anos. Lógica pura: não busca dado nenhum, só
-recebe séries já buscadas (por `app/main.py`) e calcula.
+recebe séries já buscadas (por `app/dados.py`) e calcula.
 
 Sempre correlaciona RETORNOS/VARIAÇÕES diárias (variação percentual dia a
 dia), nunca o nível bruto das séries. Duas séries em tendência (ex: duas

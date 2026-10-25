@@ -295,7 +295,7 @@ def obter_crosswalk_ibovespa(
     tickers reais em 2026-09-14, isso nunca aconteceu).
 
     Testada e pública, mas **não é usada por nenhum código de produção do
-    projeto hoje** (nem `app/main.py`, nem `screener.py`) — de propósito,
+    projeto hoje** (nem o `app/`, nem `screener.py`) — de propósito,
     não por esquecimento. `screener.py` resolve CNPJ ticker a ticker,
     dentro de um loop, chamando `resolver_cnpj` diretamente pra cada ação:
     isso isola erro por ticker (uma falha de resolução derruba só a linha

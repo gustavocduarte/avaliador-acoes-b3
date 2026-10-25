@@ -3,7 +3,7 @@
 sem precisar de navegador. Cobre a degradação graciosa do dropdown de ticker
 na página "Analisar uma ação" e a pré-seleção + busca automática de PETR4 só na
 primeira abertura da sessão (ver `TICKER_PADRAO_PRIMEIRA_ABERTURA` em
-app/main.py).
+app/paginas/analise.py).
 
 Como a busca automática da primeira abertura dispara o mesmo fluxo de
 "Buscar" de verdade (preço, indicadores, dividendos, CNPJ, macro e, como a
@@ -343,7 +343,7 @@ def test_primeira_abertura_pre_seleciona_e_busca_petr4_automaticamente(monkeypat
     assert at.selectbox[0].value == "PETR4"
     # ... e a busca já rodou sozinha nesse mesmo carregamento, sem precisar
     # clicar em "Buscar" — confirmado pelo subheader com o ticker, que só
-    # aparece depois de `if buscar and ticker:` em app/main.py.
+    # aparece depois de `if buscar and ticker:` em app/paginas/analise.py.
     assert any(subheader.value == "PETR4 · PETROBRAS" for subheader in at.subheader)
     assert at.session_state["busca_inicial_automatica_feita"] is True
 
@@ -1995,7 +1995,7 @@ def test_correlacao_mostra_coeficiente_com_virgula_brasileira(monkeypatch):
     def _historico_por_ticker(ticker, periodo=None, **kwargs):
         # Mesma função de ingest atende ação e petróleo (Brent) — só o
         # `ticker` muda (ver `_buscar_historico`/`_buscar_historico_petroleo`
-        # em app/main.py). Sobrescreve o mock de falha genérica que
+        # em app/dados.py). Sobrescreve o mock de falha genérica que
         # _bloquear_buscas_de_rede_por_ticker aplicou acima.
         if ticker == TICKER_PETROLEO_BRENT:
             return historico_petroleo.copy()
@@ -2686,11 +2686,10 @@ def test_valor_mercado_divida_firma_formatados_sem_truncar(monkeypatch, id_caso)
 
 # --- Simulador de carteira (potencial sem prazo) -----------------------------
 #
-# `_carregar_screener_salvo` é uma função PRIVADA de app/main.py (não
-# importada de outro módulo) — AppTest executa o script inteiro num módulo
-# novo a cada `.run()` (`_new_module`, não reaproveita `sys.modules`), então
-# monkeypatchar essa função pelo caminho `avaliador_b3.app.main.X` não tem
-# efeito nenhum na execução real (confirmado empiricamente). Em vez disso,
+# `_carregar_screener_salvo` é uma função PRIVADA de app/dados.py — o main.py
+# é re-executado a cada `.run()`, mas o módulo dados fica em `sys.modules` desde a
+# primeira importação, então monkeypatchar essa função pelo caminho
+# `avaliador_b3.app.dados.X` não tem efeito nenhum na execução real. Em vez disso,
 # escreve um CSV de verdade em `tmp_path` e aponta
 # `avaliador_b3.screener.CAMINHO_SAIDA_PADRAO` (constante importada de um
 # módulo de verdade, isso sim visível pro `from ... import` que roda de novo
@@ -2864,7 +2863,7 @@ def _obter_serie_bcb_falso(codigo, data_inicial=None, data_final=None, **kwargs)
 
 def test_tabela_screener_traz_os_numeros_de_verdade_para_ordenar(monkeypatch, tmp_path):
     # Ver comentário central perto de `_tabela_formatada_pt_br` em
-    # app/main.py pro porquê (NumberColumn sem vírgula brasileira em
+    # app/componentes.py pro porquê (NumberColumn sem vírgula brasileira em
     # locale nenhum) e o trade-off aceito (ordenar pelo cabeçalho dessas
     # colunas vira alfabético, não numérico).
     import avaliador_b3.screener as screener_mod
@@ -2944,7 +2943,7 @@ def test_botao_screener_mostra_aviso_na_tela_quando_deteccao_do_ano_falha(monkey
     # DeteccaoAnoCvmFalhouWarning) — o comportamento real de emitir esse
     # aviso quando resolver_ano_mais_recente_disponivel falha já é coberto
     # em tests/test_screener.py; este teste cobre só a plumbing nova de
-    # captura/reexibição em app/main.py.
+    # captura/reexibição em app/paginas/screener.py.
     monkeypatch.setattr(
         "avaliador_b3.ingest.b3_universo.obter_universo_ibovespa",
         lambda **kwargs: _universo_falso(),

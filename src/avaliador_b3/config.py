@@ -1900,7 +1900,7 @@ MINIMO_OBSERVACOES_CORRELACAO = 30
 LIMIAR_CORRELACAO_FRACA = 0.3
 LIMIAR_CORRELACAO_FORTE = 0.6
 
-# --- Página "Analisar uma ação" (app/main.py) — 2026-09-18 ---
+# --- Página "Analisar uma ação" (app/paginas/analise.py) — 2026-09-18 ---
 #
 # Meses de acumulação do IPCA: "IPCA acumulado em 12 meses" é o indicador
 # padrão de inflação anual usado no Brasil (mesma convenção do IBGE/BCB)
