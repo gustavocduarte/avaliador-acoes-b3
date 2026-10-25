@@ -78,6 +78,8 @@ def _isolar_cache_de_disco(tmp_path, monkeypatch):
     # O catálogo enxuto versionado do repositório nunca entra num teste: cada um parte do
     # arquivo ausente (e grava o seu, se quiser, neste caminho).
     monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "catalogo_emissores.csv")
+    # Idem para a data da última rodada: cada teste parte do arquivo ausente.
+    monkeypatch.setattr(config, "CAMINHO_RODADA", tmp_path / "rodada.json")
 
 
 _DIRETORIOS_PROTEGIDOS = (config.DATA_RAW_DIR, config.DATA_PROCESSED_DIR)

@@ -22,6 +22,8 @@ data/processed/*
 # Catálogo enxuto de emissores da última rodada aceita (CNPJ e segmento de cada ação), lido pela
 # página de análise para não baixar o catálogo da B3 quando o app acorda.
 !data/processed/catalogo_emissores.csv
+# Data e hora da última rodada aceita (a data mostrada como "Screener atualizado em").
+!data/processed/rodada.json
 # Rodada em andamento e rodada rejeitada pela checagem (ver rodar_screener).
 data/processed/screener.csv.novo
 data/processed/screener.rejeitado.csv

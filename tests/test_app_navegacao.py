@@ -209,6 +209,17 @@ def test_rodape_da_barra_lateral_tem_a_data_do_screener_e_o_link_do_repositorio(
     assert any("Screener atualizado em 03/10/2026" in texto for texto in textos)
 
 
+def test_rodape_usa_a_data_da_rodada_quando_o_arquivo_existe(tmp_path):
+    (tmp_path / "rodada.json").write_text(
+        '{"data_rodada": "2026-10-23T21:41:12-03:00"}', encoding="utf-8"
+    )
+    at = _app_aberto()
+
+    textos = [e.value for e in (*at.sidebar.caption, *at.sidebar.markdown)]
+    assert any("Screener atualizado em 23/10/2026" in texto for texto in textos)
+    assert not any("03/10/2026" in texto for texto in textos)
+
+
 def test_rodape_sem_arquivo_de_referencia_mostra_so_o_link(monkeypatch):
     monkeypatch.setattr("avaliador_b3.ingest.bcb_sgs.carregar_macro_referencia", lambda: None)
     at = _app_aberto()

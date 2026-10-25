@@ -92,6 +92,7 @@ from avaliador_b3.config import (
     MOTIVO_RODADA_VALOR_NAO_FINITO,
     NOME_ARQUIVO_CATALOGO_EMISSORES,
     NOME_ARQUIVO_MACRO_REFERENCIA,
+    NOME_ARQUIVO_RODADA,
     PERIODO_BETA,
     PERIODO_HISTORICO_COMPORTAMENTO,
     SITUACAO_CATALOGO_ATUALIZADO,
@@ -144,6 +145,7 @@ from avaliador_b3.modelos.fcd import (
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 from avaliador_b3.numeros import campos_nao_finitos
+from avaliador_b3.rodada import agora_da_rodada, salvar_data_rodada
 
 _log = logging.getLogger(__name__)
 
@@ -956,8 +958,9 @@ def _publicar_rodada(
         os.replace(caminho_novo, caminho_rejeitado)
         raise RodadaScreenerRejeitada(" ".join(motivos), caminho_rejeitado, resultado)
 
-    # Publica o arquivo de referência (a Selic e o IPCA) primeiro e o CSV por último: se a
-    # publicação falhar no meio, o CSV anterior fica intacto e a referência, só mais nova.
+    # Publica o arquivo de referência (a Selic e o IPCA) primeiro, o CSV depois e a data da
+    # rodada por último: se a publicação falhar no meio, o CSV anterior fica intacto e a
+    # referência, só mais nova; a data da rodada nunca fica mais nova que os dados.
     # Os temporários que sobrarem são apagados por `rodar_screener`.
     macro = resultado.attrs.get("macro")
     if macro is not None and not macro.usou_valor_guardado:
@@ -965,4 +968,5 @@ def _publicar_rodada(
         os.replace(caminho_macro_novo, caminho_macro)
     _publicar_catalogo_enxuto(resultado, caminho_catalogo)
     os.replace(caminho_novo, caminho_saida)
+    salvar_data_rodada(caminho_saida.with_name(NOME_ARQUIVO_RODADA), agora_da_rodada())
     return resultado

@@ -385,6 +385,7 @@ from avaliador_b3.modelos.fcd import (
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 from avaliador_b3.numeros import decimal_pt_br, numero_finito
+from avaliador_b3.rodada import carregar_data_rodada
 from avaliador_b3.screener import (
     CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
@@ -1518,13 +1519,23 @@ def _rodar_screener_permitido() -> bool:
         return False
 
 
-def _texto_screener_atualizado_pelo_workflow() -> str:
-    """Aviso do app publicado, com a data da última rodada ao vivo aceita (a do arquivo de
-    referência, gravado a cada rodada); o horário do arquivo no disco seria o do deploy."""
+def _data_da_ultima_rodada() -> pd.Timestamp | str | None:
+    """Data da última rodada aceita do screener (o `rodada.json`); sem ele, a data da busca da
+    Selic e do IPCA do arquivo de referência, e `None` se nenhum dos dois existir."""
+    data_rodada = carregar_data_rodada()
+    if data_rodada is not None:
+        return data_rodada
     macro = carregar_macro_referencia()
-    if macro is None:
+    return None if macro is None else macro["data_busca"]
+
+
+def _texto_screener_atualizado_pelo_workflow() -> str:
+    """Aviso do app publicado, com a data da última rodada aceita; o horário do arquivo no
+    disco seria o do deploy."""
+    data_rodada = _data_da_ultima_rodada()
+    if data_rodada is None:
         return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW_SEM_DATA
-    return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW.format(data=_fmt_data(macro["data_busca"]))
+    return TEXTO_SCREENER_ATUALIZADO_PELO_WORKFLOW.format(data=_fmt_data(data_rodada))
 
 
 # Ticker pré-selecionado e buscado automaticamente só na primeira abertura da
@@ -2661,11 +2672,11 @@ def pagina_analisar() -> None:
                             st.html(_html_tabela_setorial(tabela_pares, ticker))
                             if set(tabela_pares["ticker"]) <= {ticker}:
                                 st.caption(TEXTO_SEM_OUTRA_ACAO_NO_SEGMENTO)
-                            macro_screener = carregar_macro_referencia()
-                            if macro_screener is not None:
+                            data_rodada = _data_da_ultima_rodada()
+                            if data_rodada is not None:
                                 st.caption(
                                     TEXTO_LEGENDA_DATA_SCREENER_SETORIAL.format(
-                                        data=_fmt_data(macro_screener["data_busca"])
+                                        data=_fmt_data(data_rodada)
                                     )
                                 )
 
@@ -4184,18 +4195,19 @@ def pagina_carteira() -> None:
 
 
 def _rodape_da_barra_lateral() -> None:
-    """Data da última atualização do screener (a `data_busca` do arquivo de referência, a mesma
-    do cartão "Atualizado em") e o link do repositório."""
+    """Data da última atualização do screener (a mesma do aviso do workflow) e o link do
+    repositório."""
     macro = carregar_macro_referencia()
+    data_rodada = _data_da_ultima_rodada()
     with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
-        if macro is not None:
+        if data_rodada is not None:
             st.caption(
-                TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(macro["data_busca"])),
+                TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(data_rodada)),
                 help=None
                 if _rodar_screener_permitido()
                 else _texto_screener_atualizado_pelo_workflow(),
             )
-            if macro.get("selic_meta") is not None:
+            if macro is not None and macro.get("selic_meta") is not None:
                 st.caption(
                     TEXTO_RODAPE_SELIC.format(selic=_fmt_percentual(macro["selic_meta"] * 100, 2))
                 )

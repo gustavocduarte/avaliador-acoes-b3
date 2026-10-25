@@ -3,6 +3,7 @@ import json
 import os
 import threading
 import warnings
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -18,6 +19,7 @@ from avaliador_b3.config import (
 from avaliador_b3.ingest import bcb_sgs
 from avaliador_b3.ingest.precos import FalhaFontePreco, TickerInvalido
 from avaliador_b3.modelos import fcd
+from avaliador_b3.rodada import carregar_data_rodada
 
 # Ano fixo usado pelos mocks de FCD abaixo: o ano é detectado em tempo de
 # execução (ingest.cvm.resolver_ano_mais_recente_disponivel), não é uma
@@ -1729,11 +1731,53 @@ def test_rodada_aceita_troca_o_csv_e_a_referencia_sem_deixar_temporarios(ambient
     _rodar_com_oficial_antigo(tmp_path)
 
     arquivos = sorted(p.name for p in tmp_path.iterdir() if p.is_file())
-    assert arquivos == ["catalogo_emissores.csv", "macro_referencia.json", "screener.csv"]
+    assert arquivos == [
+        "catalogo_emissores.csv",
+        "macro_referencia.json",
+        "rodada.json",
+        "screener.csv",
+    ]
     assert (
         json.loads((tmp_path / "macro_referencia.json").read_text(encoding="utf-8"))["fonte_selic"]
         == "BCB (SOAP)"
     )
+
+
+def test_rodada_aceita_grava_a_data_e_a_hora_no_fuso_de_brasilia(ambiente_feliz, tmp_path):
+    _rodar_com_oficial_antigo(tmp_path)
+
+    momento = carregar_data_rodada(tmp_path / "rodada.json")
+    assert momento is not None
+    assert momento.utcoffset() == timedelta(hours=-3)
+
+
+def test_falha_ao_gravar_a_data_da_rodada_deixa_a_data_antiga_e_nunca_mais_nova_que_os_dados(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    antiga = '{"data_rodada": "2026-10-01T19:20:00-03:00"}'
+    (tmp_path / "rodada.json").write_text(antiga, encoding="utf-8")
+
+    def falha(caminho, momento):
+        raise OSError("disco cheio (simulado)")
+
+    monkeypatch.setattr(screener, "salvar_data_rodada", falha)
+
+    with pytest.raises(OSError, match="disco cheio"):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert (tmp_path / "screener.csv").read_text(encoding="utf-8") != CONTEUDO_ANTIGO
+    assert (tmp_path / "rodada.json").read_text(encoding="utf-8") == antiga
+
+
+def test_a_data_da_rodada_so_e_gravada_depois_da_troca_do_csv(
+    ambiente_feliz, tmp_path, monkeypatch
+):
+    _falhar_troca_para(monkeypatch, "screener.csv")
+
+    with pytest.raises(PermissionError):
+        _rodar_com_oficial_antigo(tmp_path)
+
+    assert not (tmp_path / "rodada.json").exists()
 
 
 # --- Publicação da rodada: ordem, temporários e universo mínimo ---
@@ -1870,6 +1914,7 @@ def test_rodada_parada_no_meio_nao_atrapalha_outra_que_termina_antes(
     assert _arquivos(tmp_path) == [
         "catalogo_emissores.csv",
         "macro_referencia.json",
+        "rodada.json",
         "screener.csv",
     ]
 

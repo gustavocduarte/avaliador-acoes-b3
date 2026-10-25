@@ -2,7 +2,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).parent.parent
 WORKFLOW = RAIZ / ".github" / "workflows" / "atualiza-screener.yml"
-ARQUIVOS = ("screener.csv", "catalogo_emissores.csv", "macro_referencia.json")
+ARQUIVOS = ("screener.csv", "catalogo_emissores.csv", "macro_referencia.json", "rodada.json")
 
 
 def _passo_de_commit() -> str:
@@ -36,6 +36,13 @@ def test_a_checagem_de_mudanca_olha_os_mesmos_tres_arquivos_do_git_add():
     checagem = next(linha for linha in passo.splitlines() if "git status --porcelain" in linha)
     for arquivo in ARQUIVOS:
         assert f"data/processed/{arquivo}" in checagem
+
+
+def test_a_data_da_mensagem_do_commit_e_a_de_brasilia():
+    passo = _passo_de_commit()
+
+    assert "TZ=America/Sao_Paulo date +%Y-%m-%d" in passo
+    assert "date -u" not in passo
 
 
 def test_o_gitignore_libera_os_arquivos_que_o_commit_automatico_adiciona():

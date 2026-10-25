@@ -46,7 +46,7 @@ flowchart LR
 
 - **Cadeia de fontes com fallback:** a Selic e o IPCA passam pela API do Banco Central, pelo serviço SOAP, pelo IBGE (só o IPCA), pelo último valor guardado e pelo arquivo de referência versionado; a tela informa a fonte efetiva. O ano da demonstração da CVM é detectado por empresa, e a empresa que ainda não entregou o ano mais recente usa o anterior.
 - **Checagem que impede publicar rodada ruim:** a rodada só substitui o `screener.csv` se tiver ao menos uma linha, uma linha por ação, no máximo 5 ações sem preço, no máximo 5 com falha de fonte, nenhum valor não finito (`NaN` ou infinito) e, quando o universo vem do Ibovespa, ao menos 60 ações; senão vira `screener.rejeitado.csv`, o resultado anterior fica e a execução do workflow falha.
-- **Gravação atômica:** o screener, os caches em disco e os zips da CVM são gravados num arquivo temporário de nome único por escritor e trocados no fim, então uma falha no meio, ou duas gravações simultâneas, nunca corrompem o arquivo anterior. O screener é publicado na ordem referência macro (`macro_referencia.json`) e depois CSV: se a publicação falhar no meio, o CSV anterior fica intacto.
+- **Gravação atômica:** o screener, os caches em disco e os zips da CVM são gravados num arquivo temporário de nome único por escritor e trocados no fim, então uma falha no meio, ou duas gravações simultâneas, nunca corrompem o arquivo anterior. O screener é publicado na ordem referência macro (`macro_referencia.json`), catálogo, CSV e, por último, a data da rodada (`rodada.json`): se a publicação falhar no meio, o CSV anterior fica intacto e a data nunca fica mais nova que os dados.
 - **Cache versionado por schema:** cada cache em disco leva a versão do formato, e uma mudança de formato invalida os arquivos antigos; os zips da CVM expiram em 7 dias (ano em preenchimento) ou 30 dias (anos fechados), e os resultados derivados deles (fluxo de caixa, lucro e balanço) são refeitos quando o zip de origem muda ou vence.
 - **Abertura mais rápida:** a primeira abertura da página de análise caiu de cerca de 86 s para cerca de 24 s ao trocar a busca do catálogo completo da B3 (36 páginas da API) por um catálogo enxuto gravado pelo pipeline (`data/processed/catalogo_emissores.csv`, versionado, com CNPJ e segmento de cada ação do screener). **Medido localmente**, com a PETR4 e o cache vazio: só a busca do CNPJ e do segmento foi de 64 s para 0,02 s. Uma ação fora do universo do screener ainda espera cerca de 1 minuto, e o spinner avisa.
 - **Testes sem rede:** mais de 1.700 testes, com **98% de cobertura** (linhas e ramos), sem acessar a rede nem gravar em `data/`; inclui testes de interface com o `AppTest` do Streamlit.
@@ -302,7 +302,7 @@ Os testes não acessam a rede e não gravam em `data/`.
 
 O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions, o "Atualiza o screener" (`.github/workflows/atualiza-screener.yml`). Ele roda **de segunda a sexta às 19:17 de Brasília** (22:17 UTC, depois do fechamento da B3; o GitHub pode atrasar a execução em alguns minutos) e também pode ser **disparado manualmente**. A cada execução faz a rodada completa e publica o resultado como arquivo da execução (artifact).
 
-- **Quando commita:** só quando a rodada é aceita e o `screener.csv` ou o `catalogo_emissores.csv` mudou (num feriado, por exemplo, não muda e nada é commitado). Aí grava o `screener.csv`, o `catalogo_emissores.csv` (catálogo enxuto de emissores: ticker, CNPJ e segmento, que a página de análise lê no lugar do catálogo de 36 páginas da B3) e o `macro_referencia.json` no `master`, com autor `github-actions[bot]` e mensagem "Atualiza o screener (rodada de AAAA-MM-DD)"; o corpo do commit traz o resumo da rodada. O catálogo só substitui o anterior se cobrir todas as ações da rodada; se vier incompleto, o anterior é mantido (sem anterior, grava o que houver) e o resumo lista os tickers que faltaram.
+- **Quando commita:** só quando a rodada é aceita e algum dos quatro arquivos mudou. Como o `rodada.json` leva o horário da rodada, toda rodada aceita muda pelo menos ele e é commitada, mesmo num feriado: o commit registra que o pipeline rodou. Aí grava o `screener.csv`, o `catalogo_emissores.csv` (catálogo enxuto de emissores: ticker, CNPJ e segmento, que a página de análise lê no lugar do catálogo de 36 páginas da B3), o `macro_referencia.json` e o `rodada.json` no `master`, com autor `github-actions[bot]` e mensagem "Atualiza o screener (rodada de AAAA-MM-DD)", com a data de Brasília; o corpo do commit traz o resumo da rodada. O catálogo só substitui o anterior se cobrir todas as ações da rodada; se vier incompleto, o anterior é mantido (sem anterior, grava o que houver) e o resumo lista os tickers que faltaram.
 - **Quando falha:** se a rodada é rejeitada pela checagem ou termina com exceção, a execução fica em **falha** (vermelha na aba Actions; o GitHub avisa por e-mail conforme as notificações de quem mantém o agendamento) e nada é commitado, então o screener anterior continua valendo. Os arquivos da rodada, inclusive o `screener.rejeitado.csv`, continuam disponíveis como artifact.
 - **Sincronizar:** como o workflow commita no `master`, convém rodar `git pull` antes de começar a trabalhar.
 - **Agendamento parado:** em repositório público, o GitHub desliga os agendamentos depois de 60 dias sem atividade no repositório; para reativar, use a aba Actions.
@@ -315,6 +315,17 @@ O `data/processed/screener.csv` é atualizado por um workflow do GitHub Actions,
   ```
 
   Sai com 0 quando a rodada é aceita, 1 quando a checagem a rejeita e 2 quando uma exceção a interrompe.
+
+### As datas que o app mostra
+
+Cada data tem um significado próprio, e elas podem ser diferentes (por exemplo, a Selic pode ser de uma busca anterior à rodada):
+
+| Data | Onde aparece | De onde vem |
+|---|---|---|
+| **Rodada** (dia e hora, no fuso de Brasília) | Rodapé "Screener atualizado em", aviso do workflow no Screener e legenda da Comparação setorial | `data/processed/rodada.json`, gravado quando uma rodada é aceita. Sem esse arquivo, o app usa a data da busca de Selic e IPCA |
+| **Preços** | "Datas de referência dos dados usados" (último fechamento) e preço de cada ação no screener | Último fechamento do Yahoo Finance no momento da rodada (ou da busca ao vivo, na página de análise) |
+| **Balanço** | "Datas de referência dos dados usados" ("balanço de dd/mm/aaaa") e coluna `data_balanco_fundamentus` do screener | Último balanço processado que o Fundamentus informa; vale para LPA, VPA, ROE, margem e dívida |
+| **Selic e IPCA** | "Datas de referência dos dados usados" e avisos de valor guardado | Data da busca no Banco Central (`data_busca` do `macro_referencia.json`); o IPCA mostra também o mês de referência. Quando a busca falha e o valor vem do guardado ou do arquivo de referência, é a data dessa busca antiga, não a da rodada |
 
 ## Documentação técnica
 

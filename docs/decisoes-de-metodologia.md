@@ -240,3 +240,21 @@ O que foi decidido e ainda não foi implementado, ou que ficou sem decisão:
 | **Simulador com prazo (opção A)** | Evolução opcional, com prazo e crescimento escolhidos pelo usuário (seção 2) | Decisão de produto |
 | **Capex de manutenção e de expansão** | Separação cogitada pela conta de depreciação e amortização; o código da subconta não é fixo entre empresas | Investigação própria |
 | **Hipóteses não verificadas** | Natureza do convênio da MGLU3 e das entradas da VIVA3 (seção 7); as causas dos saltos de receita da CSAN3, TIMS3 e SUZB3; que a regra de montagem da dívida do Fundamentus valha para as 76 ações | Leitura das notas explicativas |
+
+## 10. As datas que o app mostra
+
+**Problema.** O rodapé "Screener atualizado em" usava a data da busca de Selic e IPCA (`data_busca` do `macro_referencia.json`), que não é a data da rodada: quando o Banco Central falha e a Selic e o IPCA vêm do valor guardado, o arquivo de referência não é regravado e a data fica a de uma rodada antiga, embora os preços sejam novos; e a data era gravada em UTC, então uma rodada das 21h de Brasília aparecia como o dia seguinte.
+
+**Alternativas.** (A) uma coluna `data_rodada` no `screener.csv`, atômica com os preços, mas que muda o contrato do CSV; (B) um campo no `macro_referencia.json`, que mistura dois significados e exige regravar o arquivo toda rodada; (C) um arquivo próprio, `data/processed/rodada.json`.
+
+**Decisão.** A opção C. O arquivo guarda o momento da rodada com o fuso de Brasília (`America/Sao_Paulo`) e é gravado por último, depois da troca do `screener.csv`. Se a publicação falhar no meio, a data fica mais velha que os dados, nunca mais nova: é a escolha conservadora, porque o app não afirma um frescor que não existe. O custo é uma rodada que trocou o CSV e não registrou a data, mostrando a data da rodada anterior até a próxima. Sem o `rodada.json` (repositório anterior à primeira rodada com ele), o app cai na `data_busca` do macro. A mensagem do commit do workflow usa a data de Brasília.
+
+**Significado de cada data.**
+
+| Data | Onde aparece | De onde vem |
+|---|---|---|
+| **Rodada** (dia e hora, no fuso de Brasília) | Rodapé "Screener atualizado em", aviso do workflow no Screener e legenda da Comparação setorial | `data/processed/rodada.json`, gravado quando uma rodada é aceita. Sem esse arquivo, o app usa a data da busca de Selic e IPCA |
+| **Preços** | "Datas de referência dos dados usados" (último fechamento) e preço de cada ação no screener | Último fechamento do Yahoo Finance no momento da rodada (ou da busca ao vivo, na página de análise) |
+| **Balanço** | "Datas de referência dos dados usados" ("balanço de dd/mm/aaaa") e coluna `data_balanco_fundamentus` do screener | Último balanço processado que o Fundamentus informa; vale para LPA, VPA, ROE, margem e dívida |
+| **Selic e IPCA** | "Datas de referência dos dados usados" e avisos de valor guardado | Data da busca no Banco Central (`data_busca` do `macro_referencia.json`); o IPCA mostra também o mês de referência. Quando a busca falha e o valor vem do guardado ou do arquivo de referência, é a data dessa busca antiga, não a da rodada |
+

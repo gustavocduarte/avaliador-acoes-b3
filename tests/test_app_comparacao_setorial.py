@@ -152,7 +152,7 @@ def test_acao_sozinha_no_segmento_mostra_a_linha_curta_e_avisa_que_nao_ha_outra(
     )
 
 
-def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch, tmp_path):
+def _abrir_painel_com_tres_acoes(monkeypatch, tmp_path):
     app._preparar_fcd_aplicavel(monkeypatch, divida_liquida=50_000.0)
     base = {c: None for c in COLUNAS_RESULTADO} | {
         "sucesso": True,
@@ -189,8 +189,25 @@ def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch,
 
     at = AppTest.from_file(app.CAMINHO_APP)
     at.run(timeout=60)
-
     assert not at.exception
+    return at
+
+
+def test_legenda_usa_a_data_da_rodada_e_nao_a_da_busca_macro(monkeypatch, tmp_path):
+    (tmp_path / "rodada.json").write_text(
+        '{"data_rodada": "2026-10-23T21:41:12-03:00"}', encoding="utf-8"
+    )
+
+    at = _abrir_painel_com_tres_acoes(monkeypatch, tmp_path)
+
+    legendas = [c.value for c in at.caption]
+    assert "Preços e potenciais do screener de 23/10/2026" in legendas
+    assert "Preços e potenciais do screener de 19/10/2026" not in legendas
+
+
+def test_painel_mostra_a_tabela_html_com_a_acao_buscada_em_destaque(monkeypatch, tmp_path):
+    at = _abrir_painel_com_tres_acoes(monkeypatch, tmp_path)
+
     assert "Preços e potenciais do screener de 19/10/2026" in [c.value for c in at.caption]
     tabelas = [e.proto.body for e in at.get("html") if "<table" in e.proto.body]
     assert len(tabelas) == 1

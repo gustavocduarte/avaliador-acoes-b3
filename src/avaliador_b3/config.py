@@ -1938,6 +1938,12 @@ NOME_ARQUIVO_MACRO_REFERENCIA = "macro_referencia.json"
 CAMINHO_MACRO_REFERENCIA = DATA_PROCESSED_DIR / NOME_ARQUIVO_MACRO_REFERENCIA
 VALIDADE_MACRO_REFERENCIA_DIAS = 90
 
+# Data e hora da última rodada aceita do screener, versionada com o screener.csv (no fuso de
+# Brasília, onde a rodada é agendada). O app a mostra como "Screener atualizado em".
+NOME_ARQUIVO_RODADA = "rodada.json"
+CAMINHO_RODADA = DATA_PROCESSED_DIR / NOME_ARQUIVO_RODADA
+FUSO_RODADA = "America/Sao_Paulo"
+
 # Catálogo enxuto de emissores, versionado com o screener.csv: a cada rodada aceita grava o
 # CNPJ e o segmento setorial de cada ação do resultado, para a página de análise não baixar o
 # catálogo inteiro da B3 (36 páginas, cerca de 1 minuto) quando o app acorda no Cloud.

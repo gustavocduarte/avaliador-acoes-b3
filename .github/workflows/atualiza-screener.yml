@@ -103,8 +103,8 @@ jobs:
         run: python -m avaliador_b3.rodar_screener --resumo resumo-rodada.txt
 
       # 8. Só se a rodada saiu com 0 (aceita), e só no master: commita o screener.csv, o
-      #    catalogo_emissores.csv e o macro_referencia.json se algum dos três
-      #    mudou. Autor github-actions[bot], sem trailer,
+      #    catalogo_emissores.csv, o macro_referencia.json e o rodada.json se algum
+      #    dos quatro mudou. Autor github-actions[bot], sem trailer,
       #    com o resumo da rodada no corpo. Rodada rejeitada (saída 1) ou com exceção (saída 2)
       #    derruba o passo 7, então este não roda e o job termina em falha, sem commit.
       #    Antes do push, `git pull --rebase` incorpora commits novos do master.
@@ -116,14 +116,14 @@ jobs:
             exit 0
           fi
           # status (e não diff): o catálogo enxuto pode ser um arquivo novo, ainda fora do git.
-          if [ -z "$(git status --porcelain -- data/processed/screener.csv data/processed/catalogo_emissores.csv data/processed/macro_referencia.json)" ]; then
-            { echo "### Commit do screener"; echo "O screener.csv, o catalogo_emissores.csv e o macro_referencia.json não mudaram desde a última rodada (por exemplo, feriado): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$(git status --porcelain -- data/processed/screener.csv data/processed/catalogo_emissores.csv data/processed/macro_referencia.json data/processed/rodada.json)" ]; then
+            { echo "### Commit do screener"; echo "O screener.csv, o catalogo_emissores.csv, o macro_referencia.json e o rodada.json não mudaram desde a última rodada (por exemplo, feriado): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/screener.csv data/processed/catalogo_emissores.csv data/processed/macro_referencia.json
-          { echo "Atualiza o screener (rodada de $(date -u +%Y-%m-%d))"; echo; cat resumo-rodada.txt; } > "$RUNNER_TEMP/mensagem-commit.txt"
+          git add data/processed/screener.csv data/processed/catalogo_emissores.csv data/processed/macro_referencia.json data/processed/rodada.json
+          { echo "Atualiza o screener (rodada de $(TZ=America/Sao_Paulo date +%Y-%m-%d))"; echo; cat resumo-rodada.txt; } > "$RUNNER_TEMP/mensagem-commit.txt"
           git commit -F "$RUNNER_TEMP/mensagem-commit.txt"
           git pull --rebase origin master
           git push origin HEAD:master
