@@ -83,7 +83,7 @@ def test_texto_e_series_tem_contraste_minimo_sobre_os_fundos(cor, fundo):
 def test_template_grafico_fundo_transparente_e_grade_do_tema():
     import plotly.graph_objects as go
 
-    from avaliador_b3.app.main import aplicar_template_grafico
+    from avaliador_b3.app.componentes import aplicar_template_grafico
 
     figura = aplicar_template_grafico(go.Figure(go.Scatter(x=[1, 2], y=[1, 2])))
     assert figura.layout.paper_bgcolor == "rgba(0,0,0,0)"

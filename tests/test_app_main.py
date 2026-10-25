@@ -2283,7 +2283,7 @@ def test_figura_do_valor_justo_poe_o_valor_numa_anotacao_com_fundo_sobre_a_linha
 def test_template_dos_graficos_usa_virgula_decimal_e_ponto_de_milhar():
     import plotly.graph_objects as go
 
-    from avaliador_b3.app.main import aplicar_template_grafico
+    from avaliador_b3.app.componentes import aplicar_template_grafico
 
     assert aplicar_template_grafico(go.Figure()).layout.separators == ",."
 
@@ -2406,7 +2406,7 @@ def test_indicador_da_grade_escapa_o_texto_e_poe_a_ajuda_no_tooltip():
 
 
 def test_titulo_de_painel_e_html_pequeno_sem_ancora_e_com_ajuda_opcional():
-    from avaliador_b3.app.main import _html_cabecalho_painel
+    from avaliador_b3.app.componentes import _html_cabecalho_painel
 
     sem_ajuda = _html_cabecalho_painel("Saúde financeira", [])
     assert 'class="ab-titulo">Saúde financeira</span>' in sem_ajuda

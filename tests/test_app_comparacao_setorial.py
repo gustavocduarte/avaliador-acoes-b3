@@ -9,12 +9,9 @@ from streamlit.testing.v1 import AppTest
 
 from avaliador_b3 import config
 from avaliador_b3 import screener as screener_mod
+from avaliador_b3.app.componentes import _html_barra_potencial
 from avaliador_b3.app.formatacao import _fmt_potencial
-from avaliador_b3.app.main import (
-    _html_barra_potencial,
-    _html_linha_correlacao,
-    _html_tabela_setorial,
-)
+from avaliador_b3.app.main import _html_linha_correlacao, _html_tabela_setorial
 from avaliador_b3.config import LIMITE_BARRA_POTENCIAL, TEXTO_SCREENER_SEM_SEGMENTO_SETORIAL
 from avaliador_b3.screener import COLUNAS_RESULTADO
 from tests import test_app_main as app

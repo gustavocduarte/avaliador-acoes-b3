@@ -238,6 +238,7 @@ def test_todos_os_graficos_do_app_escondem_a_barra_de_ferramentas(monkeypatch):
 
 
 def test_so_o_auxiliar_chama_st_plotly_chart_no_app():
-    fonte = Path(app.CAMINHO_APP).read_text(encoding="utf-8")
+    pasta = Path(app.CAMINHO_APP).parent
+    fonte = "\n".join(a.read_text(encoding="utf-8") for a in sorted(pasta.rglob("*.py")))
 
     assert fonte.count("st.plotly_chart(") == 1
