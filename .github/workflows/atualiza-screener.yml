@@ -103,7 +103,7 @@ jobs:
         run: python -m avaliador_b3.rodar_screener --resumo resumo-rodada.txt
 
       # 8. Só se a rodada saiu com 0 (aceita), e só no master: commita o screener.csv, o
-      #    catalogo_emissores.csv e o macro_referencia.json se o screener.csv ou o catálogo
+      #    catalogo_emissores.csv e o macro_referencia.json se algum dos três
       #    mudou. Autor github-actions[bot], sem trailer,
       #    com o resumo da rodada no corpo. Rodada rejeitada (saída 1) ou com exceção (saída 2)
       #    derruba o passo 7, então este não roda e o job termina em falha, sem commit.
@@ -116,8 +116,8 @@ jobs:
             exit 0
           fi
           # status (e não diff): o catálogo enxuto pode ser um arquivo novo, ainda fora do git.
-          if [ -z "$(git status --porcelain -- data/processed/screener.csv data/processed/catalogo_emissores.csv)" ]; then
-            { echo "### Commit do screener"; echo "O screener.csv e o catalogo_emissores.csv não mudaram desde a última rodada (por exemplo, feriado): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$(git status --porcelain -- data/processed/screener.csv data/processed/catalogo_emissores.csv data/processed/macro_referencia.json)" ]; then
+            { echo "### Commit do screener"; echo "O screener.csv, o catalogo_emissores.csv e o macro_referencia.json não mudaram desde a última rodada (por exemplo, feriado): nada foi commitado."; } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git config user.name "github-actions[bot]"

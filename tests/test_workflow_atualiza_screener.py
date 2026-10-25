@@ -30,6 +30,14 @@ def test_a_checagem_de_mudanca_enxerga_o_catalogo_mesmo_sendo_arquivo_novo():
     assert "data/processed/catalogo_emissores.csv" in checagem
 
 
+def test_a_checagem_de_mudanca_olha_os_mesmos_tres_arquivos_do_git_add():
+    passo = _passo_de_commit()
+
+    checagem = next(linha for linha in passo.splitlines() if "git status --porcelain" in linha)
+    for arquivo in ARQUIVOS:
+        assert f"data/processed/{arquivo}" in checagem
+
+
 def test_o_gitignore_libera_os_arquivos_que_o_commit_automatico_adiciona():
     # `data/processed/*` é ignorado; sem a exceção, o `git add` do workflow recusa o arquivo.
     linhas = (RAIZ / ".gitignore").read_text(encoding="utf-8").splitlines()
