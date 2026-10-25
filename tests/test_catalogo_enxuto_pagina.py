@@ -35,14 +35,14 @@ class CatalogoCompleto:
 @pytest.fixture
 def api(monkeypatch):
     dubla = CatalogoCompleto()
-    monkeypatch.setattr(main, "obter_catalogo_emissores", dubla)
+    monkeypatch.setattr(crosswalk_cnpj, "obter_catalogo_emissores", dubla)
     return dubla
 
 
 def _gravar(monkeypatch, tmp_path, conteudo=CONTEUDO):
     caminho = tmp_path / "enxuto.csv"
     caminho.write_text(conteudo, encoding="utf-8")
-    monkeypatch.setattr(main, "CAMINHO_CATALOGO_EMISSORES", caminho)
+    monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", caminho)
 
 
 def test_ticker_no_arquivo_nao_chama_a_api_do_catalogo(api, monkeypatch, tmp_path):
@@ -54,7 +54,7 @@ def test_ticker_no_arquivo_nao_chama_a_api_do_catalogo(api, monkeypatch, tmp_pat
 
 
 def test_sem_o_arquivo_chama_a_api_do_catalogo(api, monkeypatch, tmp_path):
-    monkeypatch.setattr(main, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
+    monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
 
     assert main._buscar_cnpj("BBAS3") == ("00000000000191", None)
     assert api.chamadas == 1
@@ -124,7 +124,7 @@ def test_o_spinner_da_api_avisa_do_tempo_do_catalogo_completo(api, monkeypatch, 
             return False
 
     monkeypatch.setattr(main.st, "spinner", Spinner)
-    monkeypatch.setattr(main, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
+    monkeypatch.setattr(config, "CAMINHO_CATALOGO_EMISSORES", tmp_path / "nao_existe.csv")
 
     main._buscar_cnpj("BBAS3")
 

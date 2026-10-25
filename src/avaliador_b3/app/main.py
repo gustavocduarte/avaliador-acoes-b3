@@ -28,6 +28,8 @@ import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 from streamlit.errors import StreamlitSecretNotFoundError
 
+from avaliador_b3 import config, rodada
+from avaliador_b3 import screener as screener_mod
 from avaliador_b3.carteira import (
     calcular_totais_carteira,
     compor_posicoes,
@@ -47,7 +49,6 @@ from avaliador_b3.config import (
     AVISO_MACRO_SELIC_FONTE,
     AVISO_PRECO_INDISPONIVEL,
     AVISO_SIMULADOR_SEM_PREVISAO,
-    CAMINHO_CATALOGO_EMISSORES,
     CHAVE_BARRA_ANALISAR,
     CHAVE_BARRA_CARTEIRA,
     CHAVE_BARRA_RODAPE,
@@ -334,39 +335,33 @@ from avaliador_b3.historico_carteira import (
     serie_cdi,
     serie_ipca,
 )
-from avaliador_b3.ingest.b3_universo import obter_universo_ibovespa
-from avaliador_b3.ingest.balanco_cvm import obter_leitura_balanco
+from avaliador_b3.ingest import (
+    b3_universo,
+    balanco_cvm,
+    bcb_sgs,
+    crosswalk_cnpj,
+    cvm,
+    fundamentus,
+    gpr,
+    precos,
+)
 from avaliador_b3.ingest.bcb_sgs import (
     ResultadoMacro,
-    carregar_macro_referencia,
-    obter_selic_e_ipca,
-    obter_serie_com_fallback,
 )
 from avaliador_b3.ingest.crosswalk_cnpj import (
     EmissorNaoEncontrado,
-    buscar_no_catalogo_enxuto,
-    ler_catalogo_enxuto,
-    obter_catalogo_emissores,
-    resolver_cnpj,
 )
 from avaliador_b3.ingest.cvm import (
     CnpjNaoEncontrado,
     ContaFluxoCaixaNaoEncontrada,
-    obter_fluxo_caixa_livre_com_fallback,
-    resolver_ano_mais_recente_disponivel,
 )
 from avaliador_b3.ingest.fundamentus import (
     EstruturaPaginaMudou,
     TickerNaoEncontrado,
-    obter_indicadores,
 )
-from avaliador_b3.ingest.gpr import obter_gpr
 from avaliador_b3.ingest.precos import (
     FalhaFontePreco,
     TickerInvalido,
-    obter_dividendos,
-    obter_historico,
-    obter_historico_ibovespa,
     preco_valido,
 )
 from avaliador_b3.modelos.aviso_fcd import avaliar_fcd_extremo
@@ -385,14 +380,11 @@ from avaliador_b3.modelos.fcd import (
 )
 from avaliador_b3.modelos.graham import calcular_valor_justo_graham, reescalar_lpa_vpa
 from avaliador_b3.numeros import decimal_pt_br, numero_finito
-from avaliador_b3.rodada import carregar_data_rodada
 from avaliador_b3.screener import (
-    CAMINHO_SAIDA_PADRAO,
     DeteccaoAnoCvmFalhouWarning,
     FundamentusIndisponivelWarning,
     MacroIndisponivelWarning,
     RodadaScreenerRejeitada,
-    rodar_screener,
 )
 
 MENSAGEM_MACRO_INDISPONIVEL_CURTA = "Selic/IPCA indisponíveis agora — veja o aviso no topo."
@@ -450,7 +442,7 @@ def _buscar_historico(
 def _buscar_historico_ou_levanta(
     ticker: str, periodo: str, auto_adjust: bool = True
 ) -> pd.DataFrame:
-    historico = obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust)
+    historico = precos.obter_historico(ticker, periodo=periodo, auto_adjust=auto_adjust)
     if historico.empty:
         raise FalhaFontePreco(f"Histórico de {ticker!r} veio vazio — tente de novo mais tarde.")
     return historico
@@ -461,7 +453,7 @@ def _buscar_historico_ibovespa(periodo: str) -> tuple[pd.DataFrame | None, str |
     vira erro" que `_buscar_historico` (ver docstring lá), pelo mesmo
     motivo defensivo."""
     try:
-        historico = obter_historico_ibovespa(periodo=periodo)
+        historico = precos.obter_historico_ibovespa(periodo=periodo)
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
     if historico.empty:
@@ -494,7 +486,7 @@ def _buscar_historico_petroleo(
 @st.cache_data(ttl=3600)
 def _buscar_cambio_correlacao_cacheado() -> pd.DataFrame:
     hoje = datetime.now()
-    return obter_serie_com_fallback(
+    return bcb_sgs.obter_serie_com_fallback(
         SERIES_BCB_SGS["cambio_usd_venda"],
         data_inicial=(hoje - timedelta(days=365 * ANOS_JANELA_CORRELACAO)).strftime("%d/%m/%Y"),
         data_final=hoje.strftime("%d/%m/%Y"),
@@ -514,7 +506,7 @@ def _buscar_cambio_correlacao() -> tuple[pd.DataFrame | None, str | None]:
 
 @st.cache_data(ttl=3600)
 def _buscar_gpr_diaria_cacheado() -> pd.DataFrame:
-    return obter_gpr(serie="diaria")
+    return gpr.obter_gpr(serie="diaria")
 
 
 def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
@@ -532,7 +524,7 @@ def _buscar_gpr_diaria() -> tuple[pd.DataFrame | None, str | None]:
 
 @st.cache_data(ttl=3600)
 def _buscar_universo_ibovespa_cacheado() -> pd.DataFrame:
-    return obter_universo_ibovespa()
+    return b3_universo.obter_universo_ibovespa()
 
 
 def _buscar_universo_ibovespa() -> tuple[pd.DataFrame | None, str | None]:
@@ -556,7 +548,7 @@ def _buscar_indicadores_fundamentus(ticker: str) -> tuple[dict | None, str | Non
     tratado aqui; qualquer outra exceção propaga (sinal de algo não
     previsto, não um "papel sem indicador")."""
     try:
-        return obter_indicadores(ticker), None
+        return fundamentus.obter_indicadores(ticker), None
     except (TickerNaoEncontrado, EstruturaPaginaMudou) as erro:
         return None, str(erro)
 
@@ -569,7 +561,7 @@ def _buscar_dividendos(ticker: str) -> tuple[pd.DataFrame | None, str | None]:
     `FalhaFontePreco` viram o par `(None, motivo)` que os call sites
     checam."""
     try:
-        return obter_dividendos(ticker), None
+        return precos.obter_dividendos(ticker), None
     except (TickerInvalido, FalhaFontePreco) as erro:
         return None, str(erro)
 
@@ -579,11 +571,13 @@ def _emissor_do_ticker(ticker: str) -> dict:
     versiona (`data/processed/catalogo_emissores.csv`); só se o ticker não estiver nele, ou o
     arquivo faltar, no catálogo completo da B3 (36 páginas da API). Levanta
     `EmissorNaoEncontrado` se o ticker não tiver emissor correspondente."""
-    emissor = buscar_no_catalogo_enxuto(ticker, ler_catalogo_enxuto(CAMINHO_CATALOGO_EMISSORES))
+    emissor = crosswalk_cnpj.buscar_no_catalogo_enxuto(
+        ticker, crosswalk_cnpj.ler_catalogo_enxuto(config.CAMINHO_CATALOGO_EMISSORES)
+    )
     if emissor is not None:
         return emissor
     with st.spinner(TEXTO_SPINNER_CATALOGO_COMPLETO):
-        return resolver_cnpj(ticker, obter_catalogo_emissores())
+        return crosswalk_cnpj.resolver_cnpj(ticker, crosswalk_cnpj.obter_catalogo_emissores())
 
 
 def _buscar_cnpj(ticker: str) -> tuple[str | None, str | None]:
@@ -609,7 +603,7 @@ def _buscar_segmento_setorial(ticker: str) -> tuple[str | None, str | None]:
 
 @st.cache_data(ttl=3600)
 def _buscar_ano_fcd_mais_recente_cacheado() -> int:
-    return resolver_ano_mais_recente_disponivel()
+    return cvm.resolver_ano_mais_recente_disponivel()
 
 
 def _buscar_ano_fcd_mais_recente() -> tuple[int | None, str | None]:
@@ -648,7 +642,7 @@ def _buscar_fcf_fcd(
     de "não aplicável" do próprio card do FCD (`calcular_valor_
     justo_fcd` trata `fcf_atual=None` internamente)."""
     try:
-        resultado = obter_fluxo_caixa_livre_com_fallback(
+        resultado = cvm.obter_fluxo_caixa_livre_com_fallback(
             cnpj, ano_mais_recente, ANOS_HISTORICO_CRESCIMENTO_FCD
         )
         return (
@@ -674,7 +668,7 @@ def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None, ticker: str) ->
     if indicadores is None:
         return {"disponivel": False, "motivo": "indicadores do Fundamentus indisponíveis."}
     try:
-        return obter_leitura_balanco(
+        return balanco_cvm.obter_leitura_balanco(
             cnpj,
             indicadores["data_balanco_fundamentus"],
             indicadores["numero_acoes"],
@@ -687,7 +681,7 @@ def _buscar_leitura_balanco(cnpj: str, indicadores: dict | None, ticker: str) ->
 
 @st.cache_data(ttl=3600)
 def _buscar_macro_cacheado() -> ResultadoMacro:
-    return obter_selic_e_ipca()
+    return bcb_sgs.obter_selic_e_ipca()
 
 
 def _buscar_macro() -> tuple[ResultadoMacro | None, str | None]:
@@ -1522,10 +1516,10 @@ def _rodar_screener_permitido() -> bool:
 def _data_da_ultima_rodada() -> pd.Timestamp | str | None:
     """Data da última rodada aceita do screener (o `rodada.json`); sem ele, a data da busca da
     Selic e do IPCA do arquivo de referência, e `None` se nenhum dos dois existir."""
-    data_rodada = carregar_data_rodada()
+    data_rodada = rodada.carregar_data_rodada()
     if data_rodada is not None:
         return data_rodada
-    macro = carregar_macro_referencia()
+    macro = bcb_sgs.carregar_macro_referencia()
     return None if macro is None else macro["data_busca"]
 
 
@@ -2646,7 +2640,7 @@ def pagina_analisar() -> None:
                 st.warning(f"Classificação setorial: {erro_segmento_setorial}")
             else:
                 tabela_screener_setor = _carregar_screener_ou_avisar(
-                    CAMINHO_SAIDA_PADRAO,
+                    screener_mod.CAMINHO_SAIDA_PADRAO,
                     'Rode o screener primeiro na página "Screener"',
                 )
                 if tabela_screener_setor is not None:
@@ -3233,7 +3227,7 @@ def pagina_screener() -> None:
             warnings.simplefilter("always")
             with st.spinner("Rodando o screener — isso leva alguns minutos..."):
                 try:
-                    resultado_rodada = rodar_screener()
+                    resultado_rodada = screener_mod.rodar_screener()
                 except RodadaScreenerRejeitada as erro:
                     rodada_rejeitada = erro
         for aviso in avisos_capturados:
@@ -3287,9 +3281,9 @@ def pagina_screener() -> None:
         st.warning(aviso)
 
     tabela_screener = _carregar_screener_ou_avisar(
-        CAMINHO_SAIDA_PADRAO,
+        screener_mod.CAMINHO_SAIDA_PADRAO,
         f'Clique em "{ROTULO_RODAR_SCREENER}" na barra lateral pra gerar '
-        f"{CAMINHO_SAIDA_PADRAO.name}",
+        f"{screener_mod.CAMINHO_SAIDA_PADRAO.name}",
     )
 
     # Filtros e botão da rodada ficam no bloco da barra lateral, depois do link da página.
@@ -3303,7 +3297,9 @@ def pagina_screener() -> None:
 
     if tabela_screener is not None and tabela_exibida is not None:
         if rodar_screener_permitido:
-            atualizado_em = datetime.fromtimestamp(CAMINHO_SAIDA_PADRAO.stat().st_mtime)
+            atualizado_em = datetime.fromtimestamp(
+                screener_mod.CAMINHO_SAIDA_PADRAO.stat().st_mtime
+            )
             st.caption(
                 f"Última atualização: {atualizado_em.strftime('%d/%m/%Y %H:%M')} — "
                 "dado salvo em disco, não ao vivo. Use o botão acima para atualizar."
@@ -3890,7 +3886,9 @@ def _desenhar_montagem_da_carteira(
 
 @st.cache_data(ttl=3600)
 def _buscar_serie_bcb_cacheada(codigo: int, data_inicial: str, data_final: str) -> pd.DataFrame:
-    return obter_serie_com_fallback(codigo, data_inicial=data_inicial, data_final=data_final)
+    return bcb_sgs.obter_serie_com_fallback(
+        codigo, data_inicial=data_inicial, data_final=data_final
+    )
 
 
 def _buscar_serie_bcb(
@@ -4036,7 +4034,7 @@ def _desenhar_historico_da_carteira(composicao: pd.DataFrame, cores: dict[str, s
 
 def pagina_carteira() -> None:
     tabela_screener_carteira = _carregar_screener_ou_avisar(
-        CAMINHO_SAIDA_PADRAO,
+        screener_mod.CAMINHO_SAIDA_PADRAO,
         'Rode o screener primeiro na página "Screener"',
     )
 
@@ -4197,7 +4195,7 @@ def pagina_carteira() -> None:
 def _rodape_da_barra_lateral() -> None:
     """Data da última atualização do screener (a mesma do aviso do workflow) e o link do
     repositório."""
-    macro = carregar_macro_referencia()
+    macro = bcb_sgs.carregar_macro_referencia()
     data_rodada = _data_da_ultima_rodada()
     with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
         if data_rodada is not None:
