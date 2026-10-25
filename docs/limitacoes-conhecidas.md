@@ -147,11 +147,34 @@ Em 04/10/2026, entre as 53 ações com FCD, 1 tinha FCD acima de 3 vezes o preç
 
 - **O Screener mostra dados salvos, não ao vivo.** No app publicado, o resultado só muda quando uma nova rodada é feita e publicada pelo workflow (o botão "Rodar screener agora" só aparece com o opt-in `AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), então os preços podem estar defasados.
   - *Na tela:* a página mostra a data da última atualização.
-- **A "Última atualização" do app publicado pode ficar mais antiga que a da rodada.** Essa data vem do arquivo de referência (`macro_referencia.json`), que só é regravado quando a Selic e o IPCA são buscados ao vivo. Se todas as fontes falharem numa rodada que mesmo assim foi aceita (a Selic e o IPCA vêm do valor guardado ou do próprio arquivo de referência), o arquivo não é regravado, o `screener.csv` é publicado com os preços novos e a data mostrada continua a da última busca ao vivo.
-  - *Na tela:* não há sinal de que a data está atrás; o commit do workflow no `master` e o resumo da execução na aba Actions mostram a data real da rodada.
+- **Enquanto não há `rodada.json`, a data de atualização é aproximada.** A data do rodapé vem do `rodada.json`, gravado a cada rodada aceita. Esse arquivo só existe a partir da primeira rodada aceita depois de 25/10/2026; até lá, o app usa a data da última busca ao vivo da Selic e do IPCA (`data_busca` do `macro_referencia.json`), que só é regravada quando essas fontes respondem. Se todas falharem numa rodada aceita, o `screener.csv` é publicado com os preços novos e essa data fica atrás.
+  - *Na tela:* o rodapé mostra "Screener atualizado em dd/mm/aaaa (aprox.)", e o "?" explica de onde vem a data. Depois da primeira rodada com `rodada.json`, o "(aprox.)" some.
 - **A rodada é protegida por uma checagem.** Se a rodada vier sem linhas ou com linhas faltando, se o universo do Ibovespa tiver menos de 60 ações, se mais de 5 ações ficarem sem preço, se mais de 5 tiverem falha de fonte ou se algum valor não for finito, a rodada é rejeitada, o resultado anterior é mantido e o motivo é mostrado. Isso evita dados quebrados, mas deixa o Screener desatualizado em vez de errado, e até 5 ações com falha ainda passam.
 - **Ações sem nenhum método aplicável** ficam sem valor justo: em 04/10/2026, CSNA3 e NATU3. Aparecem no Screener com o motivo, e o Simulador as marca como sem cenário.
 - **O histórico da carteira é desempenho passado, com simplificações.** O gráfico mostra como o valor investido hoje teria evoluído em 1, 2 ou 5 anos, com as proporções de hoje e sem rebalancear. Os preços são os ajustados por dividendos e desdobramentos do Yahoo Finance, e o JCP pode não estar incluído em todos os casos. O IPCA é mensal, interpolado dentro do mês, e o CDI é o diário bruto, sem imposto. A ação com histórico mais curto que o período fica fora da linha da carteira, com aviso, e só as 7 maiores posições por peso têm linha própria (as demais entram só na linha "Carteira"). Não é previsão.
   - *Na tela:* o "?" do painel traz o aviso de que é desempenho passado, e a legenda lista as ações que ficaram de fora.
 - **O Simulador mostra potencial, não previsão.** Cada cenário compara o valor justo com o preço: o pessimista é o menor valor entre os métodos aplicáveis, o base é o valor combinado e o otimista é o maior. Não há prazo, dividendos, custos nem impostos. O pessimista pode ser o preço teto do Bazin, que não é uma estimativa de valor. Um valor justo zero ou negativo conta como perda total (−100%), regra que hoje só vale para `screener.csv` anteriores a 21/10/2026, porque nenhum método grava valor ≤ 0; o preço usado é o da última rodada do Screener.
   - *Na tela:* o bloco "Como funciona este cálculo?" explica isso, e os cenários limitados a −100% são sinalizados.
+
+## Publicação da rodada e falhas
+
+Uma rodada aceita grava quatro arquivos de `data/processed/`, nesta ordem:
+
+1. `macro_referencia.json` (a Selic e o IPCA), só se foram buscados ao vivo nesta rodada;
+2. `catalogo_emissores.csv`, que só substitui o anterior se cobrir todas as ações da rodada;
+3. `screener.csv`;
+4. `rodada.json` (a data e a hora da rodada), por último.
+
+Cada arquivo é gravado num temporário e trocado no fim, então um arquivo nunca fica pela metade. Uma falha numa etapa levanta exceção e interrompe as seguintes; os temporários são apagados. O que fica no disco:
+
+| Falha em | Fica no disco |
+|---|---|
+| a rodada (antes de publicar) ou a checagem rejeita | nada é substituído (a rejeitada vai para `screener.rejeitado.csv`) |
+| 1. referência macro | os quatro arquivos anteriores |
+| 2. catálogo | referência nova; catálogo, CSV e `rodada.json` anteriores |
+| 3. CSV | referência e catálogo novos; CSV e `rodada.json` anteriores |
+| 4. `rodada.json` | referência, catálogo e CSV novos; `rodada.json` anterior (ou nenhum) |
+
+Nenhuma falha deixa a data da rodada mais nova que os dados.
+
+**Por que o repositório publicado continua coerente.** No workflow, `python -m avaliador_b3.rodar_screener` sai com 0 só se a rodada foi aceita e publicou os quatro arquivos; uma exceção sai com 2 e uma rejeição com 1. Com saída diferente de 0, o passo falha, o passo seguinte (o do commit) não roda e a execução termina em falha, sem commit. O estado parcial só existe no runner descartado (o artifact da execução pode guardar o `screener.csv` desse runner por 14 dias, mas não vai para o repositório) ou, numa execução local, no clone de quem usou o botão "Rodar screener agora" (opt-in). Nesse caso, a próxima rodada aceita regrava o CSV, o catálogo e o `rodada.json`, e a referência macro se a Selic e o IPCA vierem ao vivo.

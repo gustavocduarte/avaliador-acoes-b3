@@ -30,7 +30,7 @@ def test_a_checagem_de_mudanca_enxerga_o_catalogo_mesmo_sendo_arquivo_novo():
     assert "data/processed/catalogo_emissores.csv" in checagem
 
 
-def test_a_checagem_de_mudanca_olha_os_mesmos_tres_arquivos_do_git_add():
+def test_a_checagem_de_mudanca_olha_os_mesmos_arquivos_do_git_add():
     passo = _passo_de_commit()
 
     checagem = next(linha for linha in passo.splitlines() if "git status --porcelain" in linha)

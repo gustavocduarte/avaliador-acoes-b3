@@ -5,6 +5,7 @@ from html import escape
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
+from avaliador_b3 import rodada
 from avaliador_b3.app.dados import (
     _data_da_ultima_rodada,
     _rodar_screener_permitido,
@@ -17,8 +18,10 @@ from avaliador_b3.config import (
     ICONE_PAGINA_CARTEIRA,
     ICONE_PAGINA_SCREENER,
     SUFIXO_BARRA_ATIVA,
+    TEXTO_AJUDA_DATA_APROXIMADA,
     TEXTO_RODAPE_LINK_REPOSITORIO,
     TEXTO_RODAPE_SCREENER_ATUALIZADO,
+    TEXTO_RODAPE_SCREENER_ATUALIZADO_APROXIMADO,
     TEXTO_RODAPE_SCREENER_SEM_DATA,
     TEXTO_RODAPE_SELIC,
     TITULO_APP,
@@ -37,12 +40,18 @@ def _rodape_da_barra_lateral() -> None:
     data_rodada = _data_da_ultima_rodada()
     with st.sidebar.container(key=CHAVE_BARRA_RODAPE):
         if data_rodada is not None:
-            st.caption(
-                TEXTO_RODAPE_SCREENER_ATUALIZADO.format(data=_fmt_data(data_rodada)),
-                help=None
-                if _rodar_screener_permitido()
-                else _texto_screener_atualizado_pelo_workflow(),
+            aproximada = rodada.carregar_data_rodada() is None
+            ajuda = []
+            if aproximada:
+                ajuda.append(TEXTO_AJUDA_DATA_APROXIMADA)
+            if not _rodar_screener_permitido():
+                ajuda.append(_texto_screener_atualizado_pelo_workflow())
+            modelo = (
+                TEXTO_RODAPE_SCREENER_ATUALIZADO_APROXIMADO
+                if aproximada
+                else TEXTO_RODAPE_SCREENER_ATUALIZADO
             )
+            st.caption(modelo.format(data=_fmt_data(data_rodada)), help=" ".join(ajuda) or None)
             if macro is not None and macro.get("selic_meta") is not None:
                 st.caption(
                     TEXTO_RODAPE_SELIC.format(selic=_fmt_percentual(macro["selic_meta"] * 100, 2))

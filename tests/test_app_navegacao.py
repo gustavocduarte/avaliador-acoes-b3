@@ -17,6 +17,7 @@ from avaliador_b3.config import (
     DESCRICOES_DAS_PAGINAS,
     SUFIXO_BARRA_ATIVA,
     TEXTO_ABERTURA_SIMULADOR,
+    TEXTO_AJUDA_DATA_APROXIMADA,
     TEXTO_AVISO_ESTIMATIVAS,
     TEXTO_RODAPE_APP_DORMINDO,
     TITULO_ABA_NAVEGADOR,
@@ -201,7 +202,7 @@ def test_rodape_da_barra_lateral_tem_a_data_do_screener_e_o_link_do_repositorio(
     at = _app_aberto()
 
     textos = [e.value for e in (*at.sidebar.caption, *at.sidebar.markdown)]
-    assert any("Screener atualizado em 03/10/2026" in texto for texto in textos)
+    assert any("Screener atualizado em 03/10/2026 (aprox.)" in texto for texto in textos)
     assert any(URL_REPOSITORIO in texto for texto in textos)
 
     abrir_pagina(at, TITULO_PAGINA_SCREENER)
@@ -217,6 +218,7 @@ def test_rodape_usa_a_data_da_rodada_quando_o_arquivo_existe(tmp_path):
 
     textos = [e.value for e in (*at.sidebar.caption, *at.sidebar.markdown)]
     assert any("Screener atualizado em 23/10/2026" in texto for texto in textos)
+    assert not any("(aprox.)" in texto for texto in textos)
     assert not any("03/10/2026" in texto for texto in textos)
 
 
@@ -334,3 +336,10 @@ def test_na_analise_as_pilulas_ficam_na_linha_do_ticker_e_nao_acima_dele():
     ]
     pilula = [h for h in at.get("html") if 'class="ab-pilula"' in h.proto.body]
     assert len(pilula) == 1
+
+
+def test_rodape_sem_rodada_json_explica_no_help_que_a_data_e_aproximada():
+    at = _app_aberto()
+
+    legenda = next(c for c in at.sidebar.caption if "(aprox.)" in c.value)
+    assert TEXTO_AJUDA_DATA_APROXIMADA in legenda.proto.help
