@@ -9,8 +9,6 @@ Dashboard em Python que estima o valor justo das ações do Ibovespa por Graham,
 
 **Aviso:** os valores são estimativas de modelos com premissas simplificadas, para estudo. Não é recomendação de investimento. As limitações dos modelos e dos dados estão em [`docs/limitacoes-conhecidas.md`](docs/limitacoes-conhecidas.md).
 
-![Página de uma ação (PETR4): preço atual, valor justo por Graham, Bazin e FCD e valor combinado](docs/img/acao.png)
-
 ## Arquitetura
 
 ```mermaid
@@ -85,6 +83,21 @@ da carteira), e o rodapé mostra a data da última atualização do screener e o
   do mesmo segmento, pelo `screener.csv`) e correlação com fatores externos (petróleo,
   câmbio e risco geopolítico). A página também abre direto numa ação por `?acao=TICKER`, o
   link que o ticker do Screener usa.
+
+  ![Analisar uma ação: PETR4 com preço atual, valor combinado, potencial e valor justo por Graham, Bazin e FCD](docs/img/analise-acao-1.png)
+
+  <details><summary>Mais capturas</summary>
+
+  ![Dividendos por ano e comparação setorial da PETR4](docs/img/analise-acao-2.png)
+
+  *Dividendos por ano e comparação setorial da PETR4.*
+
+  ![ABEV3: valor justo por método abaixo do preço atual](docs/img/analise-acao-3.png)
+
+  *Outra ação (ABEV3), com potencial negativo: o valor justo de cada método fica abaixo do preço.*
+
+  </details>
+
 - **Screener** — a mesma avaliação para todo o Ibovespa. A barra lateral tem os filtros (setor,
   potencial mínimo, exigir método e esconder as ações sem valor combinado), e a página traz
   cartões de resumo, a distribuição do potencial, os cartões "Atenção" (potencial extremo e ações
@@ -96,6 +109,21 @@ da carteira), e o rodapé mostra a data da última atualização do screener e o
   setorial de cada ação (coluna `segmento_setorial`), que a página lê sem buscar o catálogo da B3.
   O botão "Rodar screener agora" só aparece com o opt-in explícito
   (`AVALIADOR_B3_PERMITIR_RODAR_SCREENER`), descrito em "Instalação, execução e testes".
+
+  ![Screener com os filtros padrão: cartões de resumo, distribuição do potencial e avisos](docs/img/screener-1.png)
+
+  <details><summary>Mais capturas</summary>
+
+  ![Screener filtrado por setor (Aluguel de carros)](docs/img/screener-2.png)
+
+  *Filtro por setor (Aluguel de carros): o histograma e o ranking mostram só as ações do setor.*
+
+  ![Ranking por potencial com Graham, Bazin e FCD marcados](docs/img/screener-3.png)
+
+  *Ranking por potencial com os três métodos marcados em "Só ações em que se aplicam": só aparecem as ações em que os três se aplicam.*
+
+  </details>
+
 - **Simulador de carteira** — a carteira é montada na barra lateral, com a **quantidade** de cada
   ação, a partir do resultado já salvo do screener. A página mostra o valor investido, o valor
   justo, o potencial e a concentração; os cenários pessimista (menor valor entre os métodos
@@ -106,7 +134,23 @@ da carteira), e o rodapé mostra a data da última atualização do screener e o
   histórico é desempenho passado, com preços ajustados por dividendos e desdobramentos, e
   também não é previsão.
 
-![Simulador de carteira: valor investido por ação e potencial nos cenários pessimista, base e otimista](docs/img/simulador.png)
+  ![Simulador de carteira com três posições: valor investido, cenários, contribuição e composição por ação e por setor](docs/img/simulador-2.png)
+
+  <details><summary>Mais capturas</summary>
+
+  ![Simulador com duas posições](docs/img/simulador-1.png)
+
+  *Carteira com duas posições (ABEV3 e BBAS3), com a concentração em bancos em destaque.*
+
+  ![Posições e histórico da carteira contra IPCA e CDI](docs/img/simulador-3.png)
+
+  *Posições e histórico da carteira contra IPCA e CDI.*
+
+  </details>
+
+Funciona também em tela estreita:
+
+<img src="docs/img/celular.png" alt="Análise da PETR4 em tela de celular" width="400">
 
 ## Metodologia do FCD
 
