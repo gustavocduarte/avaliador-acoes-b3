@@ -80,5 +80,6 @@ def montar_barra_lateral(paginas: dict[str, st.Page], pagina_atual: st.Page) -> 
 
 def bloco_da_barra(chave: str) -> DeltaGenerator:
     """Bloco da barra lateral da página `chave`, criado por `montar_barra_lateral` na execução
-    atual."""
+    atual. Cada página preenche o seu só quando roda (a análise, a caixa da ação e o Buscar; o
+    Screener, os filtros e o botão da rodada)."""
     return st.session_state[_CHAVE_BLOCOS_NO_ESTADO][chave]

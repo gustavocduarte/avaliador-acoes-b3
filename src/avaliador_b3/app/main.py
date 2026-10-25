@@ -50,15 +50,6 @@ from avaliador_b3.config import (
     URL_PAGINA_SCREENER,
 )
 
-# Nota de rodapé, fora de qualquer página (aparece nas três) — Streamlit
-# Community Cloud "adormece" apps sem acesso recente. Diferente do que se
-# poderia supor, não é uma tela em branco automática: a plataforma mostra
-# sua própria página de "app dormindo", com um botão que o visitante
-# precisa clicar pra acordar o container (confirmado contra a documentação
-# oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
-# Sem esse aviso, o clique extra pareceria um link quebrado.
-
-
 _paginas = {
     CHAVE_BARRA_ANALISAR: st.Page(
         pagina_analisar,
@@ -93,8 +84,6 @@ st.set_page_config(
 # Único bloco de CSS da página (ver `_CSS_DA_PAGINA`).
 st.html(_CSS_DA_PAGINA)
 barra_lateral.montar_barra_lateral(_paginas, pagina_atual)
-# A caixa da ação e o Buscar entram no bloco da análise, só quando a página de análise roda; os
-# filtros e o botão da rodada, no bloco do Screener, só quando a página do Screener roda.
 # Cabeçalho: o título é o da página aberta; abaixo, o que ela faz e o aviso de estimativas.
 st.html(f'<div class="ab-app-titulo">{escape(_titulo_da_pagina_atual)}</div>')
 st.caption(f"{DESCRICOES_DAS_PAGINAS[_titulo_da_pagina_atual]}  \n{TEXTO_AVISO_ESTIMATIVAS}")
@@ -102,4 +91,11 @@ st.html('<div class="ab-app-divisoria"></div>')
 pagina_atual.run()
 barra_lateral._rodape_da_barra_lateral()
 
+# Nota de rodapé, fora de qualquer página (aparece nas três) — Streamlit
+# Community Cloud "adormece" apps sem acesso recente. Diferente do que se
+# poderia supor, não é uma tela em branco automática: a plataforma mostra
+# sua própria página de "app dormindo", com um botão que o visitante
+# precisa clicar pra acordar o container (confirmado contra a documentação
+# oficial, 2026-09-21) — só depois disso começa a espera de carregamento.
+# Sem esse aviso, o clique extra pareceria um link quebrado.
 st.caption(TEXTO_RODAPE_APP_DORMINDO)
