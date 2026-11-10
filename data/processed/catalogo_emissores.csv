@@ -6,17 +6,19 @@ USIM5,60894730000105,Siderurgia
 CYRE3,73178600000118,Incorporações
 AZZA3,16590234000176,Tecidos. Vestuário e Calçados
 SUZB3,16404287000155,Papel e Celulose
-CEAB3,45242914000105,Tecidos. Vestuário e Calçados
 ISAE4,02998611000104,Energia Elétrica
 BBDC3,60746948000112,Bancos
 ASAI3,06057223000171,Alimentos
 BBDC4,60746948000112,Bancos
+CEAB3,45242914000105,Tecidos. Vestuário e Calçados
 CMIG4,17155730000164,Energia Elétrica
 YDUQ3,08807432000110,Serviços Educacionais
+BRAV3,12091809000155,Exploração. Refino e Distribuição
+TIMS3,02421421000111,Telecomunicações
 SANB11,90400888000142,Bancos
 LREN3,92754738000162,Tecidos. Vestuário e Calçados
-BBAS3,00000000000191,Bancos
 DIRR3,16614075000100,Incorporações
+BBAS3,00000000000191,Bancos
 VBBR3,34274233000102,Distribuição de Combustíveis
 ALOS3,05878397000132,Exploração de Imóveis
 CURY3,08797760000183,Incorporações
@@ -31,29 +33,26 @@ VAMO3,23373000000132,Aluguel de carros
 PETR3,33000167000101,Exploração. Refino e Distribuição
 TEND3,71476527000135,Incorporações
 KLBN11,89637490000145,Papel e Celulose
-IGTI11,60543816000193,Exploração de Imóveis
 PSSA3,02149205000169,Seguradoras
+IGTI11,60543816000193,Exploração de Imóveis
 RENT3,16670085000155,Aluguel de carros
 FLRY3,60840055000131,Serv.Méd.Hospit..Análises e Diagnósticos
 ITUB4,60872504000123,Bancos
 CPFE3,02429144000193,Energia Elétrica
-MGLU3,47960950000121,Eletrodomésticos
 VIVT3,02558157000162,Telecomunicações
 UGPA3,33256439000139,Exploração. Refino e Distribuição
 GOAU4,92690783000109,Siderurgia
 HYPE3,02932074000191,Medicamentos e Outros Produtos
 TAEE11,07859971000130,Energia Elétrica
-TIMS3,02421421000111,Telecomunicações
 CMIN3,08902291000115,Minerais Metálicos
-VIVA3,33839910000111,Acessórios
+PRIO3,10629105000168,Exploração. Refino e Distribuição
 CPLE3,76483817000120,Energia Elétrica
 EGIE3,02474103000119,Energia Elétrica
-PRIO3,10629105000168,Exploração. Refino e Distribuição
 SMFT3,07594978000178,Atividades Esportivas
+VIVA3,33839910000111,Acessórios
 AXIA3,00001180000126,Energia Elétrica
 CXSE3,22543331000100,Seguradoras
 ABEV3,07526557000100,Cervejas e Refrigerantes
-BRAV3,12091809000155,Exploração. Refino e Distribuição
 ENGI11,00864214000106,Energia Elétrica
 CSMG3,17281106000103,Água e Saneamento
 RAIL3,02387241000160,Transporte Ferroviário
@@ -64,10 +63,11 @@ MULT3,07816890000153,Exploração de Imóveis
 BPAC11,30306294000145,Bancos
 GGBR4,33611500000119,Siderurgia
 TOTS3,53113791000122,Programas e Serviços
-RADL3,61585865000151,Medicamentos e Outros Produtos
 ENEV3,04423567000121,Energia Elétrica
 EMBJ3,07689002000189,Material Aeronáutico e de Defesa
+RADL3,61585865000151,Medicamentos e Outros Produtos
 WEGE3,84429695000111,Motores . Compressores e Outros
+MGLU3,47960950000121,Eletrodomésticos
 EQTL3,03220438000173,Energia Elétrica
 AURE3,28594234000123,Energia Elétrica
 CSAN3,50746577000115,Exploração. Refino e Distribuição
