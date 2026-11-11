@@ -2,60 +2,60 @@ ticker,cnpj,segmento_setorial
 BEEF3,67620377000114,Carnes e Derivados
 POMO4,88611835000129,Material Rodoviário
 COGN3,02800026000140,Serviços Educacionais
-USIM5,60894730000105,Siderurgia
 CYRE3,73178600000118,Incorporações
+USIM5,60894730000105,Siderurgia
 AZZA3,16590234000176,Tecidos. Vestuário e Calçados
 SUZB3,16404287000155,Papel e Celulose
 ISAE4,02998611000104,Energia Elétrica
+CEAB3,45242914000105,Tecidos. Vestuário e Calçados
 BBDC3,60746948000112,Bancos
 ASAI3,06057223000171,Alimentos
 BBDC4,60746948000112,Bancos
-CEAB3,45242914000105,Tecidos. Vestuário e Calçados
+BRAV3,12091809000155,Exploração. Refino e Distribuição
 CMIG4,17155730000164,Energia Elétrica
 YDUQ3,08807432000110,Serviços Educacionais
-BRAV3,12091809000155,Exploração. Refino e Distribuição
-TIMS3,02421421000111,Telecomunicações
-SANB11,90400888000142,Bancos
 LREN3,92754738000162,Tecidos. Vestuário e Calçados
-DIRR3,16614075000100,Incorporações
 BBAS3,00000000000191,Bancos
+TIMS3,02421421000111,Telecomunicações
+IGTI11,60543816000193,Exploração de Imóveis
 VBBR3,34274233000102,Distribuição de Combustíveis
+DIRR3,16614075000100,Incorporações
 ALOS3,05878397000132,Exploração de Imóveis
+SANB11,90400888000142,Bancos
 CURY3,08797760000183,Incorporações
 PETR4,33000167000101,Exploração. Refino e Distribuição
 ITSA4,61532644000115,Holdings Diversificadas
-MBRF3,03853896000140,Carnes e Derivados
-MOTV3,02846056000197,Exploração de Rodovias
-BRAP4,03847461000192,Minerais Metálicos
 RDOR3,06047087000139,Serv.Méd.Hospit..Análises e Diagnósticos
-BBSE3,17344597000194,Seguradoras
+BRAP4,03847461000192,Minerais Metálicos
 VAMO3,23373000000132,Aluguel de carros
+MOTV3,02846056000197,Exploração de Rodovias
 PETR3,33000167000101,Exploração. Refino e Distribuição
+BBSE3,17344597000194,Seguradoras
+MBRF3,03853896000140,Carnes e Derivados
 TEND3,71476527000135,Incorporações
-KLBN11,89637490000145,Papel e Celulose
-PSSA3,02149205000169,Seguradoras
-IGTI11,60543816000193,Exploração de Imóveis
 RENT3,16670085000155,Aluguel de carros
-FLRY3,60840055000131,Serv.Méd.Hospit..Análises e Diagnósticos
+PSSA3,02149205000169,Seguradoras
 ITUB4,60872504000123,Bancos
+FLRY3,60840055000131,Serv.Méd.Hospit..Análises e Diagnósticos
+KLBN11,89637490000145,Papel e Celulose
 CPFE3,02429144000193,Energia Elétrica
 VIVT3,02558157000162,Telecomunicações
 UGPA3,33256439000139,Exploração. Refino e Distribuição
-GOAU4,92690783000109,Siderurgia
 HYPE3,02932074000191,Medicamentos e Outros Produtos
-TAEE11,07859971000130,Energia Elétrica
-CMIN3,08902291000115,Minerais Metálicos
 PRIO3,10629105000168,Exploração. Refino e Distribuição
+TAEE11,07859971000130,Energia Elétrica
+GOAU4,92690783000109,Siderurgia
 CPLE3,76483817000120,Energia Elétrica
 EGIE3,02474103000119,Energia Elétrica
 SMFT3,07594978000178,Atividades Esportivas
 VIVA3,33839910000111,Acessórios
 AXIA3,00001180000126,Energia Elétrica
-CXSE3,22543331000100,Seguradoras
 ABEV3,07526557000100,Cervejas e Refrigerantes
 ENGI11,00864214000106,Energia Elétrica
-CSMG3,17281106000103,Água e Saneamento
+CXSE3,22543331000100,Seguradoras
 RAIL3,02387241000160,Transporte Ferroviário
+CSMG3,17281106000103,Água e Saneamento
+CMIN3,08902291000115,Minerais Metálicos
 SBSP3,43776517000180,Água e Saneamento
 VALE3,33592510000154,Minerais Metálicos
 B3SA3,09346601000125,Serviços Financeiros Diversos
@@ -64,11 +64,11 @@ BPAC11,30306294000145,Bancos
 GGBR4,33611500000119,Siderurgia
 TOTS3,53113791000122,Programas e Serviços
 ENEV3,04423567000121,Energia Elétrica
-EMBJ3,07689002000189,Material Aeronáutico e de Defesa
 RADL3,61585865000151,Medicamentos e Outros Produtos
 WEGE3,84429695000111,Motores . Compressores e Outros
-MGLU3,47960950000121,Eletrodomésticos
+EMBJ3,07689002000189,Material Aeronáutico e de Defesa
 EQTL3,03220438000173,Energia Elétrica
+MGLU3,47960950000121,Eletrodomésticos
 AURE3,28594234000123,Energia Elétrica
 CSAN3,50746577000115,Exploração. Refino e Distribuição
 CSNA3,33042730000104,Siderurgia
