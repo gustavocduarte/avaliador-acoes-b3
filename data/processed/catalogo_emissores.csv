@@ -17,37 +17,37 @@ YDUQ3,08807432000110,Serviços Educacionais
 CURY3,08797760000183,Incorporações
 LREN3,92754738000162,Tecidos. Vestuário e Calçados
 IGTI11,60543816000193,Exploração de Imóveis
-ALOS3,05878397000132,Exploração de Imóveis
 PETR4,33000167000101,Exploração. Refino e Distribuição
 DIRR3,16614075000100,Incorporações
+ALOS3,05878397000132,Exploração de Imóveis
 SANB11,90400888000142,Bancos
 VBBR3,34274233000102,Distribuição de Combustíveis
 BRAP4,03847461000192,Minerais Metálicos
-ITSA4,61532644000115,Holdings Diversificadas
 BBSE3,17344597000194,Seguradoras
-PETR3,33000167000101,Exploração. Refino e Distribuição
+ITSA4,61532644000115,Holdings Diversificadas
 TEND3,71476527000135,Incorporações
 BRAV3,12091809000155,Exploração. Refino e Distribuição
-TIMS3,02421421000111,Telecomunicações
+PETR3,33000167000101,Exploração. Refino e Distribuição
 VAMO3,23373000000132,Aluguel de carros
+TIMS3,02421421000111,Telecomunicações
 MOTV3,02846056000197,Exploração de Rodovias
 RDOR3,06047087000139,Serv.Méd.Hospit..Análises e Diagnósticos
 RENT3,16670085000155,Aluguel de carros
-MBRF3,03853896000140,Carnes e Derivados
 PSSA3,02149205000169,Seguradoras
+MBRF3,03853896000140,Carnes e Derivados
 KLBN11,89637490000145,Papel e Celulose
 ITUB4,60872504000123,Bancos
 FLRY3,60840055000131,Serv.Méd.Hospit..Análises e Diagnósticos
 CPFE3,02429144000193,Energia Elétrica
 UGPA3,33256439000139,Exploração. Refino e Distribuição
-GOAU4,92690783000109,Siderurgia
-HYPE3,02932074000191,Medicamentos e Outros Produtos
 AXIA3,00001180000126,Energia Elétrica
-VIVA3,33839910000111,Acessórios
-TAEE11,07859971000130,Energia Elétrica
-CPLE3,76483817000120,Energia Elétrica
-EGIE3,02474103000119,Energia Elétrica
+HYPE3,02932074000191,Medicamentos e Outros Produtos
+GOAU4,92690783000109,Siderurgia
 PRIO3,10629105000168,Exploração. Refino e Distribuição
+TAEE11,07859971000130,Energia Elétrica
+EGIE3,02474103000119,Energia Elétrica
+VIVA3,33839910000111,Acessórios
+CPLE3,76483817000120,Energia Elétrica
 VIVT3,02558157000162,Telecomunicações
 SMFT3,07594978000178,Atividades Esportivas
 SBSP3,43776517000180,Água e Saneamento
@@ -56,11 +56,11 @@ ABEV3,07526557000100,Cervejas e Refrigerantes
 ENGI11,00864214000106,Energia Elétrica
 VALE3,33592510000154,Minerais Metálicos
 BPAC11,30306294000145,Bancos
-CSMG3,17281106000103,Água e Saneamento
 B3SA3,09346601000125,Serviços Financeiros Diversos
+CSMG3,17281106000103,Água e Saneamento
 MULT3,07816890000153,Exploração de Imóveis
-CMIN3,08902291000115,Minerais Metálicos
 RAIL3,02387241000160,Transporte Ferroviário
+CMIN3,08902291000115,Minerais Metálicos
 GGBR4,33611500000119,Siderurgia
 TOTS3,53113791000122,Programas e Serviços
 RADL3,61585865000151,Medicamentos e Outros Produtos
